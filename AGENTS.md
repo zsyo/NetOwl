@@ -115,6 +115,18 @@
   接入 UI 时码点必须对照字体 cmap 或官方码点表验证,
   注释写真实 glyph 名(注释即契约)
 
+### 10. 持久化
+- 数据根 = exe 同级目录(Windows 便携式),启动时切换工作目录;
+  config.toml 与 data/ 均为相对路径(paths.rs)
+- 配置:serde TOML;变更只更新内存,由 App 层 500ms 防抖合并写盘,
+  写盘走 临时文件 -> .bak 备份 -> rename;托盘"退出"时立即落盘
+- 窗口几何存物理像素(i32::MIN 表示未设置居中);最小化污染坐标(Windows 移窗到
+  -32000)不落盘;恢复在首帧按当前 pixels_per_point 换算下发 ViewportCommand
+  (egui 坐标全为逻辑 points,物理除以当前 ppp 后精确还原)
+- SQLite:data/netowl.db(rusqlite bundled 免系统依赖,WAL);结构迁移以
+  schema_version 表记录版本;所有含外部输入的查询必须参数绑定(rusqlite `params!`),
+  禁止字符串拼接/format 组装 SQL
+
 ## 开发流程规范
 
 ### 功能点与 git 提交
