@@ -4,10 +4,10 @@
 
 mod app;
 mod collector;
+mod i18n;
 mod icon;
 mod map;
 mod model;
-mod text;
 mod theme;
 mod tray;
 mod ui;
@@ -15,7 +15,8 @@ mod world;
 
 use eframe::egui;
 
-use crate::text::APP_NAME;
+/// 应用品牌名(各语言一致,不参与翻译)
+const APP_NAME: &str = "NetOwl";
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {

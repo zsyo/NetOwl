@@ -9,8 +9,8 @@ use egui::{
 };
 use egui::epaint::QuadraticBezierShape;
 
+use crate::i18n::I18n;
 use crate::model::{Connection, fmt_bytes};
-use crate::text;
 use crate::theme;
 use crate::world::{LANDMASSES, LOCAL, city};
 
@@ -66,14 +66,14 @@ fn hash_phase(seed: u64) -> f32 {
 /// 城市节点聚合:连接数与累计流量
 type Agg = BTreeMap<&'static str, (usize, u64)>;
 
-pub fn draw(ui: &mut egui::Ui, conns: &[Connection]) {
+pub fn draw(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n) {
     ui.horizontal(|ui| {
-        ui.heading(theme::accent_text(text::MAP_TITLE, 20.0));
-        ui.label(theme::dim_text(text::MAP_SUBTITLE, 13.0));
+        ui.heading(theme::accent_text(&i18n.t("map-title"), 20.0));
+        ui.label(theme::dim_text(&i18n.t("map-subtitle"), 13.0));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            legend(ui, theme::OUTBOUND, text::MAP_LEGEND_OUT);
+            legend(ui, theme::OUTBOUND, &i18n.t("map-legend-out"));
             ui.add_space(10.0);
-            legend(ui, theme::INBOUND, text::MAP_LEGEND_IN);
+            legend(ui, theme::INBOUND, &i18n.t("map-legend-in"));
         });
     });
     ui.add_space(6.0);
@@ -133,7 +133,7 @@ pub fn draw(ui: &mut egui::Ui, conns: &[Connection]) {
         painter.text(
             pos + Vec2::new(0.0, r + 13.0),
             Align2::CENTER_CENTER,
-            c.name,
+            i18n.t(&format!("city-{key}")),
             FontId::proportional(11.0),
             if hovered { theme::TEXT } else { theme::TEXT_DIM },
         );
@@ -145,13 +145,13 @@ pub fn draw(ui: &mut egui::Ui, conns: &[Connection]) {
     painter.text(
         local + Vec2::new(0.0, -16.0),
         Align2::CENTER_BOTTOM,
-        text::MAP_LOCAL_LABEL,
+        i18n.t("map-local"),
         FontId::proportional(11.0),
         theme::TEXT,
     );
 
     if let Some(key) = hovered_key {
-        info_card(&painter, rect, key, conns);
+        info_card(&painter, rect, key, conns, i18n);
     }
 }
 
@@ -195,13 +195,18 @@ fn aggregate(conns: &[Connection]) -> Agg {
 }
 
 /// 悬停城市的信息卡:城市名、总流量、最多 6 条连接明细
-fn info_card(painter: &egui::Painter, canvas: Rect, key: &'static str, conns: &[Connection]) {
+fn info_card(
+    painter: &egui::Painter,
+    canvas: Rect,
+    key: &'static str,
+    conns: &[Connection],
+    i18n: &I18n,
+) {
     const WIDTH: f32 = 310.0;
     const LINE_H: f32 = 17.0;
     const HEAD_H: f32 = 42.0;
     const MAX_ROWS: usize = 6;
 
-    let c = city(key);
     let rows: Vec<&Connection> = conns.iter().filter(|conn| conn.city == key).collect();
     let shown = rows.len().min(MAX_ROWS);
     let extra = rows.len() - shown;
@@ -218,7 +223,7 @@ fn info_card(painter: &egui::Painter, canvas: Rect, key: &'static str, conns: &[
     painter.text(
         Pos2::new(card.left() + 14.0, card.top() + 12.0),
         Align2::LEFT_TOP,
-        c.name,
+        i18n.t(&format!("city-{key}")),
         FontId::proportional(16.0),
         theme::TEXT,
     );
@@ -242,7 +247,7 @@ fn info_card(painter: &egui::Painter, canvas: Rect, key: &'static str, conns: &[
         painter.text(
             Pos2::new(card.right() - 14.0, y + 8.0),
             Align2::RIGHT_CENTER,
-            text::info_more(extra),
+            i18n.t_with_args("map-info-more", &[("n", extra.to_string())]),
             FontId::proportional(11.0),
             theme::TEXT_DIM,
         );

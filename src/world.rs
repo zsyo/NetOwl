@@ -2,34 +2,32 @@
 //!
 //! 轮廓为手工简化的近似形状,仅用于低透明度装饰,不代表精确地理边界。
 
-/// 城市/节点
+/// 城市/节点:显示名经 i18n 词条(`city-<key>`)获取,这里只保留标识与坐标
 pub struct City {
-    /// 稳定标识(如 "tokyo"),供 [`crate::model::Connection::city`] 引用
+    /// 稳定标识(如 "tokyo"),供 [`crate::model::Connection::city`] 与词条键引用
     pub key: &'static str,
-    /// 界面显示名
-    pub name: &'static str,
     pub lon: f32,
     pub lat: f32,
 }
 
 /// 本机节点
-pub const LOCAL: City = City { key: "local", name: "本机", lon: 116.4, lat: 39.9 };
+pub const LOCAL: City = City { key: "local", lon: 116.4, lat: 39.9 };
 
 /// 远端城市表(MockCollector 按此生成模拟连接的地理归属)
 pub const CITIES: &[City] = &[
-    City { key: "shanghai", name: "上海", lon: 121.47, lat: 31.23 },
-    City { key: "tokyo", name: "东京", lon: 139.69, lat: 35.69 },
-    City { key: "seoul", name: "首尔", lon: 126.98, lat: 37.57 },
-    City { key: "singapore", name: "新加坡", lon: 103.82, lat: 1.35 },
-    City { key: "mumbai", name: "孟买", lon: 72.88, lat: 19.08 },
-    City { key: "moscow", name: "莫斯科", lon: 37.62, lat: 55.75 },
-    City { key: "frankfurt", name: "法兰克福", lon: 8.68, lat: 50.11 },
-    City { key: "amsterdam", name: "阿姆斯特丹", lon: 4.90, lat: 52.37 },
-    City { key: "london", name: "伦敦", lon: -0.13, lat: 51.51 },
-    City { key: "newyork", name: "纽约", lon: -74.01, lat: 40.71 },
-    City { key: "sanjose", name: "圣何塞", lon: -121.89, lat: 37.34 },
-    City { key: "sydney", name: "悉尼", lon: 151.21, lat: -33.87 },
-    City { key: "saopaulo", name: "圣保罗", lon: -46.63, lat: -23.55 },
+    City { key: "shanghai", lon: 121.47, lat: 31.23 },
+    City { key: "tokyo", lon: 139.69, lat: 35.69 },
+    City { key: "seoul", lon: 126.98, lat: 37.57 },
+    City { key: "singapore", lon: 103.82, lat: 1.35 },
+    City { key: "mumbai", lon: 72.88, lat: 19.08 },
+    City { key: "moscow", lon: 37.62, lat: 55.75 },
+    City { key: "frankfurt", lon: 8.68, lat: 50.11 },
+    City { key: "amsterdam", lon: 4.90, lat: 52.37 },
+    City { key: "london", lon: -0.13, lat: 51.51 },
+    City { key: "newyork", lon: -74.01, lat: 40.71 },
+    City { key: "sanjose", lon: -121.89, lat: 37.34 },
+    City { key: "sydney", lon: 151.21, lat: -33.87 },
+    City { key: "saopaulo", lon: -46.63, lat: -23.55 },
 ];
 
 /// 按键查城市;`key` 必须来自 [`CITIES`](crate::world::CITIES)

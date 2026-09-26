@@ -1,11 +1,12 @@
-//! 主窗口布局:导航侧栏与各页面(地图 / 连接 / 规则占位 / 设置占位)。
+//! 主窗口布局:导航侧栏与各页面(地图 / 连接 / 规则占位 / 设置)。
+//! 全部界面文本经 I18n 词条获取(AGENTS.md 规范 4)。
 
 use eframe::egui;
 use egui::{Button, Color32, CornerRadius, Frame, Margin, RichText, Stroke};
 
+use crate::i18n::I18n;
 use crate::map;
 use crate::model::{Connection, fmt_bytes};
-use crate::text;
 use crate::theme;
 
 /// 主窗口页面
@@ -18,24 +19,24 @@ pub enum Page {
 }
 
 const NAV_ITEMS: &[(Page, &str)] = &[
-    (Page::Map, text::NAV_MAP),
-    (Page::Connections, text::NAV_CONNECTIONS),
-    (Page::Rules, text::NAV_RULES),
-    (Page::Settings, text::NAV_SETTINGS),
+    (Page::Map, "nav-map"),
+    (Page::Connections, "nav-connections"),
+    (Page::Rules, "nav-rules"),
+    (Page::Settings, "nav-settings"),
 ];
 
 /// 左侧导航栏
-pub fn nav_ui(ui: &mut egui::Ui, page: &mut Page, conns: &[Connection]) {
+pub fn nav_ui(ui: &mut egui::Ui, page: &mut Page, conns: &[Connection], i18n: &I18n) {
     ui.add_space(4.0);
-    ui.label(RichText::new(text::APP_NAME).size(22.0).strong().color(theme::ACCENT));
-    ui.label(theme::dim_text(text::APP_SUBTITLE, 10.0));
+    ui.label(RichText::new(i18n.t("app-name")).size(22.0).strong().color(theme::ACCENT));
+    ui.label(theme::dim_text(&i18n.t("app-subtitle"), 10.0));
     ui.add_space(10.0);
     ui.separator();
     ui.add_space(6.0);
 
-    for (target, label) in NAV_ITEMS {
+    for (target, key) in NAV_ITEMS {
         let selected = page == target;
-        let label_text = RichText::new(*label).size(15.0).color(if selected {
+        let label_text = RichText::new(i18n.t(key)).size(15.0).color(if selected {
             theme::TEXT
         } else {
             theme::TEXT_DIM
@@ -62,10 +63,15 @@ pub fn nav_ui(ui: &mut egui::Ui, page: &mut Page, conns: &[Connection]) {
         ui.horizontal(|ui| {
             let (rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
             ui.painter().circle_filled(rect.center(), 4.0, theme::STATUS_OK);
-            ui.label(theme::dim_text(text::STATUS_MONITORING, 13.0));
+            ui.label(theme::dim_text(&i18n.t("status-monitoring"), 13.0));
         });
         ui.label(
-            RichText::new(format!("{} · {} 条连接", text::STATUS_MOCK, conns.len()))
+            RichText::new(i18n.t_with_args("status-conn-count", &[("count", conns.len().to_string())]))
+                .size(11.0)
+                .color(theme::TEXT_DIM),
+        );
+        ui.label(
+            RichText::new(i18n.t("status-mock"))
                 .size(11.0)
                 .color(theme::TEXT_DIM),
         );
@@ -73,23 +79,27 @@ pub fn nav_ui(ui: &mut egui::Ui, page: &mut Page, conns: &[Connection]) {
 }
 
 /// 中央区域按页面分发
-pub fn central_ui(ui: &mut egui::Ui, page: &Page, conns: &[Connection]) {
+pub fn central_ui(ui: &mut egui::Ui, page: &Page, conns: &[Connection], i18n: &mut I18n) {
     match page {
-        Page::Map => map::draw(ui, conns),
-        Page::Connections => connections_ui(ui, conns),
-        Page::Rules => placeholder_ui(ui, text::RULES_TITLE, text::RULES_PLACEHOLDER),
-        Page::Settings => placeholder_ui(ui, text::SETTINGS_TITLE, text::SETTINGS_PLACEHOLDER),
+        Page::Map => map::draw(ui, conns, i18n),
+        Page::Connections => connections_ui(ui, conns, i18n),
+        Page::Rules => placeholder_ui(
+            ui,
+            &i18n.t("rules-title"),
+            &i18n.t("rules-placeholder"),
+        ),
+        Page::Settings => settings_ui(ui, i18n),
     }
 }
 
 /// 连接列表页
-fn connections_ui(ui: &mut egui::Ui, conns: &[Connection]) {
-    ui.heading(theme::accent_text(text::CONNS_TITLE, 20.0));
-    ui.label(theme::dim_text(text::CONNS_SUBTITLE, 13.0));
+fn connections_ui(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n) {
+    ui.heading(theme::accent_text(&i18n.t("conns-title"), 20.0));
+    ui.label(theme::dim_text(&i18n.t("conns-subtitle"), 13.0));
     ui.add_space(10.0);
 
     if conns.is_empty() {
-        ui.label(theme::dim_text(text::CONNS_EMPTY, 14.0));
+        ui.label(theme::dim_text(&i18n.t("conns-empty"), 14.0));
         return;
     }
 
@@ -101,15 +111,9 @@ fn connections_ui(ui: &mut egui::Ui, conns: &[Connection]) {
                 .spacing([24.0, 9.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    let header = |label: &str, ui: &mut egui::Ui| {
-                        ui.label(RichText::new(label).size(12.0).strong().color(theme::TEXT_DIM));
-                    };
-                    header(text::COL_PROCESS, ui);
-                    header(text::COL_PROTO, ui);
-                    header(text::COL_REMOTE, ui);
-                    header(text::COL_LOCATION, ui);
-                    header(text::COL_DOWN, ui);
-                    header(text::COL_UP, ui);
+                    for key in ["col-process", "col-proto", "col-remote", "col-location", "col-down", "col-up"] {
+                        ui.label(RichText::new(i18n.t(key)).size(12.0).strong().color(theme::TEXT_DIM));
+                    }
                     ui.end_row();
 
                     for conn in conns {
@@ -120,7 +124,7 @@ fn connections_ui(ui: &mut egui::Ui, conns: &[Connection]) {
                                 .size(13.0)
                                 .color(theme::TEXT),
                         );
-                        ui.label(theme::dim_text(crate::collector::city_name(conn.city), 13.0));
+                        ui.label(theme::dim_text(&i18n.t(&format!("city-{}", conn.city)), 13.0));
                         ui.label(
                             RichText::new(fmt_bytes(conn.bytes_in)).size(13.0).color(theme::INBOUND),
                         );
@@ -131,6 +135,39 @@ fn connections_ui(ui: &mut egui::Ui, conns: &[Connection]) {
                     }
                 });
         });
+}
+
+/// 设置页:语言切换(词条即时生效)
+fn settings_ui(ui: &mut egui::Ui, i18n: &mut I18n) {
+    ui.heading(theme::accent_text(&i18n.t("settings-title"), 20.0));
+    ui.add_space(16.0);
+    ui.label(RichText::new(i18n.t("settings-language")).size(14.0).strong().color(theme::TEXT));
+    ui.add_space(4.0);
+
+    let current_name = i18n
+        .available_langs
+        .iter()
+        .find(|info| info.code == i18n.current_lang)
+        .map(|info| info.name.clone())
+        .unwrap_or_else(|| i18n.current_lang.clone());
+    egui::ComboBox::from_id_salt("settings-language-select")
+        .width(180.0)
+        .selected_text(current_name)
+        .show_ui(ui, |ui| {
+            for (code, name) in i18n.lang_codes_and_names() {
+                let selected = code == i18n.current_lang;
+                let label = RichText::new(name).size(14.0).color(if selected {
+                    theme::ACCENT
+                } else {
+                    theme::TEXT
+                });
+                if ui.selectable_label(selected, label).clicked() {
+                    i18n.set_language(code);
+                }
+            }
+        });
+    ui.add_space(6.0);
+    ui.label(theme::dim_text(&i18n.t("settings-language-hint"), 12.0));
 }
 
 /// 占位页统一卡片

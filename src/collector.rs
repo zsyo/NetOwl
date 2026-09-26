@@ -6,7 +6,7 @@ use std::net::Ipv4Addr;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::model::{Connection, Protocol};
-use crate::world::{CITIES, city};
+use crate::world::CITIES;
 
 /// 连接采集器
 pub trait Collector {
@@ -155,9 +155,4 @@ impl Collector for MockCollector {
         conns.sort_by_key(|c| std::cmp::Reverse(c.total_bytes()));
         conns
     }
-}
-
-/// 当前城市键对应的显示名(model 中只存键,展示层负责翻译)
-pub fn city_name(key: &str) -> &'static str {
-    city(key).name
 }

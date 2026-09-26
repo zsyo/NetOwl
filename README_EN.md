@@ -17,11 +17,11 @@ Implemented:
 - **Traffic map** — live process connections on a world map: arc links, animated inbound/outbound particles, pulsing nodes aggregated by connection count, hover for per-city details
 - **Connection list** — active connections sorted by traffic: process, protocol, remote address, geolocation, upload/download volume
 - **System tray** — stays in the background, closing the window minimizes to tray, left click to restore
+- **Multi-language** — fluent-based UI localization with a language switcher in Settings, supporting hot-loading of external translation files
 
 Planned:
 
 - Real connection collection (ETW / TCP tables, no driver required)
-- Multi-language UI (fluent-based)
 - Allow/deny interception (WFP) with prompt dialogs
 - Rule engine and persistence
 - macOS / Linux support

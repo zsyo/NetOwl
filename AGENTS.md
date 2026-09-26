@@ -19,11 +19,12 @@
 - src/app.rs - NetOwlApp:状态编排(托盘事件、采集 tick、页面切换、关闭到托盘、退出)
 - src/model.rs - Connection/Protocol 等数据结构
 - src/collector.rs - Collector trait + MockCollector(模拟数据;真实采集后续以 ETW/TCP 表实现替换)
+- src/i18n/ - 多语言模块(mod.rs:locales 扫描/加载/语言列表;translate.rs:查找/插值/回退/告警)
+- locales/ - fluent 词条文件(zh-cn.ftl / en.ftl;目录缺失时使用编译期内嵌兜底)
 - src/theme.rs - 主题(Visuals 定制、字体加载、颜色与圆角常量)
 - src/icon.rs - 应用图标加载(assets 资源编译期内嵌,PNG 解码为 RGBA)
 - src/tray.rs - 托盘与菜单(tray-icon + muda)
-- src/text.rs - UI 文本常量(引入 i18n 后由此迁移)
-- src/ui.rs - 主窗口布局与页面(导航栏、连接列表、占位页)
+- src/ui.rs - 主窗口布局与页面(导航栏、连接列表、设置与占位页)
 - src/map.rs - 流量地图画布(painter 自绘:投影、大陆背景、连线动画、节点聚合)
 - src/world.rs - 简化世界轮廓多边形与城市坐标数据
 
@@ -71,10 +72,17 @@
 - 圆角刻度: RADIUS_SM=4 / RADIUS_MD=8 / RADIUS_LG=12,不出现圆角魔法数字
 - 可交互控件样式必须区分 hovered / active / disabled 状态
 
-### 4. UI 文本
-- 界面文本集中在 src/text.rs 常量,禁止在绘制代码里散落字符串字面量
-- 引入 i18n(fluent,locales/*.ftl)后统一迁移为 t() 查询;FTL 变量用 {$name} 插值,
-  禁止 .replace() 手动替换
+### 4. 多语言(i18n)
+- 基于 fluent-bundle:全部 UI 文本经 I18n::t()/t_with_args() 获取,
+  禁止在绘制代码里散落字符串字面量(品牌名等与语言无关的常量除外)
+- 词条在 locales/<lang>.ftl,每个文件必须含 lang-name;新增文案必须同步补全
+  zh-cn 与 en 两种语言
+- FTL 变量用 {$name} 插值,代码用 t_with_args(key, &[("name", value)]),
+  禁止 .replace() 手动替换;{name} 是消息引用而非变量
+- 词条查找顺序:当前语言 → 默认语言(zh-cn)→ 返回键名并告警(相同键只告警一次)
+- 数据类显示名(如城市)以数据键派生词条键(city-<key>);新增数据项必须补词条
+- 新增语言:按现有模板翻译后放入 locales/ 目录即被自动发现(设置页进入时重扫);
+  NETOWL_LANG 环境变量可覆盖初始语言
 
 ### 5. 错误处理
 - 使用 Result 与有意义的错误信息;文件/系统 API 操作必须处理错误

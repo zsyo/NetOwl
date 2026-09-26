@@ -9,6 +9,7 @@ use std::time::Duration;
 use eframe::egui;
 
 use crate::collector::{Collector, MockCollector};
+use crate::i18n::I18n;
 use crate::model::Connection;
 use crate::theme;
 use crate::tray::{self, Tray};
@@ -20,7 +21,10 @@ const REPAINT_IDLE: Duration = Duration::from_millis(500);
 
 pub struct NetOwlApp {
     page: Page,
+    /// 上次所在页面:用于检测进入设置页时重扫 locales 新增语言
+    last_page: Page,
     collector: Box<dyn Collector>,
+    i18n: I18n,
     conns: Vec<Connection>,
     tray_rx: Receiver<String>,
     should_exit: bool,
@@ -34,7 +38,9 @@ impl NetOwlApp {
         let (_tray, tray_rx) = tray::create(cc.egui_ctx.clone());
         NetOwlApp {
             page: Page::Map,
+            last_page: Page::Map,
             collector: Box::new(MockCollector::new()),
+            i18n: I18n::new(),
             conns: Vec::new(),
             tray_rx,
             should_exit: false,
@@ -76,8 +82,15 @@ impl eframe::App for NetOwlApp {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // 进入设置页时重扫 locales,加载运行期间新增的词条文件
+        if self.page == Page::Settings && self.last_page != Page::Settings {
+            self.i18n.refresh_languages();
+        }
+        self.last_page = self.page;
+
         let page = &mut self.page;
         let conns = &self.conns;
+        let i18n = &mut self.i18n;
 
         egui::Panel::left("nav")
             .exact_size(210.0)
@@ -87,7 +100,7 @@ impl eframe::App for NetOwlApp {
                     .fill(theme::BG_PANEL)
                     .inner_margin(egui::Margin { left: 14, right: 14, top: 18, bottom: 14 }),
             )
-            .show(ui, |ui| ui::nav_ui(ui, page, conns));
+            .show(ui, |ui| ui::nav_ui(ui, page, conns, i18n));
 
         egui::CentralPanel::default()
             .frame(
@@ -95,7 +108,7 @@ impl eframe::App for NetOwlApp {
                     .fill(theme::BG_BASE)
                     .inner_margin(egui::Margin::same(16)),
             )
-            .show(ui, |ui| ui::central_ui(ui, page, conns));
+            .show(ui, |ui| ui::central_ui(ui, page, conns, i18n));
 
         let repaint = match page {
             Page::Map => REPAINT_ANIMATED,

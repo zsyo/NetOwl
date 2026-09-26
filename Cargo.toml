@@ -7,9 +7,12 @@ edition = "2024"
 # egui/eframe: 即时模式自绘 GUI,painter 可直接绘制流量地图动画(选型理由见 AGENTS.md);
 # glow 后端比默认 wgpu 编译更快、依赖更少,Windows 上足够
 eframe = { version = "0.36.2", default-features = false, features = ["accesskit", "default_fonts", "glow", "links"] }
+fluent-bundle = "0.16"
 # 仅用于解码内嵌的应用图标 PNG(assets 经 include_bytes! 编译期内嵌,发布产物不携带 assets);
 # 选 png 而非 image:只为解码 RGBA PNG,image 即使关默认特性也拖带更多模块
 png = "0.18.1"
+sys-locale = "0.3.2"
 # 托盘与原生菜单(muda 经 tray-icon re-export);default features 在 Windows 下无额外负担,
 # 扩展 Linux 时需评估 default-features = false + 显式后端(AGENTS.md 扩展备忘)
 tray-icon = "0.25.1"
+unic-langid = "0.9"
