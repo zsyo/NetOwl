@@ -36,12 +36,19 @@ fn main() -> eframe::Result {
 
     let _db = db::open();
 
+    let restore_target = cfg.window_position();
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_title(APP_NAME)
+        .with_inner_size([1180.0, 760.0])
+        .with_min_inner_size([920.0, 620.0])
+        .with_icon(Arc::new(icon::window_icon()));
+    // 有几何恢复目标时先以隐藏方式创建:恢复命令生效后再显示,
+    // 避免窗口先在默认位置(主屏)闪现一下再跳到上次位置
+    if restore_target.is_some() {
+        viewport = viewport.with_visible(false);
+    }
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title(APP_NAME)
-            .with_inner_size([1180.0, 760.0])
-            .with_min_inner_size([920.0, 620.0])
-            .with_icon(Arc::new(icon::window_icon())),
+        viewport,
         ..Default::default()
     };
     eframe::run_native(

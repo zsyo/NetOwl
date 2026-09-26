@@ -100,7 +100,7 @@ impl NetOwlApp {
 
     /// 首帧按当前 DPI 把配置中的物理几何换算为逻辑值下发给窗口。
     /// egui 命令路径内部会乘回同一 pixels_per_point,因此物理位置精确还原,
-    /// 多屏不同 DPI 下也不会漂移。
+    /// 多屏不同 DPI 下也不会漂移。窗口以隐藏方式创建(见 main),几何就位后显示。
     fn restore_window_geometry(&mut self, ctx: &egui::Context) {
         let Some((x, y, w, h, maximized)) = self.pending_restore.take() else {
             return;
@@ -117,6 +117,7 @@ impl NetOwlApp {
         if maximized {
             ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
         }
+        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
         self.restore_active = true;
         self.restore_started = Instant::now();
     }
