@@ -106,11 +106,13 @@
 - 最小化依赖: 标准库可覆盖的能力(std mpsc、简单 PRNG 等)不引入第三方
 
 ### 9. 图标
-- 应用图标源文件位于 assets/(多尺寸 PNG + ico);窗口图标取 app_icon-256.png、
-  托盘取 app_icon-64.png,经 include_bytes! 编译期内嵌,发布程序不携带 assets 目录
+- 应用图标源文件位于 assets/:窗口图标 app_icon.png(256x256)、托盘图标
+  tray_icon.png(64x64),经 include_bytes! 编译期内嵌,发布程序不携带 assets 目录
+- app_icon.ico 保留供打包阶段编译进 exe 资源段(文件管理器/快捷方式/安装程序),
+  届时以多尺寸层(16/32/48/256)替换现有单层版本
 - 图标必须为 8-bit RGBA PNG,解码失败/格式不符时显式报错,不做静默降级
-- UI 内禁止 emoji 与 unicode 符号充当图标;引入图标字体(如 assets/icons.ttf,
-  Bootstrap Icons)后,码点必须对照字体 cmap 或官方码点表验证,
+- UI 内禁止 emoji 与 unicode 符号充当图标;assets/icons.ttf(Bootstrap Icons)已就位,
+  接入 UI 时码点必须对照字体 cmap 或官方码点表验证,
   注释写真实 glyph 名(注释即契约)
 
 ## 开发流程规范

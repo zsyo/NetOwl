@@ -7,13 +7,13 @@ use eframe::egui;
 
 /// 窗口/任务栏图标(256x256,高分辨率供任务栏与 Alt-Tab 缩放)
 pub fn window_icon() -> egui::IconData {
-    let (rgba, width, height) = decode_png(include_bytes!("../assets/app_icon-256.png"));
+    let (rgba, width, height) = decode_png(include_bytes!("../assets/app_icon.png"));
     egui::IconData { rgba, width, height }
 }
 
 /// 托盘图标 RGBA(64x64,由系统缩放到 DPI 对应的小图标尺寸)
 pub fn tray_icon_rgba() -> (Vec<u8>, u32, u32) {
-    decode_png(include_bytes!("../assets/app_icon-64.png"))
+    decode_png(include_bytes!("../assets/tray_icon.png"))
 }
 
 /// 解码内嵌 PNG 为非预乘 RGBA 像素
