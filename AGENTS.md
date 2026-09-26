@@ -120,6 +120,7 @@
 - 用户提出多功能开发需求时,先将功能点清单写入 TODO 文件(TODO.md),
   每项含简要说明与验收要点
 - 每完成一个功能点:在 TODO 文件中勾掉对应项,并为该功能点做一次 git commit
+- TODO.md 命中用户全局 gitignore,为本地工作文件,不提交入库,README 也不引用
 
 ## 验证规范
 - 每次改动 cargo build 通过;界面改动 cargo run 冒烟确认无 panic
