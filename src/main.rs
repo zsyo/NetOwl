@@ -39,13 +39,20 @@ fn main() -> eframe::Result {
     let restore_target = cfg.window_position();
     let mut viewport = egui::ViewportBuilder::default()
         .with_title(APP_NAME)
-        .with_inner_size([1180.0, 760.0])
         .with_min_inner_size([920.0, 620.0])
         .with_icon(Arc::new(icon::window_icon()));
-    // 有几何恢复目标时先以隐藏方式创建:恢复命令生效后再显示,
-    // 避免窗口先在默认位置(主屏)闪现一下再跳到上次位置
-    if restore_target.is_some() {
-        viewport = viewport.with_visible(false);
+    match restore_target {
+        Some((x, y, w, h)) => {
+            // 物理坐标作为逻辑值传入:系统 DPI 100% 时 winit 经主屏 scale(1.0)转换,
+            // 窗口创建即位于目标位置(eframe 首帧渲染后立即显示窗口,创建位置就是
+            // 唯一能消除闪现的手段);非 100% DPI 下的残余偏差由首帧命令修正(app.rs)
+            viewport = viewport
+                .with_position([x as f32, y as f32])
+                .with_inner_size([w as f32, h as f32]);
+        }
+        None => {
+            viewport = viewport.with_inner_size([1180.0, 760.0]);
+        }
     }
     let options = eframe::NativeOptions {
         viewport,
