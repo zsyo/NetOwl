@@ -52,7 +52,8 @@ const PROCESSES: &[&str] = &[
 
 /// 每城市绑定的假公网网段首字节(仅用于演示观感,非真实归属)
 const CITY_PREFIX: &[(&str, u8)] = &[
-    ("shanghai", 101), ("tokyo", 126), ("seoul", 175), ("singapore", 103),
+    ("shanghai", 101), ("tokyo", 126), ("seoul", 175), ("hongkong", 27),
+    ("macau", 182), ("taipei", 111), ("singapore", 103),
     ("mumbai", 49), ("moscow", 95), ("frankfurt", 92), ("amsterdam", 145),
     ("london", 51), ("newyork", 74), ("sanjose", 104), ("sydney", 1),
     ("saopaulo", 177),

@@ -1,5 +1,5 @@
-//! 流量地图画布:egui painter 自绘(背景网格、大陆线框、贝塞尔连线、
-//! 流动粒子、节点聚合、悬停信息卡)。
+//! 流量地图画布:egui painter 自绘(底图渲染见 basemap,此处负责
+//! 贝塞尔连线、流动粒子、节点聚合与悬停信息卡)。
 
 use std::collections::BTreeMap;
 
@@ -9,36 +9,16 @@ use egui::{
 };
 use egui::epaint::QuadraticBezierShape;
 
+use crate::basemap::{self, Projection, View};
 use crate::i18n::I18n;
 use crate::model::{Connection, fmt_bytes};
 use crate::theme;
-use crate::world::{LANDMASSES, LOCAL, city};
+use crate::world::{LOCAL, city};
 
-/// 等距圆柱投影:经纬度 -> 画布坐标
-struct Projection {
-    origin: Pos2,
-    scale: f32,
-}
-
-impl Projection {
-    fn new(rect: Rect) -> Self {
-        let scale = (rect.width() / 360.0).min(rect.height() / 180.0);
-        let w = 360.0 * scale;
-        let h = 180.0 * scale;
-        let origin = Pos2::new(
-            rect.left() + (rect.width() - w) * 0.5,
-            rect.top() + (rect.height() - h) * 0.5,
-        );
-        Projection { origin, scale }
-    }
-
-    fn project(&self, lon: f32, lat: f32) -> Pos2 {
-        Pos2::new(
-            self.origin.x + (lon + 180.0) * self.scale,
-            self.origin.y + (90.0 - lat) * self.scale,
-        )
-    }
-}
+/// 视图动画趋近系数(30fps 下约 0.12s 收敛)
+const ANIM_K: f32 = 0.22;
+/// 缩放上限:12 倍时 1px 约对应 0.03 度,50m 档数据仍平滑
+const ZOOM_MAX: f32 = 12.0;
 
 /// 二次贝塞尔取点
 fn bezier(p0: Pos2, ctrl: Pos2, p1: Pos2, t: f32) -> Pos2 {
@@ -66,26 +46,30 @@ fn hash_phase(seed: u64) -> f32 {
 /// 城市节点聚合:连接数与累计流量
 type Agg = BTreeMap<&'static str, (usize, u64)>;
 
-pub fn draw(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n) {
+pub fn draw(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n, view: &mut View) {
     ui.horizontal(|ui| {
         ui.heading(theme::accent_text(&i18n.t("map-title"), 20.0));
         ui.label(theme::dim_text(&i18n.t("map-subtitle"), 13.0));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            legend(ui, theme::OUTBOUND, &i18n.t("map-legend-out"));
+            legend(ui, theme::c().outbound, &i18n.t("map-legend-out"));
             ui.add_space(10.0);
-            legend(ui, theme::INBOUND, &i18n.t("map-legend-in"));
+            legend(ui, theme::c().inbound, &i18n.t("map-legend-in"));
         });
     });
     ui.add_space(6.0);
 
-    let (rect, resp) = ui.allocate_exact_size(ui.available_size(), Sense::hover());
+    let (rect, resp) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
     let painter = ui.painter_at(rect);
     let t = ui.input(|i| i.time) as f32;
-    let proj = Projection::new(rect.shrink(10.0));
+    let canvas = rect.shrink(10.0);
+
+    handle_input(ui, &resp, canvas, view);
+    view.animate(ANIM_K);
+    clamp_view(canvas, view);
+    let proj = Projection::new(canvas, *view);
     let hover_pos = resp.hover_pos();
 
-    draw_background(&painter, rect, &proj);
-    draw_landmasses(&painter, &proj);
+    basemap::draw(&painter, rect, &proj, i18n.current_lang.starts_with("zh"));
 
     let local = proj.project(LOCAL.lon, LOCAL.lat);
     let agg = aggregate(conns);
@@ -95,7 +79,7 @@ pub fn draw(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n) {
         let inbound = c.inbound_dominant();
         let (start, end) = if inbound { (end, local) } else { (local, end) };
         let ctrl = arc_ctrl(start, end);
-        let color = if inbound { theme::INBOUND } else { theme::OUTBOUND };
+        let color = if inbound { theme::c().inbound } else { theme::c().outbound };
         let hovered = hover_pos.is_some_and(|h| h.distance(end) < 20.0);
         let stroke = if hovered {
             Stroke::new(2.0, color.gamma_multiply(0.9))
@@ -127,27 +111,27 @@ pub fn draw(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n) {
             hovered_key = Some(*key);
         }
         let pulse_alpha = 0.35 + 0.3 * (0.5 + 0.5 * (t * 2.0 + hash_phase(*bytes) * std::f32::consts::TAU).sin());
-        painter.circle_stroke(pos, r + 5.0, Stroke::new(1.5, theme::MAP_NODE.gamma_multiply(pulse_alpha)));
-        painter.circle_filled(pos, r, if hovered { theme::ACCENT } else { theme::MAP_NODE });
-        painter.circle_stroke(pos, r, Stroke::new(1.0, theme::TEXT));
+        painter.circle_stroke(pos, r + 5.0, Stroke::new(1.5, theme::c().map_node.gamma_multiply(pulse_alpha)));
+        painter.circle_filled(pos, r, if hovered { theme::c().accent } else { theme::c().map_node });
+        painter.circle_stroke(pos, r, Stroke::new(1.0, theme::c().text));
         painter.text(
             pos + Vec2::new(0.0, r + 13.0),
             Align2::CENTER_CENTER,
             i18n.t(&format!("city-{key}")),
             FontId::proportional(11.0),
-            if hovered { theme::TEXT } else { theme::TEXT_DIM },
+            if hovered { theme::c().text } else { theme::c().text_dim },
         );
     }
 
     // 本机节点(标签放上方,避开东亚密集城市的下方标签)
-    painter.circle_stroke(local, 10.0, Stroke::new(1.5, theme::ACCENT.gamma_multiply(0.5)));
-    painter.circle_filled(local, 6.0, theme::ACCENT);
+    painter.circle_stroke(local, 10.0, Stroke::new(1.5, theme::c().accent.gamma_multiply(0.5)));
+    painter.circle_filled(local, 6.0, theme::c().accent);
     painter.text(
         local + Vec2::new(0.0, -16.0),
         Align2::CENTER_BOTTOM,
         i18n.t("map-local"),
         FontId::proportional(11.0),
-        theme::TEXT,
+        theme::c().text,
     );
 
     if let Some(key) = hovered_key {
@@ -155,32 +139,55 @@ pub fn draw(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n) {
     }
 }
 
-fn draw_background(painter: &egui::Painter, rect: Rect, proj: &Projection) {
-    painter.rect_filled(rect, CornerRadius::same(theme::RADIUS_LG), theme::BG_MAP);
-    for lon in (-180..=180).step_by(30) {
-        let p0 = proj.project(lon as f32, 90.0);
-        let p1 = proj.project(lon as f32, -90.0);
-        painter.line_segment([p0, p1], Stroke::new(1.0, theme::MAP_GRID));
+/// 视图交互:拖拽平移(1:1 跟手)、滚轮/捏合锚点缩放、双击复位
+fn handle_input(ui: &egui::Ui, resp: &egui::Response, canvas: Rect, view: &mut View) {
+    if resp.dragged() {
+        let d = resp.drag_delta();
+        let ppd = Projection::fit_ppd(canvas) * view.zoom;
+        view.center_lon -= d.x / ppd;
+        view.center_lat += d.y / ppd;
+        view.target_lon = view.center_lon;
+        view.target_lat = view.center_lat;
     }
-    for lat in (-60..=60).step_by(30) {
-        let p0 = proj.project(-180.0, lat as f32);
-        let p1 = proj.project(180.0, lat as f32);
-        painter.line_segment([p0, p1], Stroke::new(1.0, theme::MAP_GRID));
+    if resp.hovered() {
+        // 普通滚轮与 Ctrl+滚轮/触控板捏合都驱动缩放
+        let (wheel, pinch) = ui.input(|i| (i.smooth_scroll_delta.y, i.zoom_delta()));
+        let factor = pinch * (wheel * 0.002f32).exp();
+        if (factor - 1.0).abs() > 1e-4 {
+            let new_zoom = (view.target_zoom * factor).clamp(1.0, ZOOM_MAX);
+            if let Some(pos) = resp.hover_pos() {
+                // 锚定指针下的地理点:反解新缩放下的中心,使该点仍位于指针处
+                let (glon, glat) = Projection::new(canvas, *view).unproject(pos);
+                let ppd = Projection::fit_ppd(canvas) * new_zoom;
+                let center = canvas.center();
+                view.target_zoom = new_zoom;
+                view.target_lon = glon - (pos.x - center.x) / ppd;
+                view.target_lat = glat + (pos.y - center.y) / ppd;
+            }
+        }
+    }
+    if resp.double_clicked() {
+        *view = View::global();
     }
 }
 
-/// 大陆轮廓线框:逐段绘制(epaint 0.36 的 PathShape 填充仅支持凸多边形,
-/// 且自交路径的 feather 描边会产生飞线,故用相邻点连线)
-fn draw_landmasses(painter: &egui::Painter, proj: &Projection) {
-    let stroke = Stroke::new(1.0, theme::MAP_COAST);
-    for land in LANDMASSES {
-        let points: Vec<Pos2> = land.iter().map(|(lon, lat)| proj.project(*lon, *lat)).collect();
-        for pair in points.windows(2) {
-            painter.line_segment([pair[0], pair[1]], stroke);
-        }
-        if let (Some(first), Some(last)) = (points.first(), points.last()) {
-            painter.line_segment([*last, *first], stroke);
-        }
+/// 视口中心钳制:保证地图世界与视口保持相交
+fn clamp_view(canvas: Rect, view: &mut View) {
+    let ppd = Projection::fit_ppd(canvas) * view.zoom;
+    let half_lon = (canvas.width() * 0.5) / ppd;
+    let half_lat = (canvas.height() * 0.5) / ppd;
+    view.center_lon = clamp_center(view.center_lon, half_lon, 180.0);
+    view.target_lon = clamp_center(view.target_lon, half_lon, 180.0);
+    view.center_lat = clamp_center(view.center_lat, half_lat, 90.0);
+    view.target_lat = clamp_center(view.target_lat, half_lat, 90.0);
+}
+
+/// 视口比世界还大时居中,否则限制中心使视口不脱出世界
+fn clamp_center(v: f32, half: f32, limit: f32) -> f32 {
+    if half >= limit {
+        0.0
+    } else {
+        v.clamp(-limit + half, limit - half)
     }
 }
 
@@ -217,30 +224,30 @@ fn info_card(
         Vec2::new(WIDTH, height),
     );
 
-    painter.rect_filled(card, CornerRadius::same(theme::RADIUS_LG), theme::BG_FLOAT);
-    painter.rect_stroke(card, CornerRadius::same(theme::RADIUS_LG), Stroke::new(1.0, theme::STROKE), StrokeKind::Inside);
+    painter.rect_filled(card, CornerRadius::same(theme::RADIUS_LG), theme::c().bg_float);
+    painter.rect_stroke(card, CornerRadius::same(theme::RADIUS_LG), Stroke::new(1.0, theme::c().stroke), StrokeKind::Inside);
 
     painter.text(
         Pos2::new(card.left() + 14.0, card.top() + 12.0),
         Align2::LEFT_TOP,
         i18n.t(&format!("city-{key}")),
         FontId::proportional(16.0),
-        theme::TEXT,
+        theme::c().text,
     );
     painter.text(
         Pos2::new(card.right() - 14.0, card.top() + 14.0),
         Align2::RIGHT_TOP,
         fmt_bytes(total),
         FontId::proportional(12.0),
-        theme::TEXT_DIM,
+        theme::c().text_dim,
     );
 
     let mut y = card.top() + HEAD_H - 4.0;
     for conn in rows.iter().take(MAX_ROWS) {
         let process = format!("{} ({})", conn.process, conn.pid);
-        painter.text(Pos2::new(card.left() + 14.0, y + 8.0), Align2::LEFT_CENTER, process, FontId::proportional(12.0), theme::TEXT);
+        painter.text(Pos2::new(card.left() + 14.0, y + 8.0), Align2::LEFT_CENTER, process, FontId::proportional(12.0), theme::c().text);
         let remote = format!("{}:{} {}", conn.remote_ip, conn.remote_port, conn.proto.as_str());
-        painter.text(Pos2::new(card.right() - 14.0, y + 8.0), Align2::RIGHT_CENTER, remote, FontId::monospace(11.0), theme::TEXT_DIM);
+        painter.text(Pos2::new(card.right() - 14.0, y + 8.0), Align2::RIGHT_CENTER, remote, FontId::monospace(11.0), theme::c().text_dim);
         y += LINE_H;
     }
     if extra > 0 {
@@ -249,7 +256,7 @@ fn info_card(
             Align2::RIGHT_CENTER,
             i18n.t_with_args("map-info-more", &[("n", extra.to_string())]),
             FontId::proportional(11.0),
-            theme::TEXT_DIM,
+            theme::c().text_dim,
         );
     }
 }

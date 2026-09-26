@@ -1,59 +1,169 @@
-//! 主题:颜色/圆角常量、字体加载与 Visuals 定制。
+//! 主题:深/浅两套调色板、Visuals 定制、字体加载。
+//!
+//! 颜色全部经 [`c()`] 取当前主题调色板,禁止散落硬编码色值(规范 3);
+//! 切换主题时由设置页调用 [`set_theme`] 立即重刷 Visuals。
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use eframe::egui;
-use egui::{
-    Color32, CornerRadius, FontData, FontDefinitions, Margin, Stroke, Vec2, Visuals,
-};
-
-// ---- 强调色与语义色(规范 3:唯一强调色,新增色前先查重)----
-/// 唯一强调色 #5C9DFF(深色主题)
-pub const ACCENT: Color32 = Color32::from_rgb(92, 157, 255);
-/// 强调色低透明底(选中态)
-pub const ACCENT_SOFT: Color32 = Color32::from_rgba_unmultiplied_const(92, 157, 255, 34);
-/// 入站语义色
-pub const INBOUND: Color32 = Color32::from_rgb(126, 224, 163);
-/// 出站语义色
-pub const OUTBOUND: Color32 = Color32::from_rgb(92, 207, 230);
-/// 监控运行状态点
-pub const STATUS_OK: Color32 = Color32::from_rgb(88, 214, 141);
-
-// ---- 背景层级 ----
-/// 主背景(中央区域)
-pub const BG_BASE: Color32 = Color32::from_rgb(16, 18, 24);
-/// 导航面板背景
-pub const BG_PANEL: Color32 = Color32::from_rgb(22, 25, 33);
-/// 地图画布背景
-pub const BG_MAP: Color32 = Color32::from_rgb(13, 15, 21);
-/// 地图陆地轮廓线框
-pub const MAP_COAST: Color32 = Color32::from_rgb(58, 66, 86);
-/// 地图经纬网格
-pub const MAP_GRID: Color32 = Color32::from_rgb(30, 34, 46);
-/// 地图节点默认填充
-pub const MAP_NODE: Color32 = Color32::from_rgb(120, 140, 178);
-/// 卡片/信息浮层背景
-pub const BG_CARD: Color32 = Color32::from_rgb(28, 32, 41);
-/// 信息浮层(带透明度,悬浮于地图之上)
-pub const BG_FLOAT: Color32 = Color32::from_rgba_unmultiplied_const(28, 32, 41, 240);
-/// 条纹行/微弱填充
-pub const FAINT: Color32 = Color32::from_rgb(26, 29, 38);
-
-// ---- 前景 ----
-pub const TEXT: Color32 = Color32::from_rgb(222, 226, 235);
-pub const TEXT_DIM: Color32 = Color32::from_rgb(140, 147, 164);
-/// 常规描边
-pub const STROKE: Color32 = Color32::from_rgb(48, 53, 66);
+use egui::{Color32, CornerRadius, FontData, FontDefinitions, Margin, Stroke, Vec2, Visuals};
 
 // ---- 圆角刻度(规范 3,不出现圆角魔法数字)----
 pub const RADIUS_SM: u8 = 4;
 pub const RADIUS_MD: u8 = 8;
 pub const RADIUS_LG: u8 = 12;
 
-/// 安装字体与视觉样式
-pub fn install(ctx: &egui::Context) {
-    install_fonts(ctx);
+/// 调色板:界面与地图全部颜色,深浅主题各一套
+pub struct Palette {
+    // 强调色与语义色
+    /// 唯一强调色 #5C9DFF(深色主题)
+    pub accent: Color32,
+    /// 强调色低透明底(选中态)
+    pub accent_soft: Color32,
+    /// 入站语义色
+    pub inbound: Color32,
+    /// 出站语义色
+    pub outbound: Color32,
+    /// 监控运行状态点
+    pub status_ok: Color32,
+    // 背景层级
+    /// 主背景(中央区域)
+    pub bg_base: Color32,
+    /// 导航面板背景
+    pub bg_panel: Color32,
+    /// 地图画布背景(海洋)
+    pub bg_map: Color32,
+    /// 地图陆地填充
+    pub map_land: Color32,
+    /// 地图海岸线描边
+    pub map_coast: Color32,
+    /// 地图国界线描边
+    pub map_border: Color32,
+    /// 地图经纬网格
+    pub map_grid: Color32,
+    /// 地图节点默认填充
+    pub map_node: Color32,
+    /// 地图国家名标签
+    pub map_label_country: Color32,
+    /// 地图海洋名标签
+    pub map_label_sea: Color32,
+    /// 中国省级名称标签(弱化,不与国家名争层级)
+    pub map_label_province: Color32,
+    /// 南海断续国界线(十段线)
+    pub map_south_sea_line: Color32,
+    /// 卡片/信息浮层背景
+    pub bg_card: Color32,
+    /// 信息浮层(带透明度,悬浮于地图之上)
+    pub bg_float: Color32,
+    /// 条纹行/微弱填充
+    pub faint: Color32,
+    // 前景
+    pub text: Color32,
+    pub text_dim: Color32,
+    /// 常规描边
+    pub stroke: Color32,
+}
+
+/// 深色主题:绿蓝地图(海洋深蓝、陆地深绿)
+const DARK: Palette = Palette {
+    accent: Color32::from_rgb(92, 157, 255),
+    accent_soft: Color32::from_rgba_unmultiplied_const(92, 157, 255, 34),
+    inbound: Color32::from_rgb(126, 224, 163),
+    outbound: Color32::from_rgb(92, 207, 230),
+    status_ok: Color32::from_rgb(88, 214, 141),
+    bg_base: Color32::from_rgb(16, 18, 24),
+    bg_panel: Color32::from_rgb(22, 25, 33),
+    bg_map: Color32::from_rgb(12, 24, 34),
+    map_land: Color32::from_rgb(30, 58, 48),
+    map_coast: Color32::from_rgb(70, 120, 95),
+    map_border: Color32::from_rgb(52, 92, 74),
+    map_grid: Color32::from_rgb(18, 32, 42),
+    map_node: Color32::from_rgb(118, 152, 138),
+    map_label_country: Color32::from_rgb(150, 190, 168),
+    map_label_sea: Color32::from_rgb(100, 155, 196),
+    // 省名取中性蓝灰,明显弱于亮青的国家名
+    map_label_province: Color32::from_rgb(128, 146, 162),
+    // 十段线:比国界亮的强调青,突出断续主权界
+    map_south_sea_line: Color32::from_rgb(214, 226, 138),
+    bg_card: Color32::from_rgb(28, 32, 41),
+    bg_float: Color32::from_rgba_unmultiplied_const(28, 32, 41, 240),
+    faint: Color32::from_rgb(26, 29, 38),
+    text: Color32::from_rgb(222, 226, 235),
+    text_dim: Color32::from_rgb(140, 147, 164),
+    stroke: Color32::from_rgb(48, 53, 66),
+};
+
+/// 浅色主题:LS 式绿蓝地图(海洋浅蓝、陆地浅绿、白色国界)
+const LIGHT: Palette = Palette {
+    accent: Color32::from_rgb(47, 127, 232),
+    accent_soft: Color32::from_rgba_unmultiplied_const(47, 127, 232, 36),
+    inbound: Color32::from_rgb(30, 148, 94),
+    outbound: Color32::from_rgb(20, 134, 168),
+    status_ok: Color32::from_rgb(34, 160, 100),
+    bg_base: Color32::from_rgb(243, 245, 248),
+    bg_panel: Color32::from_rgb(233, 237, 242),
+    bg_map: Color32::from_rgb(168, 205, 230),
+    map_land: Color32::from_rgb(215, 229, 196),
+    map_coast: Color32::from_rgb(150, 178, 138),
+    map_border: Color32::from_rgb(255, 255, 255),
+    map_grid: Color32::from_rgb(140, 172, 200),
+    map_node: Color32::from_rgb(96, 116, 150),
+    map_label_country: Color32::from_rgb(96, 110, 88),
+    map_label_sea: Color32::from_rgb(74, 122, 168),
+    // 浅色主题省名用浅蓝灰
+    map_label_province: Color32::from_rgb(120, 128, 140),
+    // 十段线:浅色主题用深金棕,避免与绿色陆地国界混同
+    map_south_sea_line: Color32::from_rgb(176, 122, 40),
+    bg_card: Color32::from_rgb(255, 255, 255),
+    bg_float: Color32::from_rgba_unmultiplied_const(255, 255, 255, 240),
+    faint: Color32::from_rgb(228, 232, 238),
+    text: Color32::from_rgb(31, 36, 48),
+    text_dim: Color32::from_rgb(90, 98, 114),
+    stroke: Color32::from_rgb(198, 204, 216),
+};
+
+static THEME: AtomicUsize = AtomicUsize::new(0);
+const DARK_IDX: usize = 0;
+const LIGHT_IDX: usize = 1;
+
+/// 当前主题调色板(绘制代码统一入口)
+pub fn c() -> &'static Palette {
+    match THEME.load(Ordering::Relaxed) {
+        LIGHT_IDX => &LIGHT,
+        _ => &DARK,
+    }
+}
+
+/// 是否深色主题
+pub fn is_dark() -> bool {
+    THEME.load(Ordering::Relaxed) == DARK_IDX
+}
+
+/// 当前主题字符串(持久化用:"dark" / "light")
+pub fn theme_str() -> &'static str {
+    if is_dark() {
+        "dark"
+    } else {
+        "light"
+    }
+}
+
+/// 切换主题并立即应用到 ctx(设置页调用)
+pub fn set_theme(dark: bool, ctx: &egui::Context) {
+    THEME.store(if dark { DARK_IDX } else { LIGHT_IDX }, Ordering::Relaxed);
     apply_visuals(ctx);
+}
+
+/// 按配置字符串应用主题("light" 为浅色,其余深色;启动时调用)
+pub fn apply_theme_str(s: &str, ctx: &egui::Context) {
+    set_theme(s != "light", ctx);
+}
+
+/// 安装字体与视觉样式(启动时按配置主题)
+pub fn install(ctx: &egui::Context, theme: &str) {
+    install_fonts(ctx);
+    apply_theme_str(theme, ctx);
 }
 
 /// 加载 Windows 自带微软雅黑(中文 fallback)与 Consolas(monospace)。
@@ -81,16 +191,17 @@ fn install_fonts(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
 }
 
-/// 深色主题定制:背景层级、控件交互态、圆角与间距
+/// 深浅主题定制:背景层级、控件交互态、圆角与间距
 fn apply_visuals(ctx: &egui::Context) {
-    let mut v = Visuals::dark();
-    v.panel_fill = BG_PANEL;
-    v.window_fill = BG_BASE;
-    v.extreme_bg_color = BG_BASE;
-    v.faint_bg_color = FAINT;
-    v.override_text_color = Some(TEXT);
-    v.selection.bg_fill = ACCENT_SOFT;
-    v.selection.stroke = Stroke::new(1.0, ACCENT);
+    let p = c();
+    let mut v = if is_dark() { Visuals::dark() } else { Visuals::light() };
+    v.panel_fill = p.bg_panel;
+    v.window_fill = p.bg_base;
+    v.extreme_bg_color = p.bg_base;
+    v.faint_bg_color = p.faint;
+    v.override_text_color = Some(p.text);
+    v.selection.bg_fill = p.accent_soft;
+    v.selection.stroke = Stroke::new(1.0, p.accent);
     v.window_corner_radius = CornerRadius::same(RADIUS_LG);
     v.menu_corner_radius = CornerRadius::same(RADIUS_MD);
 
@@ -101,17 +212,19 @@ fn apply_visuals(ctx: &egui::Context) {
         w.corner_radius = CornerRadius::same(r);
         w
     };
-    v.widgets.noninteractive = widget(
-        v.widgets.noninteractive,
-        BG_CARD,
-        TEXT,
-        RADIUS_SM,
-    );
-    v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, STROKE);
-    v.widgets.inactive = widget(v.widgets.inactive, Color32::TRANSPARENT, TEXT_DIM, RADIUS_MD);
-    v.widgets.hovered = widget(v.widgets.hovered, Color32::from_rgb(40, 45, 57), TEXT, RADIUS_MD);
-    v.widgets.active = widget(v.widgets.active, ACCENT_SOFT, ACCENT, RADIUS_MD);
-    v.widgets.open = widget(v.widgets.open, Color32::from_rgb(36, 41, 53), TEXT, RADIUS_MD);
+    // 悬停/展开底色随主题分档
+    let (hovered_bg, open_bg) = if is_dark() {
+        (Color32::from_rgb(40, 45, 57), Color32::from_rgb(36, 41, 53))
+    } else {
+        (Color32::from_rgb(222, 228, 236), Color32::from_rgb(232, 236, 242))
+    };
+    v.widgets.noninteractive = widget(v.widgets.noninteractive, p.bg_card, p.text, RADIUS_SM);
+    v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, p.stroke);
+    v.widgets.inactive =
+        widget(v.widgets.inactive, Color32::TRANSPARENT, p.text_dim, RADIUS_MD);
+    v.widgets.hovered = widget(v.widgets.hovered, hovered_bg, p.text, RADIUS_MD);
+    v.widgets.active = widget(v.widgets.active, p.accent_soft, p.accent, RADIUS_MD);
+    v.widgets.open = widget(v.widgets.open, open_bg, p.text, RADIUS_MD);
 
     ctx.all_styles_mut(|style| {
         style.visuals = v.clone();
@@ -123,10 +236,10 @@ fn apply_visuals(ctx: &egui::Context) {
 
 /// 带字号的强调色文本
 pub fn accent_text(text: &str, size: f32) -> egui::RichText {
-    egui::RichText::new(text).size(size).color(ACCENT)
+    egui::RichText::new(text).size(size).color(c().accent)
 }
 
 /// 弱化文本
 pub fn dim_text(text: &str, size: f32) -> egui::RichText {
-    egui::RichText::new(text).size(size).color(TEXT_DIM)
+    egui::RichText::new(text).size(size).color(c().text_dim)
 }

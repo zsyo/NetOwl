@@ -26,6 +26,9 @@ pub struct GeneralConfig {
     /// 界面语言代码(空表示未设置,跟随首次启动时的系统语言)
     #[serde(default)]
     pub language: String,
+    /// 界面主题:"dark" / "light"
+    #[serde(default)]
+    pub theme: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -71,6 +74,9 @@ impl Config {
                 Ok(mut cfg) => {
                     if !available_langs.contains(&cfg.general.language) {
                         cfg.general.language = fallback_lang.to_owned();
+                    }
+                    if cfg.general.theme != "light" && cfg.general.theme != "dark" {
+                        cfg.general.theme = "dark".to_owned();
                     }
                     return cfg;
                 }
@@ -120,6 +126,16 @@ impl Config {
 
     pub fn set_language(&mut self, lang: String) {
         self.general.language = lang;
+    }
+
+    /// 更新界面主题;仅在变化时返回 true(避免无谓的写盘)
+    pub fn set_theme(&mut self, theme: String) -> bool {
+        if self.general.theme != theme {
+            self.general.theme = theme;
+            true
+        } else {
+            false
+        }
     }
 
     /// 写盘:toml + 警告头,经 临时文件 -> .bak 备份 -> rename 原子替换

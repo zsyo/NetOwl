@@ -21,12 +21,25 @@
 - src/collector.rs - Collector trait + MockCollector(模拟数据;真实采集后续以 ETW/TCP 表实现替换)
 - src/i18n/ - 多语言模块(mod.rs:locales 扫描/加载/语言列表;translate.rs:查找/插值/回退/告警)
 - locales/ - fluent 词条文件(zh-cn.ftl / en.ftl;目录缺失时使用编译期内嵌兜底)
-- src/theme.rs - 主题(Visuals 定制、字体加载、颜色与圆角常量)
+- src/theme.rs - 主题(深/浅两套 Palette 调色板 + AtomicUsize 主题索引,
+  theme::c() 统一取色;Visuals 双主题定制;字体加载;设置页切换即时生效,
+  持久化于 config [general] theme)
 - src/icon.rs - 应用图标加载(assets 资源编译期内嵌,PNG 解码为 RGBA)
 - src/tray.rs - 托盘与菜单(tray-icon + muda)
 - src/ui.rs - 主窗口布局与页面(导航栏、连接列表、设置与占位页)
-- src/map.rs - 流量地图画布(painter 自绘:投影、大陆背景、连线动画、节点聚合)
-- src/world.rs - 简化世界轮廓多边形与城市坐标数据
+- src/map.rs - 流量地图画布(painter 自绘:连线动画、节点聚合、悬停信息卡、
+  视图交互:滚轮锚点缩放/拖拽/双击复位,视图状态存 NetOwlApp)
+- src/basemap.rs - 地图底图(视图/投影、经纬网格、陆地与洞环填充、
+  海岸线/国界 quad 线段、南海十段线、国家/海洋/省级名称标签;
+  每帧视口剔除即时渲染,无缓存无状态;标签按缩放分级显隐,
+  英文国家名大写逐字符字距,省名弱化色)
+- src/triangulate.rs - 简单多边形耳剪三角化(输入量化整数坐标,精确几何判定;
+  f32 坐标会破坏共线性导致耳被误判,勿改回浮点)
+- src/world.rs - 城市坐标表与矢量底图解码(Natural Earth 世界 +
+  DataV 中国混合,两档 LOD:110m 全局 / 50m 放大,zoom>=3 切换;
+  海岸线/国界按邻国共享边分类;labels 三种 kind + 十段线段节)
+- tools/build_mapdata.py - 底图数据生成脚本(混合数据源 ->
+  assets/mapdata.bin;原始 GeoJSON 放 tools/cache/,该目录不入库)
 
 ## 架构规范(egui 即时模式)
 - 数据与绘制分离:collector 产出模型状态,ui/map 只读绘制,绘制逻辑不修改数据
@@ -66,9 +79,10 @@
 - 每个文件职责单一,便于后续用 AI 工具读取和迭代
 
 ### 3. 样式常量
-- 颜色/尺寸/圆角统一在 theme.rs 定义,UPPER_SNAKE_CASE 命名,新增前先查重
+- 颜色统一在 theme.rs 的 Palette 调色板字段定义(深浅两套),绘制代码经
+  theme::c() 取色,禁止散落硬编码色值,新增色前先查重
 - 唯一强调色: 深色主题 #5C9DFF(hover/active 派生),禁止散落蓝色硬编码;
-  随主题变化的色与固定语义色(入站/出站等)在 theme.rs 内分区定义
+  语义色(入站/出站等)在调色板内按主题分别定义
 - 圆角刻度: RADIUS_SM=4 / RADIUS_MD=8 / RADIUS_LG=12,不出现圆角魔法数字
 - 可交互控件样式必须区分 hovered / active / disabled 状态
 
@@ -114,6 +128,27 @@
 - UI 内禁止 emoji 与 unicode 符号充当图标;assets/icons.ttf(Bootstrap Icons)已就位,
   接入 UI 时码点必须对照字体 cmap 或官方码点表验证,
   注释写真实 glyph 名(注释即契约)
+- 底图数据 assets/mapdata.bin 由 tools/build_mapdata.py 生成后入库,
+  混合数据源:v3 格式(magic "NWLD" + version=3)
+  - 世界国界/海洋:Natural Earth admin_0_countries + geography_marine_polys
+    (公有领域);中国(CHN/HKG/MAC/TWN)NE feature 几何与标签剔除
+  - 中国行政区划:阿里云 DataV GeoAtlas areas_v3/bound/100000_full.json
+    (免 key 静态 GeoJSON,基于天地图,GCJ-02),含 34 省级 geometry、
+    100000_JD 十段线;分层渲染(v4:世界层在前、中国层在后),NE 中越界
+    的邻国国界由中国层覆盖;邻国界顶点向中国边界温和吸合(<=0.2 度)
+    消细缝,远离边界者不动
+  量化 0.001 度 + varint delta,几何两档;50m 档经共享边感知的
+  Douglas-Peucker 抽稀(相邻国家共享段顶点序列一致且 DP 方向对称,
+  边界无缝);南极洲几何与标签剔除,底图窗口纬度 [-58, 84];
+  港澳台为省级行政区正常显示省名(kind=2,样式弱于国家名),台湾
+  NAME_ZH 问题随 NE 中国数据剔除从根本上消除;大湖(咸海取历史层
+  整体轮廓、五大湖、贝加尔等)以洞环并入世界层;重生成需下载
+  ne_110m/50m_admin_0_countries、ne_50m_geography_marine_polys、
+  ne_50m_lakes、ne_50m_lakes_historic 与 100000_full.json 到
+  tools/cache/
+- 地名标签(国家 238 + 海洋 111 + 省 34,共 383 条)内嵌于 mapdata.bin
+  标签段,不走 fluent 词条(数量庞大);南海十段线独立线段节;
+  城市(含港澳台市)仍走 city-<key> 词条
 
 ### 10. 持久化
 - 数据根 = exe 同级目录(Windows 便携式),启动时切换工作目录;

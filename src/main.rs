@@ -3,6 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod basemap;
 mod collector;
 mod config;
 mod db;
@@ -13,6 +14,7 @@ mod model;
 mod paths;
 mod theme;
 mod tray;
+mod triangulate;
 mod ui;
 mod world;
 

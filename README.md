@@ -36,6 +36,19 @@ cargo run --release
 
 当前仅支持 Windows 10+(界面中文渲染使用系统自带的微软雅黑字体)。
 
+## 地图数据来源
+
+流量地图的底图由两部分矢量数据拼接绘制,均离线下载后经脚本量化/抽稀生成 `assets/mapdata.bin`,编译期内嵌,程序运行时**不调用任何地图接口**:
+
+- **中国行政区划**(省界、港澳台、藏南、南海诸岛、南海断续国界线):[阿里云 DataV GeoAtlas](https://datav.aliyun.com/area/svgconfig/) 静态 GeoJSON(`geo.datav.aliyun.com/areas_v3/bound/100000_full.json`,免 key)。中国(含港澳台)的 Natural Earth 数据不参与,港澳台按省级行政区正常显示(台湾省、香港特别行政区、澳门特别行政区),南海断续国界线按**十段线**绘制。
+- **世界国界、海洋与内陆湖**: [Natural Earth](https://www.naturalearthdata.com/)(公有领域),110m/50m 两档经共享边感知的 Douglas-Peucker 抽稀;大湖(咸海、五大湖、贝加尔等)取自 NE 湖泊层与历史层(咸海为历史整体轮廓),作为洞环绘入世界层。
+
+分层与衔接:底图分世界层与中国层渲染——世界层先画,中国层整体覆盖其上,NE 中伸入中国境内的邻国国界与边界误划(如藏南)被中国层盖住;两国边界线再由邻国顶点按 ≤0.2 度向中国边界温和吸合,消除相邻不重合的细缝,远离边界的邻国几何保持原样。
+
+坐标系说明:DataV 数据为 GCJ-02(与 NE 的 WGS-84 在边界处有 <0.02 度的固有偏移,不影响定位观感)。
+
+授权提示:DataV GeoAtlas 数据官方定位于阿里云产品内使用;三方分发或商用前请自行确认其授权条款,数据文件本身不从程序外获取,也不在运行时联网。重新生成底图数据的方法见 [tools/build_mapdata.py](tools/build_mapdata.py) 头部注释。
+
 ## 技术栈
 
 - **GUI**: egui/eframe(即时模式,纯 Rust 自绘 GPU 渲染,无 webview)

@@ -4,6 +4,7 @@
 use eframe::egui;
 use egui::{Button, Color32, CornerRadius, Frame, Margin, RichText, Stroke};
 
+use crate::basemap;
 use crate::i18n::I18n;
 use crate::map;
 use crate::model::{Connection, fmt_bytes};
@@ -28,7 +29,7 @@ const NAV_ITEMS: &[(Page, &str)] = &[
 /// 左侧导航栏
 pub fn nav_ui(ui: &mut egui::Ui, page: &mut Page, conns: &[Connection], i18n: &I18n) {
     ui.add_space(4.0);
-    ui.label(RichText::new(i18n.t("app-name")).size(22.0).strong().color(theme::ACCENT));
+    ui.label(RichText::new(i18n.t("app-name")).size(22.0).strong().color(theme::c().accent));
     ui.label(theme::dim_text(&i18n.t("app-subtitle"), 10.0));
     ui.add_space(10.0);
     ui.separator();
@@ -37,16 +38,16 @@ pub fn nav_ui(ui: &mut egui::Ui, page: &mut Page, conns: &[Connection], i18n: &I
     for (target, key) in NAV_ITEMS {
         let selected = page == target;
         let label_text = RichText::new(i18n.t(key)).size(15.0).color(if selected {
-            theme::TEXT
+            theme::c().text
         } else {
-            theme::TEXT_DIM
+            theme::c().text_dim
         });
         let response = ui.add_sized(
             [ui.available_width(), 34.0],
             Button::new(label_text)
-                .fill(if selected { theme::ACCENT_SOFT } else { Color32::TRANSPARENT })
+                .fill(if selected { theme::c().accent_soft } else { Color32::TRANSPARENT })
                 .stroke(if selected {
-                    Stroke::new(1.0, theme::ACCENT.gamma_multiply(0.4))
+                    Stroke::new(1.0, theme::c().accent.gamma_multiply(0.4))
                 } else {
                     Stroke::NONE
                 })
@@ -62,26 +63,32 @@ pub fn nav_ui(ui: &mut egui::Ui, page: &mut Page, conns: &[Connection], i18n: &I
         ui.add_space(8.0);
         ui.horizontal(|ui| {
             let (rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
-            ui.painter().circle_filled(rect.center(), 4.0, theme::STATUS_OK);
+            ui.painter().circle_filled(rect.center(), 4.0, theme::c().status_ok);
             ui.label(theme::dim_text(&i18n.t("status-monitoring"), 13.0));
         });
         ui.label(
             RichText::new(i18n.t_with_args("status-conn-count", &[("count", conns.len().to_string())]))
                 .size(11.0)
-                .color(theme::TEXT_DIM),
+                .color(theme::c().text_dim),
         );
         ui.label(
             RichText::new(i18n.t("status-mock"))
                 .size(11.0)
-                .color(theme::TEXT_DIM),
+                .color(theme::c().text_dim),
         );
     });
 }
 
 /// 中央区域按页面分发
-pub fn central_ui(ui: &mut egui::Ui, page: &Page, conns: &[Connection], i18n: &mut I18n) {
+pub fn central_ui(
+    ui: &mut egui::Ui,
+    page: &Page,
+    conns: &[Connection],
+    i18n: &mut I18n,
+    map_view: &mut basemap::View,
+) {
     match page {
-        Page::Map => map::draw(ui, conns, i18n),
+        Page::Map => map::draw(ui, conns, i18n, map_view),
         Page::Connections => connections_ui(ui, conns, i18n),
         Page::Rules => placeholder_ui(
             ui,
@@ -112,24 +119,24 @@ fn connections_ui(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n) {
                 .striped(true)
                 .show(ui, |ui| {
                     for key in ["col-process", "col-proto", "col-remote", "col-location", "col-down", "col-up"] {
-                        ui.label(RichText::new(i18n.t(key)).size(12.0).strong().color(theme::TEXT_DIM));
+                        ui.label(RichText::new(i18n.t(key)).size(12.0).strong().color(theme::c().text_dim));
                     }
                     ui.end_row();
 
                     for conn in conns {
-                        ui.label(RichText::new(&conn.process).size(13.0).color(theme::TEXT));
+                        ui.label(RichText::new(&conn.process).size(13.0).color(theme::c().text));
                         ui.label(theme::dim_text(conn.proto.as_str(), 13.0));
                         ui.label(
                             RichText::new(format!("{}:{}", conn.remote_ip, conn.remote_port))
                                 .size(13.0)
-                                .color(theme::TEXT),
+                                .color(theme::c().text),
                         );
                         ui.label(theme::dim_text(&i18n.t(&format!("city-{}", conn.city)), 13.0));
                         ui.label(
-                            RichText::new(fmt_bytes(conn.bytes_in)).size(13.0).color(theme::INBOUND),
+                            RichText::new(fmt_bytes(conn.bytes_in)).size(13.0).color(theme::c().inbound),
                         );
                         ui.label(
-                            RichText::new(fmt_bytes(conn.bytes_out)).size(13.0).color(theme::OUTBOUND),
+                            RichText::new(fmt_bytes(conn.bytes_out)).size(13.0).color(theme::c().outbound),
                         );
                         ui.end_row();
                     }
@@ -141,7 +148,7 @@ fn connections_ui(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n) {
 fn settings_ui(ui: &mut egui::Ui, i18n: &mut I18n) {
     ui.heading(theme::accent_text(&i18n.t("settings-title"), 20.0));
     ui.add_space(16.0);
-    ui.label(RichText::new(i18n.t("settings-language")).size(14.0).strong().color(theme::TEXT));
+    ui.label(RichText::new(i18n.t("settings-language")).size(14.0).strong().color(theme::c().text));
     ui.add_space(4.0);
 
     let current_name = i18n
@@ -157,9 +164,9 @@ fn settings_ui(ui: &mut egui::Ui, i18n: &mut I18n) {
             for (code, name) in i18n.lang_codes_and_names() {
                 let selected = code == i18n.current_lang;
                 let label = RichText::new(name).size(14.0).color(if selected {
-                    theme::ACCENT
+                    theme::c().accent
                 } else {
-                    theme::TEXT
+                    theme::c().text
                 });
                 if ui.selectable_label(selected, label).clicked() {
                     i18n.set_language(code);
@@ -168,6 +175,34 @@ fn settings_ui(ui: &mut egui::Ui, i18n: &mut I18n) {
         });
     ui.add_space(6.0);
     ui.label(theme::dim_text(&i18n.t("settings-language-hint"), 12.0));
+    ui.add_space(16.0);
+
+    // 界面主题:切换立即生效(调色板与 Visuals 同步刷新)
+    ui.label(RichText::new(i18n.t("settings-theme")).size(14.0).strong().color(theme::c().text));
+    ui.add_space(4.0);
+    let theme_name = if theme::is_dark() {
+        i18n.t("theme-dark")
+    } else {
+        i18n.t("theme-light")
+    };
+    egui::ComboBox::from_id_salt("settings-theme-select")
+        .width(180.0)
+        .selected_text(theme_name)
+        .show_ui(ui, |ui| {
+            for (dark, name) in [(true, i18n.t("theme-dark")), (false, i18n.t("theme-light"))] {
+                let selected = theme::is_dark() == dark;
+                let label = RichText::new(name).size(14.0).color(if selected {
+                    theme::c().accent
+                } else {
+                    theme::c().text
+                });
+                if ui.selectable_label(selected, label).clicked() {
+                    theme::set_theme(dark, ui.ctx());
+                }
+            }
+        });
+    ui.add_space(6.0);
+    ui.label(theme::dim_text(&i18n.t("settings-theme-hint"), 12.0));
 }
 
 /// 占位页统一卡片
@@ -175,12 +210,12 @@ fn placeholder_ui(ui: &mut egui::Ui, title: &str, body: &str) {
     ui.heading(theme::accent_text(title, 20.0));
     ui.add_space(20.0);
     Frame::new()
-        .fill(theme::BG_CARD)
-        .stroke(Stroke::new(1.0, theme::STROKE))
+        .fill(theme::c().bg_card)
+        .stroke(Stroke::new(1.0, theme::c().stroke))
         .corner_radius(CornerRadius::same(theme::RADIUS_LG))
         .inner_margin(Margin::same(20))
         .show(ui, |ui| {
             ui.set_max_width(440.0);
-            ui.label(RichText::new(body).size(13.0).color(theme::TEXT_DIM));
+            ui.label(RichText::new(body).size(13.0).color(theme::c().text_dim));
         });
 }
