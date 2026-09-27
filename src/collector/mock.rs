@@ -6,8 +6,8 @@ use std::net::Ipv4Addr;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::collector::{Collector, CollectorKind};
+use crate::map::world::CITIES;
 use crate::model::{Connection, Place, Protocol, Signing};
-use crate::world::CITIES;
 
 /// xorshift64* 伪随机数:骨架期避免引入 rand 依赖(AGENTS.md 规范 8)
 struct Rng(u64);

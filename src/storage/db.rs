@@ -4,7 +4,7 @@
 
 use rusqlite::Connection;
 
-use crate::paths::DATA_DIR;
+use crate::platform::paths::DATA_DIR;
 
 /// 打开(或创建)数据库并执行迁移
 pub fn open() -> Connection {

@@ -11,8 +11,8 @@ use eframe::egui;
 use egui::epaint::{Mesh, Vertex, WHITE_UV};
 use egui::{Align2, Color32, CornerRadius, FontId, Pos2, Rect, Shape, Vec2};
 
-use crate::theme;
-use crate::world::{LabelKind, MapLabel, MapLevel, RingKind, map_data};
+use crate::map::world::{LabelKind, MapLabel, MapLevel, RingKind, map_data};
+use crate::ui::theme;
 
 /// 放大超过该倍数后切换到 50m 精细档
 const DETAIL_ZOOM: f32 = 3.0;

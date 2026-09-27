@@ -172,7 +172,7 @@ impl Drop for Writer {
 }
 
 fn run(rx: Receiver<Msg>, retention: std::sync::Arc<AtomicU32>) {
-    let mut conn = crate::db::open();
+    let mut conn = crate::storage::db::open();
     let mut last_cleanup = Instant::now();
     loop {
         // 先等第一条消息,再把已排队的全部收齐,单轮统一处理
@@ -307,7 +307,7 @@ fn reclaim_space(conn: &Db) {
 
 /// netowl.db(+wal)当前字节数;文件尚未创建时为 0
 pub fn db_size() -> u64 {
-    let base = Path::new(crate::paths::DATA_DIR).join("netowl.db");
+    let base = Path::new(crate::platform::paths::DATA_DIR).join("netowl.db");
     let mut size = std::fs::metadata(&base).map(|m| m.len()).unwrap_or(0);
     let wal = base.with_file_name("netowl.db-wal");
     size += std::fs::metadata(&wal).map(|m| m.len()).unwrap_or(0);

@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::paths;
+use crate::platform::paths;
 
 /// 窗口位置未设置标记:使用系统默认位置(居中)
 pub const WINDOW_POS_UNSET: i32 = i32::MIN;

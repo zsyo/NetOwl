@@ -10,8 +10,8 @@ use windows::Win32::System::Time::{
     FileTimeToSystemTime, SystemTimeToFileTime, SystemTimeToTzSpecificLocalTime,
 };
 
-use crate::history::{Db, Writer, db_size, unix_now};
 use crate::model::Protocol;
+use crate::storage::history::{Db, Writer, db_size, unix_now};
 
 /// 历史库超容提醒阈值(1 GiB)
 pub const REMIND_SIZE: u64 = 1024 * 1024 * 1024;

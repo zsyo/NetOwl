@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use crate::triangulate::triangulate;
+use crate::map::triangulate::triangulate;
 
 /// 城市/节点:显示名经 i18n 词条(`city-<key>`)获取,这里只保留标识与坐标
 pub struct City {
@@ -110,7 +110,7 @@ pub const CITIES: &[City] = &[
     },
 ];
 
-/// 按键查城市;`key` 必须来自 [`CITIES`](crate::world::CITIES)
+/// 按键查城市;`key` 必须来自 [`CITIES`](crate::map::world::CITIES)
 pub fn city(key: &str) -> &City {
     CITIES
         .iter()
@@ -195,7 +195,7 @@ pub struct MapData {
 /// 底图数据(内嵌二进制,首次访问时解码并做几何预处理)
 pub fn map_data() -> &'static MapData {
     static DATA: OnceLock<MapData> = OnceLock::new();
-    DATA.get_or_init(|| build(include_bytes!("../assets/mapdata.bin")))
+    DATA.get_or_init(|| build(include_bytes!("../../assets/mapdata.bin")))
 }
 
 /// 二进制游标:varint / zigzag 解码

@@ -4,6 +4,8 @@
 //! eframe 0.36 的 App trait 拆分为 logic(每帧逻辑,窗口隐藏时仍会被调用)
 //! 与 ui(绘制)。托盘命令、几何捕获与配置写盘节流放在 logic。
 
+pub mod ask;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
@@ -11,26 +13,26 @@ use std::time::{Duration, Instant};
 
 use eframe::egui;
 
-use crate::ask::{Asker, Decision, Scope};
-use crate::basemap;
+use self::ask::{Asker, Decision, Scope};
 use crate::collector::{self, Collector, CollectorKind};
-use crate::config::Config;
-use crate::geoip;
-use crate::history;
-use crate::history_query;
 use crate::i18n::I18n;
-use crate::local_ip;
+use crate::map::basemap;
+use crate::map::world;
 use crate::model::{Connection, Place};
-use crate::rdns;
+use crate::net::geoip;
+use crate::net::local_ip;
+use crate::net::rdns;
+use crate::net::traffic;
+use crate::platform::tray::{self, Tray};
 use crate::rules;
-use crate::theme;
-use crate::traffic;
-use crate::tray::{self, Tray};
+use crate::rules::wfp;
+use crate::storage::config::Config;
+use crate::storage::history;
+use crate::storage::history_query;
+use crate::ui::ask as ui_ask;
+use crate::ui::rules as ui_rules;
+use crate::ui::theme;
 use crate::ui::{self, Page};
-use crate::ui_ask;
-use crate::ui_rules;
-use crate::wfp;
-use crate::world;
 
 /// 重绘节奏:地图页动画 30fps,静态页面低频
 const REPAINT_ANIMATED: Duration = Duration::from_millis(33);
@@ -110,7 +112,7 @@ impl NetOwlApp {
         let pending_restore = config.window_position();
         let pending_restore =
             pending_restore.map(|(x, y, w, h)| (x, y, w, h, config.window.maximized));
-        let history_db = crate::db::open();
+        let history_db = crate::storage::db::open();
         let rules = rules::RuleSet::load(&history_db);
         NetOwlApp {
             page: Page::Map,

@@ -22,9 +22,9 @@ impl Protocol {
 /// 连接归属地:地图节点与列表位置列的定位键
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Place {
-    /// 静态演示城市([`crate::world::CITIES`] 键,模拟数据)
+    /// 静态演示城市([`crate::map::world::CITIES`] 键,模拟数据)
     City(&'static str),
-    /// GeoIP 归属位置([`crate::geoip`] 位置表索引;中国到省级,其余到国家)
+    /// GeoIP 归属位置([`crate::net::geoip`] 位置表索引;中国到省级,其余到国家)
     Geo(u32),
 }
 

@@ -15,39 +15,20 @@
 - 渲染后端用 glow 而非默认 wgpu:编译更快、依赖更少,Windows 上 OpenGL 足够
 
 ## 项目结构
-- src/main.rs - 应用入口(NativeOptions、窗口图标、run_native)
-- src/app.rs - NetOwlApp:状态编排(托盘事件、采集 tick、页面切换、关闭到托盘、
-  退出;进程图标纹理缓存按键 = 映像路径,logic 每帧对未缓存路径向采集器请求
-  IconState,到位经 ColorImage::from_rgba_unmultiplied 建纹理)
-- src/model.rs - Connection/Protocol/Place 等数据结构(city 为 Option<Place>:
-  内网/保留段/未收录 IP 归属未知,地图不绘制,列表显示占位;UDP 表行远端
-  以 *:* 展示)
-- src/geoip.rs - GeoIP 归属定位(assets/geoip.bin 编译期内嵌,首用解析一次;
-  IPv4 区间表 LEB128 delta 编码二分查询;城市级粒度:中国含港澳台到地级市、
-  外国按城市名匹配 GeoNames,未命中回退省/国家级;place_pos/place_label 为
-  地图与列表的统一归属坐标/显示名入口,显示名双语内嵌不走词条)
-- src/local_ip.rs - 本机公网 IP 探测(6 个知名公共回显接口并发,手写
-  HTTP/1.1 GET 不走系统代理、不引 TLS 依赖,最先返回的合法 IPv4 胜出;
-  app 层每 10 分钟重探,经 geoip 得到本机地图点位,失败回退 world::LOCAL)
-- src/rdns.rs - rDNS 域名解析(异步 PTR:getnameinfo NI_NAMEREQD 于独立线程
-  执行,app 每帧 update 收割;并发上限 8 + 每 250ms 派发 2 个限流,成功/失败
-  分别 10min/2min TTL 缓存,失效仅对仍活跃连接重查;回环/私网/保留段不查;
-  lookup 供列表与地图信息卡域名优先显示,rdns::display 超长截断)
-- src/traffic.rs - 总上传/下载速率(GetIfTable2 各接口 In/OutOctets 采样差值;
-  排除回环/隧道;**必须排除 InterfaceAndOperStatusFlags.FilterInterface(bit1)
-  接口——WFP 轻量过滤/QoS 过滤接口会镜像底层物理网卡计数,不过滤速率成倍
-  虚高**;窗口可见 1s 采样、隐藏 5s,表查询失败沿用旧速率)
-- src/history.rs - 历史落盘(conn_events 事件表,每条已完结连接一行整行
-  INSERT;Tracker 对比前后快照生成事件,mock 不入库;后台写线程批量事务,
-  托盘退出 flush 并 join;自动清理小时级节流,天数 0 = 不清理;归属地不落库)
-- src/history_query.rs - 历史查询与页面状态(明细/聚合 SQL 全参数绑定,
-  LIMIT 500;远端前缀解析为网段 BETWEEN;proto None 绑空串而非 NULL——
-  SQL 侧 ?5 = '' 判定,NULL 比较恒假会过滤全部行;本地/私网过滤在 SQL 内
-  位运算判定;本月起点/时间格式化走 Win32 SystemTime;PageState 含视图/
-  筛选/结果/清空)
-- src/ui_history.rs - 历史页(双视图切换、档位筛选、库大小显示、超 1 GiB
-  提醒卡[勾选不再提醒=一票否决持久化,手动清空还原]、清空 N 天前工具;
-  位置列实时反查 geoip)
+src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用),
+按功能域分目录;子目录统一用 mod.rs 风格。
+
+- src/main.rs - 程序入口(NativeOptions、窗口最小/默认尺寸、窗口图标、run_native)
+- src/lib.rs - crate 根:模块声明
+- src/app/ - 应用编排(mod.rs:NetOwlApp——托盘事件、采集 tick、页面切换、
+  关闭到托盘、退出、WFP 目标集同步、配置持久化编排;进程图标纹理缓存按键 =
+  映像路径,logic 每帧对未缓存路径向采集器请求 IconState,到位经
+  ColorImage::from_rgba_unmultiplied 建纹理;ask.rs:新连接询问状态机——
+  触发身份=进程+目标IP,静默放行自身/系统/未知进程/回环/局域网/保留段/
+  UDP 无远端/队列超限,决策=动作x范围,超时自动拒绝)
+- src/model/ - 共享数据模型(mod.rs:Connection/Protocol/Place 等数据结构;
+  city 为 Option<Place>:内网/保留段/未收录 IP 归属未知,地图不绘制,列表
+  显示占位;UDP 表行远端以 *:* 展示)
 - src/collector/ - 连接采集(mod.rs:Collector trait 与 real/mock 工厂 +
   CollectorKind,icon_image 默认返回 Pending;mock.rs:模拟数据供演示/测试;
   query.rs:Win32 查询原语,GetExtendedTcpTable/GetExtendedUdpTable owner-PID
@@ -60,29 +41,65 @@
   回填前 Unknown;icon.rs:SHGetFileInfoW 取 32x32 关联图标 + GetIconInfo/
   GetDIBits 转 RGBA(工作线程执行,失败缓存 None);表快照无字节语义,
   下载/上传列为 0,字节/速率待 ETW;均为只读 API,无需管理员权限)
+- src/rules/ - 规则与拦截(mod.rs:规则模型(动作/方向/协议/进程/远端[网段或
+  域名]/端口/优先级),求值按 priority 升序首个命中,未命中默认放行;RuleSet
+  内存+SQLite 同步(db v4 rules 表);wfp_specs 翻译启用规则为 WFP 过滤器目标
+  集——进程条件按映像名展开为完整路径集合(粘滞缓存防拦截窗口抖动),网段
+  RANGE、端口/协议等值,Any 方向拆 CONNECT/RECV_ACCEPT 两层;域名规则不参与
+  翻译,仅求值标注;表快照方向按远端端口近似(>=49152 入站),ETW 后替换;
+  wfp.rs:WFP 拦截引擎——管理线程持动态会话(进程退出/崩溃内核对象自毁),
+  单子层 weight 0 低于系统防火墙,过滤器 weight 由优先级派生(15 上限),
+  非提权回落 NoAdmin 只读)
+- src/storage/ - 持久化(config.rs:应用配置(config.toml,serde TOML + 防抖
+  写盘);db.rs:SQLite 连接与结构迁移;history.rs:历史落盘(conn_events
+  事件表,每条已完结连接一行整行 INSERT;Tracker 对比前后快照生成事件,mock
+  不入库;后台写线程批量事务,托盘退出 flush 并 join;自动清理小时级节流,
+  天数 0 = 不清理;归属地不落库);history_query.rs:历史查询与页面状态
+  (明细/聚合 SQL 全参数绑定,LIMIT 500;远端前缀解析为网段 BETWEEN;proto
+  None 绑空串而非 NULL——SQL 侧 ?5 = '' 判定,NULL 比较恒假会过滤全部行;
+  本地/私网过滤在 SQL 内位运算判定;本月起点/时间格式化走 Win32 SystemTime;
+  PageState 含视图/筛选/结果/清空))
+- src/net/ - 网络信息(geoip.rs:GeoIP 归属定位(assets/geoip.bin 编译期内嵌,
+  首用解析一次;IPv4 区间表 LEB128 delta 编码二分查询;城市级粒度:中国含港澳台
+  到地级市、外国按城市名匹配 GeoNames,未命中回退省/国家级;place_pos/place_label
+  为地图与列表的统一归属坐标/显示名入口,显示名双语内嵌不走词条);
+  local_ip.rs:本机公网 IP 探测(6 个知名公共回显接口并发,手写 HTTP/1.1 GET
+  不走系统代理、不引 TLS 依赖,最先返回的合法 IPv4 胜出;app 层每 10 分钟重探,
+  经 geoip 得到本机地图点位,失败回退 map::world::LOCAL);rdns.rs:rDNS 域名
+  解析(异步 PTR:getnameinfo NI_NAMEREQD 于独立线程执行,app 每帧 update 收割;
+  并发上限 8 + 每 250ms 派发 2 个限流,成功/失败分别 10min/2min TTL 缓存,失效
+  仅对仍活跃连接重查;回环/私网/保留段不查;lookup 供列表与地图信息卡域名优先
+  显示,rdns::display 超长截断);traffic.rs:总上传/下载速率(GetIfTable2 各接口
+  In/OutOctets 采样差值;排除回环/隧道;**必须排除
+  InterfaceAndOperStatusFlags.FilterInterface(bit1) 接口——WFP 轻量过滤/QoS
+  过滤接口会镜像底层物理网卡计数,不过滤速率成倍虚高**;窗口可见 1s 采样、
+  隐藏 5s,表查询失败沿用旧速率))
+- src/map/ - 流量地图(mod.rs:画布(painter 自绘:连线动画、节点聚合、悬停
+  信息卡、视图交互:滚轮锚点缩放/拖拽/双击复位,视图状态存 NetOwlApp;
+  经度方向无缝循环:中心经度归一化 [-180,180),节点/连线按可见副本平移绘制,
+  悬停按模周期距离,连线取最短方向走短弧);basemap.rs:地图底图(视图/投影、
+  经纬网格、陆地与洞环填充、海岸线/国界 quad 线段、主要河流折线、南海十段线、
+  国家/海洋/省级名称标签;经度按 360 度周期对世界副本循环绘制;每帧视口剔除
+  即时渲染,无缓存无状态;标签按缩放分级显隐,英文国家名大写逐字符字距,
+  省名弱化色);triangulate.rs:简单多边形耳剪三角化(输入量化整数坐标,精确
+  几何判定;f32 坐标会破坏共线性导致耳被误判,勿改回浮点);world.rs:城市坐标表
+  与矢量底图解码(Natural Earth 世界 + DataV 中国混合,两档 LOD:110m 全局 /
+  50m 放大,zoom>=3 切换;海岸线/国界按邻国共享边分类;labels 三种 kind +
+  十段线段节 + 河流折线节两档))
+- src/ui/ - 界面(mod.rs:主窗口布局与页面(导航栏、连接列表、设置页、UiCtx);
+  ask.rs:新连接询问弹窗(右下角无标题栏 toast,范围下拉 + 允许/拒绝,进度条
+  内嵌剩余秒数);history.rs:历史页(双视图切换、档位筛选、库大小显示、
+  超 1 GiB 提醒卡[勾选不再提醒=一票否决持久化,手动清空还原]、清理下拉菜单;
+  位置列实时反查 geoip);rules.rs:规则页(表格列宽常量化、表头与数据列居中、
+  增删改查/启停/上移下移/编辑弹窗带校验、WFP 拦截状态行);theme.rs:主题
+  (深/浅两套 Palette 调色板 + AtomicUsize 主题索引,theme::c() 统一取色;
+  Visuals 双主题定制;字体加载;设置页切换即时生效,持久化于 config
+  [general] theme))
 - src/i18n/ - 多语言模块(mod.rs:locales 扫描/加载/语言列表;translate.rs:查找/插值/回退/告警)
 - locales/ - fluent 词条文件(zh-cn.ftl / en.ftl;目录缺失时使用编译期内嵌兜底)
-- src/theme.rs - 主题(深/浅两套 Palette 调色板 + AtomicUsize 主题索引,
-  theme::c() 统一取色;Visuals 双主题定制;字体加载;设置页切换即时生效,
-  持久化于 config [general] theme)
-- src/icon.rs - 应用图标加载(assets 资源编译期内嵌,PNG 解码为 RGBA)
-- src/tray.rs - 托盘与菜单(tray-icon + muda)
-- src/ui.rs - 主窗口布局与页面(导航栏、连接列表、设置与占位页)
-- src/map.rs - 流量地图画布(painter 自绘:连线动画、节点聚合、悬停信息卡、
-  视图交互:滚轮锚点缩放/拖拽/双击复位,视图状态存 NetOwlApp;
-  经度方向无缝循环:中心经度归一化 [-180,180),节点/连线按可见
-  副本平移绘制,悬停按模周期距离,连线取最短方向走短弧)
-- src/basemap.rs - 地图底图(视图/投影、经纬网格、陆地与洞环填充、
-  海岸线/国界 quad 线段、主要河流折线、南海十段线、国家/海洋/省级
-  名称标签;经度按 360 度周期对世界副本循环绘制;每帧视口剔除即时
-  渲染,无缓存无状态;标签按缩放分级显隐,英文国家名大写逐字符
-  字距,省名弱化色)
-- src/triangulate.rs - 简单多边形耳剪三角化(输入量化整数坐标,精确几何判定;
-  f32 坐标会破坏共线性导致耳被误判,勿改回浮点)
-- src/world.rs - 城市坐标表与矢量底图解码(Natural Earth 世界 +
-  DataV 中国混合,两档 LOD:110m 全局 / 50m 放大,zoom>=3 切换;
-  海岸线/国界按邻国共享边分类;labels 三种 kind + 十段线段节 +
-  河流折线节两档)
+- src/platform/ - 平台集成(paths.rs:数据根目录 = exe 同级(Windows 便携式);
+  icon.rs:应用图标加载(assets 资源编译期内嵌,PNG 解码为 RGBA);tray.rs:
+  托盘与菜单(tray-icon + muda))
 - tools/build_mapdata.py - 底图数据生成脚本(混合数据源 ->
     assets/mapdata.bin;原始 GeoJSON 放 tools/cache/,该目录不入库)
 - tools/build_geoip.py - GeoIP 归属数据生成脚本(tools/cache/ip2region_v4.xdb

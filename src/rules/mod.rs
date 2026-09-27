@@ -5,14 +5,16 @@
 //! 任何规则时默认放行。表快照无方向语义,方向按远端端口近似判定,
 //! ETW 事件源落地后以真实方向替换。
 
+pub mod wfp;
+
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
 
 use rusqlite::Connection as Db;
 use rusqlite::params;
 
-use crate::history;
 use crate::model::{Connection, Protocol};
+use crate::storage::history;
 
 /// Windows 默认动态端口范围下界:远端端口位于临时端口区间时,
 /// 对端更可能是主动连入的客户端
@@ -186,7 +188,7 @@ pub fn parse_net(input: &str) -> Option<(u32, u32)> {
         };
         Some((lo, hi))
     } else {
-        crate::history_query::parse_ip_prefix(s)
+        crate::storage::history_query::parse_ip_prefix(s)
     }
 }
 
@@ -389,7 +391,7 @@ impl RuleSet {
     /// 把启用规则翻译为 WFP 过滤器目标集合(语义见 wfp::Spec;域名规则
     /// 不参与翻译)。与求值引擎一致:优先级高者 weight 大。进程规则按
     /// 映像名展开为命中过的完整路径集合(粘滞缓存,见字段注释)
-    pub fn wfp_specs(&mut self, conns: &[Connection]) -> Vec<crate::wfp::Spec> {
+    pub fn wfp_specs(&mut self, conns: &[Connection]) -> Vec<crate::rules::wfp::Spec> {
         let mut applicable: Vec<&Rule> = self
             .rules
             .iter()
@@ -433,14 +435,14 @@ impl RuleSet {
                 Protocol::Udp => PROTO_UDP,
             });
             let port = (r.port != 0).then_some(r.port);
-            let layers: &[crate::wfp::Layer] = match r.direction {
-                Direction::Any => &[crate::wfp::Layer::Out, crate::wfp::Layer::In],
-                Direction::Out => &[crate::wfp::Layer::Out],
-                Direction::In => &[crate::wfp::Layer::In],
+            let layers: &[crate::rules::wfp::Layer] = match r.direction {
+                Direction::Any => &[crate::rules::wfp::Layer::Out, crate::rules::wfp::Layer::In],
+                Direction::Out => &[crate::rules::wfp::Layer::Out],
+                Direction::In => &[crate::rules::wfp::Layer::In],
             };
             for path in &paths {
                 for &layer in layers {
-                    specs.push(crate::wfp::Spec {
+                    specs.push(crate::rules::wfp::Spec {
                         layer,
                         weight,
                         block: r.action == Action::Block,

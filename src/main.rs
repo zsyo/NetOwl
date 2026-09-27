@@ -1,38 +1,17 @@
 //! NetOwl:Windows 平台网络连接监控工具(Little Snitch 复刻,首期只读监控)。
+//! crate 根(模块组织)见 lib.rs;本文件只负责启动(窗口构建与 run_native)。
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-
-mod app;
-mod ask;
-mod basemap;
-mod collector;
-mod config;
-mod db;
-mod geoip;
-mod history;
-mod history_query;
-mod i18n;
-mod icon;
-mod local_ip;
-mod map;
-mod model;
-mod paths;
-mod rdns;
-mod rules;
-mod theme;
-mod traffic;
-mod tray;
-mod triangulate;
-mod ui;
-mod ui_ask;
-mod ui_history;
-mod ui_rules;
-mod wfp;
-mod world;
 
 use std::sync::Arc;
 
 use eframe::egui;
+
+use netowl::app::NetOwlApp;
+use netowl::i18n;
+use netowl::platform::{icon, paths};
+use netowl::storage::config::Config;
+use netowl::storage::db;
 
 /// 应用品牌名(各语言一致,不参与翻译)
 const APP_NAME: &str = "NetOwl";
@@ -47,7 +26,7 @@ fn main() -> eframe::Result {
         .iter()
         .map(|info| info.code.clone())
         .collect();
-    let cfg = config::Config::load(&i18n.current_lang, &available);
+    let cfg = Config::load(&i18n.current_lang, &available);
     // 配置文件中保存的语言优先于系统语言(load 内已校验有效性)
     i18n.set_language(cfg.general.language.clone());
 
@@ -78,6 +57,6 @@ fn main() -> eframe::Result {
     eframe::run_native(
         APP_NAME,
         options,
-        Box::new(move |cc| Ok(Box::new(app::NetOwlApp::new(cc, i18n, cfg)))),
+        Box::new(move |cc| Ok(Box::new(NetOwlApp::new(cc, i18n, cfg)))),
     )
 }

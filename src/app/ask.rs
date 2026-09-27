@@ -13,7 +13,7 @@ use std::net::Ipv4Addr;
 use std::time::{Duration, Instant};
 
 use crate::model::{Connection, Protocol};
-use crate::rdns;
+use crate::net::rdns;
 use crate::rules::{Action, Direction, MatchReq, RemoteKind, Rule, RuleSet};
 
 /// 倒计时:超时自动执行默认动作(拒绝·仅本次)
@@ -69,10 +69,10 @@ impl AskItem {
     }
 
     /// 询问等待期间的临时阻断过滤器(精确锁定该连接身份)
-    pub fn pending_block_spec(&self) -> crate::wfp::Spec {
+    pub fn pending_block_spec(&self) -> crate::rules::wfp::Spec {
         let ip = u32::from(self.remote_ip);
-        crate::wfp::Spec {
-            layer: crate::wfp::Layer::Out,
+        crate::rules::wfp::Spec {
+            layer: crate::rules::wfp::Layer::Out,
             weight: PENDING_WEIGHT,
             block: true,
             app_path: self.proc_path.clone(),

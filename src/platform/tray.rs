@@ -33,7 +33,7 @@ pub fn create(ctx: egui::Context) -> (Tray, Receiver<String>) {
         .expect("追加托盘分隔符失败");
     menu.append(&quit).expect("追加托盘菜单项失败");
 
-    let (rgba, width, height) = crate::icon::tray_icon_rgba();
+    let (rgba, width, height) = crate::platform::icon::tray_icon_rgba();
     let icon = tray_icon::Icon::from_rgba(rgba, width, height).expect("托盘图标数据非法");
     let tray = TrayIconBuilder::new()
         .with_id("netowl-tray")

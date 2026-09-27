@@ -109,7 +109,7 @@ impl TableCollector {
             let proto = key.proto;
             let remote_port = key.remote_port;
             let remote_ip = key.remote_ip();
-            let city = crate::geoip::locate(remote_ip).map(Place::Geo);
+            let city = crate::net::geoip::locate(remote_ip).map(Place::Geo);
             let first_seen = old.get(&key).map_or(now, |c| c.first_seen);
             let meta = self.proc_meta(pid);
             new_live.insert(

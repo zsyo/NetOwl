@@ -6,8 +6,8 @@ use std::net::Ipv4Addr;
 use std::sync::OnceLock;
 
 use crate::i18n::I18n;
+use crate::map::world;
 use crate::model::Place;
-use crate::world;
 
 /// 位置条目:双语显示名 + 经纬度(显示名数量大,内嵌不走 fluent 词条)
 struct PlaceEntry {
@@ -27,7 +27,7 @@ struct GeoIp {
 static GEOIP: OnceLock<GeoIp> = OnceLock::new();
 
 fn table() -> &'static GeoIp {
-    GEOIP.get_or_init(|| GeoIp::parse(include_bytes!("../assets/geoip.bin")))
+    GEOIP.get_or_init(|| GeoIp::parse(include_bytes!("../../assets/geoip.bin")))
 }
 
 impl GeoIp {

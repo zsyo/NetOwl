@@ -1,6 +1,10 @@
 //! 流量地图画布:egui painter 自绘(底图渲染见 basemap,此处负责
 //! 贝塞尔连线、流动粒子、节点聚合与悬停信息卡)。
 
+pub mod basemap;
+pub mod triangulate;
+pub mod world;
+
 use std::collections::BTreeMap;
 
 use std::collections::HashMap;
@@ -12,12 +16,12 @@ use egui::{
     TextureHandle, Vec2,
 };
 
-use crate::basemap::{self, Projection, View};
-use crate::geoip;
+use self::basemap::{Projection, View};
 use crate::i18n::I18n;
 use crate::model::{Connection, Place, fmt_bytes};
-use crate::rdns;
-use crate::theme;
+use crate::net::geoip;
+use crate::net::rdns;
+use crate::ui::theme;
 
 /// 视图动画趋近系数(30fps 下约 0.12s 收敛)
 const ANIM_K: f32 = 0.22;

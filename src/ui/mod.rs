@@ -1,26 +1,28 @@
 //! 主窗口布局:导航侧栏与各页面(地图 / 连接 / 规则占位 / 设置)。
 //! 全部界面文本经 I18n 词条获取(AGENTS.md 规范 4)。
 
+pub mod ask;
+pub mod history;
+pub mod rules;
+pub mod theme;
+
 use std::collections::HashMap;
 
 use eframe::egui;
 use egui::{Button, Color32, CornerRadius, Label, RichText, Stroke};
 
-use crate::basemap;
 use crate::collector::CollectorKind;
-use crate::config::Config;
-use crate::geoip;
-use crate::history;
-use crate::history_query;
 use crate::i18n::I18n;
 use crate::map;
+use crate::map::basemap;
 use crate::model::{Connection, Signing, fmt_bytes};
-use crate::rdns;
-use crate::rules;
-use crate::theme;
-use crate::ui_history;
-use crate::ui_rules;
-use crate::wfp;
+use crate::net::geoip;
+use crate::net::rdns;
+use crate::rules as rules_engine;
+use crate::rules::wfp;
+use crate::storage::config::Config;
+use crate::storage::history as history_store;
+use crate::storage::history_query;
 
 /// 主窗口页面
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -171,15 +173,15 @@ pub struct UiCtx<'a> {
     /// 历史页状态
     pub history: &'a mut history_query::PageState,
     /// 历史查询只读连接
-    pub history_db: &'a history::Db,
+    pub history_db: &'a history_store::Db,
     /// 规则集(连接页求值与规则页编辑)
-    pub rules: &'a mut rules::RuleSet,
+    pub rules: &'a mut rules_engine::RuleSet,
     /// 规则页状态
-    pub rules_page: &'a mut ui_rules::PageState,
+    pub rules_page: &'a mut rules::PageState,
     /// 拦截引擎状态(WFP 管理线程回报)
     pub wfp_status: wfp::Status,
     /// 历史写线程句柄(手动清空)
-    pub writer: &'a history::Writer,
+    pub writer: &'a history_store::Writer,
     pub local_pos: (f32, f32),
 }
 
@@ -207,7 +209,7 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
             ctx.config,
             ctx.rules,
         ),
-        Page::History => ui_history::show(
+        Page::History => history::show(
             ui,
             ctx.history,
             ctx.i18n,
@@ -217,7 +219,7 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
             ctx.config,
         ),
         Page::Rules => {
-            ui_rules::show(
+            rules::show(
                 ui,
                 ctx.rules_page,
                 ctx.i18n,
@@ -240,7 +242,7 @@ fn connections_ui(
     rdns: &rdns::Rdns,
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
     config: &mut Config,
-    rules: &rules::RuleSet,
+    rules: &rules_engine::RuleSet,
 ) -> bool {
     ui.heading(theme::accent_text(&i18n.t("conns-title"), 20.0));
     ui.label(theme::dim_text(&i18n.t("conns-subtitle"), 13.0));
@@ -387,16 +389,16 @@ fn connections_ui(
                                 .color(theme::c().outbound),
                         );
                         // 规则求值:命中规则的连接标注动作,未命中默认放行不标注
-                        match rules.evaluate(&rules::MatchReq::from_conn(
+                        match rules.evaluate(&rules_engine::MatchReq::from_conn(
                             conn,
                             rdns.lookup(conn.remote_ip),
                         )) {
                             Some(hit) => {
                                 let (key, color) = match hit.action {
-                                    rules::Action::Allow => {
+                                    rules_engine::Action::Allow => {
                                         ("conn-action-allow", theme::c().status_ok)
                                     }
-                                    rules::Action::Block => {
+                                    rules_engine::Action::Block => {
                                         ("conn-action-block", theme::c().danger)
                                     }
                                 };

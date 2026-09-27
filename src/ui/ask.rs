@@ -11,9 +11,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SystemParametersInfoW,
 };
 
-use crate::ask::{AskItem, Decision, Scope};
+use crate::app::ask::{AskItem, Decision, Scope};
 use crate::i18n::I18n;
-use crate::theme;
+use crate::ui::theme;
 
 /// 弹窗尺寸(逻辑点)与右下角边距
 const WIDTH: f32 = 430.0;
@@ -122,7 +122,7 @@ pub fn show(ctx: &egui::Context, item: &mut AskItem, i18n: &I18n) -> Option<Deci
                         .deadline
                         .checked_duration_since(std::time::Instant::now())
                         .unwrap_or_default();
-                    let total = crate::ask::ASK_TIMEOUT.as_secs_f32().max(0.001);
+                    let total = crate::app::ask::ASK_TIMEOUT.as_secs_f32().max(0.001);
                     ui.add(
                         egui::ProgressBar::new(remaining.as_secs_f32() / total)
                             .desired_height(18.0)
