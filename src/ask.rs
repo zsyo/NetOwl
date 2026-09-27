@@ -58,6 +58,8 @@ pub struct AskItem {
     pub deadline: Instant,
     /// 弹窗内当前选择的生效范围(跨帧持久;决策时读取)
     pub scope: Scope,
+    /// 弹窗窗口高度(逻辑点;按内容运行时自适应,跨帧记忆)
+    pub win_height: f32,
 }
 
 impl AskItem {
@@ -199,6 +201,7 @@ impl Asker {
                 domain: rdns.lookup(c.remote_ip).map(str::to_owned),
                 deadline: Instant::now() + ASK_TIMEOUT,
                 scope: Scope::Once,
+                win_height: 300.0,
             });
         }
     }

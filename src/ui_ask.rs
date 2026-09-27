@@ -15,9 +15,9 @@ use crate::ask::{AskItem, Decision, Scope};
 use crate::i18n::I18n;
 use crate::theme;
 
-/// 弹窗尺寸(逻辑点)与右下角边距
+/// 弹窗尺寸(逻辑点)与右下角边距;高度为初值,运行时按内容自适应
 const WIDTH: f32 = 430.0;
-const HEIGHT: f32 = 320.0;
+const HEIGHT: f32 = 300.0;
 const MARGIN: f32 = 16.0;
 
 /// 主屏工作区(物理像素,已排除任务栏)换算为逻辑点;查询失败退回
@@ -52,6 +52,9 @@ fn workarea_logical() -> (f32, f32) {
 pub fn show(ctx: &egui::Context, item: &mut AskItem, i18n: &I18n) -> Option<Decision> {
     let (wa_w, wa_h) = workarea_logical();
     let mut decision: Option<Decision> = None;
+    let mut height = item.win_height;
+    // 本帧内容需求高度(面板闭包内测量)
+    let mut needed_height = height;
 
     let builder = egui::ViewportBuilder::default()
         .with_decorations(false)
@@ -60,19 +63,23 @@ pub fn show(ctx: &egui::Context, item: &mut AskItem, i18n: &I18n) -> Option<Deci
         .with_resizable(false)
         .with_close_button(false)
         .with_active(true)
-        .with_inner_size([WIDTH, HEIGHT])
-        .with_position([wa_w - WIDTH - MARGIN, wa_h - HEIGHT - MARGIN]);
+        .with_inner_size([WIDTH, height])
+        .with_position([wa_w - WIDTH - MARGIN, wa_h - height - MARGIN]);
 
     ctx.show_viewport_immediate(
         egui::ViewportId(egui::Id::new("netowl-ask")),
         builder,
         |ui, _class| {
-            egui::Frame::new()
-                .fill(theme::c().bg_panel)
-                .stroke(Stroke::new(1.0, theme::c().accent.gamma_multiply(0.55)))
-                .corner_radius(CornerRadius::same(theme::RADIUS_MD))
-                .inner_margin(egui::Margin::same(16))
-                .show(ui, |ui| {
+            // CentralPanel 填满整个窗口(Frame 按内容收缩会在底部露出
+            // 未绘制背景);面板带 accent 细边框
+            egui::CentralPanel::default()
+                .frame(
+                    egui::Frame::new()
+                        .fill(theme::c().bg_panel)
+                        .stroke(Stroke::new(1.0, theme::c().accent.gamma_multiply(0.55)))
+                        .inner_margin(egui::Margin::same(16)),
+                )
+                .show_inside(ui, |ui| {
                     let process = if item.process.is_empty() {
                         format!("PID {}", item.pid)
                     } else {
@@ -190,9 +197,23 @@ pub fn show(ctx: &egui::Context, item: &mut AskItem, i18n: &I18n) -> Option<Deci
                     });
                     ui.add_space(4.0);
                     ui.label(theme::dim_text(&i18n.t("ask-always-hint"), 11.0));
+                    // 记录内容需求高度(含面板下边距),供窗口自适应
+                    needed_height = ui.min_rect().bottom() + 16.0;
                 });
             // 驱动倒计时条刷新
             ctx.request_repaint_after(std::time::Duration::from_millis(200));
+            // 窗口高度贴合内容(收敛后不再发命令);右下角锚定随高度更新
+            if (needed_height - height).abs() > 4.0 {
+                height = needed_height;
+                item.win_height = height;
+                ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::Vec2::new(
+                    WIDTH, height,
+                )));
+                ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::Pos2::new(
+                    wa_w - WIDTH - MARGIN,
+                    wa_h - height - MARGIN,
+                )));
+            }
         },
     );
     decision
