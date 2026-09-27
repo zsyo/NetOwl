@@ -37,10 +37,43 @@ fn migrate(conn: &Connection) {
         })
         .unwrap_or_else(|e| panic!("[Db] 读取 schema 版本失败: {e}"));
 
-    // 后续迁移在此按 current 版本追加;当前为初始版本,无业务表
+    // 后续迁移在此按 current 版本追加
     if current < 1 {
         // 版本 1:初始化基线,暂无业务表(规则表/连接历史表随对应功能点建立)
         conn.execute("INSERT INTO schema_version (version) VALUES (1)", [])
+            .unwrap_or_else(|e| panic!("[Db] 写入 schema 版本失败: {e}"));
+    }
+    if current < 2 {
+        // 版本 2:连接历史事件表(每条已完结连接一行,写入见 history.rs)。
+        // remote_ip 存主机序 u32 便于网段 BETWEEN;归属地不落库(geoip 数据
+        // 会随重建漂移,渲染时实时反查);流量字节待 ETW 后加列
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS conn_events (
+                event_id INTEGER NOT NULL,
+                first_seen INTEGER NOT NULL,
+                last_seen INTEGER NOT NULL,
+                pid INTEGER NOT NULL,
+                process TEXT NOT NULL,
+                proc_path TEXT,
+                signed TEXT NOT NULL,
+                proto TEXT NOT NULL,
+                remote_ip INTEGER NOT NULL,
+                remote_port INTEGER NOT NULL
+            )",
+            [],
+        )
+        .unwrap_or_else(|e| panic!("[Db] 创建 conn_events 表失败: {e}"));
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_conn_events_last ON conn_events(last_seen)",
+            [],
+        )
+        .unwrap_or_else(|e| panic!("[Db] 创建 conn_events 索引失败: {e}"));
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_conn_events_first ON conn_events(first_seen)",
+            [],
+        )
+        .unwrap_or_else(|e| panic!("[Db] 创建 conn_events 索引失败: {e}"));
+        conn.execute("INSERT INTO schema_version (version) VALUES (2)", [])
             .unwrap_or_else(|e| panic!("[Db] 写入 schema 版本失败: {e}"));
     }
 }

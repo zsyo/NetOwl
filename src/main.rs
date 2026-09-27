@@ -8,6 +8,7 @@ mod collector;
 mod config;
 mod db;
 mod geoip;
+mod history;
 mod i18n;
 mod icon;
 mod local_ip;

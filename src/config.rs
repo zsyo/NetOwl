@@ -32,6 +32,12 @@ pub struct GeneralConfig {
     /// 连接数据源:"real"(真实采集)/ "mock"(模拟演示)
     #[serde(default = "default_collector")]
     pub collector: String,
+    /// 历史数据自动清理天数(0 = 不自动清理)
+    #[serde(default)]
+    pub history_days: u32,
+    /// 历史库超容提醒(false = 已勾选不再提醒;手动清空时还原为 true)
+    #[serde(default = "default_true")]
+    pub history_remind: bool,
 }
 
 impl Default for GeneralConfig {
@@ -40,12 +46,18 @@ impl Default for GeneralConfig {
             language: String::new(),
             theme: String::new(),
             collector: default_collector(),
+            history_days: 0,
+            history_remind: true,
         }
     }
 }
 
 fn default_collector() -> String {
     "real".to_owned()
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Serialize, Deserialize, Debug)]

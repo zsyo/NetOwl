@@ -131,16 +131,25 @@ pub struct UiCtx<'a> {
     pub local_pos: (f32, f32),
 }
 
-/// 中央区域按页面分发
-pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) {
+/// 中央区域按页面分发;返回本轮是否直接改动了配置(由 App 层标脏落盘)
+pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
     match page {
-        Page::Map => map::draw(ui, ctx.conns, ctx.i18n, ctx.map_view, ctx.rdns, ctx.icon_tex, ctx.local_pos),
-        Page::Connections => connections_ui(ui, ctx.conns, ctx.i18n, ctx.rdns, ctx.icon_tex),
-        Page::Rules => placeholder_ui(
-            ui,
-            &ctx.i18n.t("rules-title"),
-            &ctx.i18n.t("rules-placeholder"),
-        ),
+        Page::Map => {
+            map::draw(ui, ctx.conns, ctx.i18n, ctx.map_view, ctx.rdns, ctx.icon_tex, ctx.local_pos);
+            false
+        }
+        Page::Connections => {
+            connections_ui(ui, ctx.conns, ctx.i18n, ctx.rdns, ctx.icon_tex);
+            false
+        }
+        Page::Rules => {
+            placeholder_ui(
+                ui,
+                &ctx.i18n.t("rules-title"),
+                &ctx.i18n.t("rules-placeholder"),
+            );
+            false
+        }
         Page::Settings => settings_ui(ui, ctx.config, ctx.i18n),
     }
 }
@@ -281,8 +290,8 @@ fn tail_path(path: &str, max: usize) -> String {
     format!("…{tail}")
 }
 
-/// 设置页:语言切换(词条即时生效)、主题、数据源
-fn settings_ui(ui: &mut egui::Ui, config: &mut Config, i18n: &mut I18n) {
+/// 设置页:语言切换(词条即时生效)、主题、数据源;返回是否直接改动了配置
+fn settings_ui(ui: &mut egui::Ui, config: &mut Config, i18n: &mut I18n) -> bool {
     ui.heading(theme::accent_text(&i18n.t("settings-title"), 20.0));
     ui.add_space(16.0);
     ui.label(RichText::new(i18n.t("settings-language")).size(14.0).strong().color(theme::c().text));
@@ -370,6 +379,19 @@ fn settings_ui(ui: &mut egui::Ui, config: &mut Config, i18n: &mut I18n) {
         });
     ui.add_space(6.0);
     ui.label(theme::dim_text(&i18n.t("settings-datasource-hint"), 12.0));
+    ui.add_space(16.0);
+
+    // 历史数据自动清理天数(0 = 不自动清理)
+    ui.label(RichText::new(i18n.t("settings-history-days")).size(14.0).strong().color(theme::c().text));
+    ui.add_space(4.0);
+    let days = ui.add(
+        egui::DragValue::new(&mut config.general.history_days)
+            .range(0..=365)
+            .suffix(format!(" {}", i18n.t("settings-history-days-unit"))),
+    );
+    ui.add_space(6.0);
+    ui.label(theme::dim_text(&i18n.t("settings-history-days-hint"), 12.0));
+    days.changed()
 }
 
 /// 占位页统一卡片

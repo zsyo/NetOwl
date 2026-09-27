@@ -63,6 +63,18 @@ pub enum Signing {
     Unknown,
 }
 
+impl Signing {
+    /// 存储与比较用的规范字符串
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Signing::Signed => "signed",
+            Signing::Unsigned => "unsigned",
+            Signing::Invalid => "invalid",
+            Signing::Unknown => "unknown",
+        }
+    }
+}
+
 impl Connection {
     /// 累计流量(入 + 出)
     pub fn total_bytes(&self) -> u64 {

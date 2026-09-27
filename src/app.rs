@@ -14,6 +14,7 @@ use crate::basemap;
 use crate::collector::{self, Collector, CollectorKind};
 use crate::config::Config;
 use crate::geoip;
+use crate::history;
 use crate::i18n::I18n;
 use crate::local_ip;
 use crate::model::{Connection, Place};
@@ -57,6 +58,10 @@ pub struct NetOwlApp {
     rates: (u64, u64),
     /// 进程图标纹理(键 = 映像路径);None 表示已提取且无图标
     icon_tex: HashMap<String, Option<egui::TextureHandle>>,
+    /// 连接历史写线程(批量落盘 conn_events)
+    writer: history::Writer,
+    /// 连接快照对比器:跟踪活跃连接,消失时生成完结事件
+    tracker: history::Tracker,
     /// 本机公网 IP 探测(公共接口并发,最先成功者胜出)
     local_probe: local_ip::Probe,
     /// 本机公网 IP 的归属定位键;探测失败/未收录时为 None(地图用默认点位)
@@ -94,6 +99,8 @@ impl NetOwlApp {
             traffic: traffic::Sampler::new(),
             rates: (0, 0),
             icon_tex: HashMap::new(),
+            writer: history::Writer::spawn(config.general.history_days),
+            tracker: history::Tracker::new(),
             local_probe: local_ip::Probe::new(),
             local_place: None,
             local_probe_at: Instant::now(),
@@ -122,7 +129,11 @@ impl NetOwlApp {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
                 }
                 tray::CMD_QUIT => {
-                    // 退出前把待写配置立即落盘
+                    // 退出收尾:仍活跃的连接补写为已完结行,等待写线程清空队列,
+                    // 再把待写配置立即落盘
+                    let events = self.tracker.flush(history::unix_now());
+                    self.writer.send(events);
+                    self.writer.shutdown();
                     self.config.save_to_file();
                     self.config_dirty = false;
                     self.should_exit = true;
@@ -290,6 +301,13 @@ impl NetOwlApp {
         }
     }
 
+    /// 连接历史:diff 前后快照生成完结事件交写线程;mock 数据不入库
+    fn poll_history(&mut self) {
+        let real = self.collector.kind() == CollectorKind::Real;
+        let events = self.tracker.diff(real, &self.conns, history::unix_now());
+        self.writer.send(events);
+    }
+
     fn mark_config_dirty(&mut self) {
         self.config_dirty = true;
         self.config_dirty_since = Instant::now();
@@ -305,6 +323,8 @@ impl eframe::App for NetOwlApp {
         self.conns = self.collector.snapshot();
         self.rdns.update(&self.conns);
         self.poll_icons(ctx);
+        self.writer.set_retention(self.config.general.history_days);
+        self.poll_history();
 
         // 进入设置页时重扫 locales,加载运行期间新增的词条文件
         if self.page == Page::Settings && self.last_page != Page::Settings {
@@ -350,6 +370,7 @@ impl eframe::App for NetOwlApp {
             icon_tex: &self.icon_tex,
             local_pos,
         };
+        let mut config_changed = false;
 
         egui::Panel::left("nav")
             .exact_size(210.0)
@@ -369,12 +390,16 @@ impl eframe::App for NetOwlApp {
                     .fill(theme::c().bg_base)
                     .inner_margin(egui::Margin::same(16)),
             )
-            .show(ui, |ui| ui::central_ui(ui, page, &mut ctx));
-
+            .show(ui, |ui| {
+                config_changed |= ui::central_ui(ui, page, &mut ctx);
+            });
         let repaint = match page {
             Page::Map => REPAINT_ANIMATED,
             _ => REPAINT_IDLE,
         };
         ui.ctx().request_repaint_after(repaint);
+        if config_changed {
+            self.mark_config_dirty();
+        }
     }
 }

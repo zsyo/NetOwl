@@ -59,6 +59,10 @@ proc-sign-invalid = 签名未通过
 proc-sign-unknown = 签名未知
 proc-path-unknown = 无法读取路径
 
+settings-history-days = 历史自动清理
+settings-history-days-unit = 天
+settings-history-days-hint = 自动删除超过该天数的历史数据,0 表示不自动清理
+
 rules-title = 规则
 rules-placeholder = 规则引擎将在后续里程碑接入:允许/拒绝策略、进程与网段匹配、持久化。
 

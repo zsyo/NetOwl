@@ -59,6 +59,10 @@ proc-sign-invalid = Signature invalid
 proc-sign-unknown = Signature unknown
 proc-path-unknown = Path unavailable
 
+settings-history-days = Auto-clean history
+settings-history-days-unit = days
+settings-history-days-hint = Delete history older than this many days; 0 disables auto-clean
+
 rules-title = Rules
 rules-placeholder = The rule engine arrives in a later milestone: allow/deny policies, process and network matching, persistence.
 
