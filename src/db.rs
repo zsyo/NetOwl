@@ -90,4 +90,28 @@ fn migrate(conn: &Connection) {
         conn.execute("INSERT INTO schema_version (version) VALUES (3)", [])
             .unwrap_or_else(|e| panic!("[Db] 写入 schema 版本失败: {e}"));
     }
+    if current < 4 {
+        // 版本 4:规则表(模型与求值见 rules.rs)。枚举列存规范字符串
+        // (action/direction/remote_kind,proto 空串 = 任意,port 0 = 任意)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS rules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                priority INTEGER NOT NULL,
+                action TEXT NOT NULL,
+                direction TEXT NOT NULL,
+                proto TEXT NOT NULL DEFAULT '',
+                process TEXT NOT NULL DEFAULT '',
+                remote_kind TEXT NOT NULL DEFAULT 'any',
+                remote_value TEXT NOT NULL DEFAULT '',
+                port INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL
+            )",
+            [],
+        )
+        .unwrap_or_else(|e| panic!("[Db] 创建 rules 表失败: {e}"));
+        conn.execute("INSERT INTO schema_version (version) VALUES (4)", [])
+            .unwrap_or_else(|e| panic!("[Db] 写入 schema 版本失败: {e}"));
+    }
 }

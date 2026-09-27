@@ -1,0 +1,385 @@
+//! 规则引擎:连接匹配规则(进程/远端/端口/方向/协议/动作)的模型、
+//! 求值与 SQLite 持久化;规则页 UI 见 ui_rules。
+//!
+//! 求值按 priority 升序(数值小者优先)取首个命中的启用规则;未命中
+//! 任何规则时默认放行。表快照无方向语义,方向按远端端口近似判定,
+//! ETW 事件源落地后以真实方向替换。
+
+use std::net::Ipv4Addr;
+
+use rusqlite::Connection as Db;
+use rusqlite::params;
+
+use crate::history;
+use crate::model::{Connection, Protocol};
+
+/// Windows 默认动态端口范围下界:远端端口位于临时端口区间时,
+/// 对端更可能是主动连入的客户端
+const EPHEMERAL_MIN: u16 = 49152;
+
+/// 规则动作
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Action {
+    Allow,
+    Block,
+}
+
+impl Action {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Action::Allow => "allow",
+            Action::Block => "block",
+        }
+    }
+}
+
+/// 匹配方向
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Direction {
+    Any,
+    Out,
+    In,
+}
+
+impl Direction {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Direction::Any => "any",
+            Direction::Out => "out",
+            Direction::In => "in",
+        }
+    }
+}
+
+/// 远端匹配类型
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RemoteKind {
+    Any,
+    Ip,
+    Domain,
+}
+
+impl RemoteKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RemoteKind::Any => "any",
+            RemoteKind::Ip => "ip",
+            RemoteKind::Domain => "domain",
+        }
+    }
+}
+
+/// 一条匹配规则
+#[derive(Clone, Debug)]
+pub struct Rule {
+    pub id: i64,
+    pub name: String,
+    pub enabled: bool,
+    /// 数值小者优先评估;新建规则追加为最低优先级
+    pub priority: i64,
+    pub action: Action,
+    pub direction: Direction,
+    /// None = 任意协议
+    pub proto: Option<Protocol>,
+    /// 进程映像名或完整路径结尾(空 = 任意;大小写不敏感)
+    pub process: String,
+    pub remote_kind: RemoteKind,
+    /// 网段(CIDR/前缀/单 IP)或域名(精确或子域名后缀)
+    pub remote_value: String,
+    /// 远端端口(0 = 任意)
+    pub port: u16,
+}
+
+impl Rule {
+    /// 全部条件均满足才命中;非法网段值永不命中(UI 侧已拦截)
+    pub fn matches(&self, req: &MatchReq) -> bool {
+        if self.direction != Direction::Any && self.direction != req.direction {
+            return false;
+        }
+        if let Some(p) = self.proto
+            && p != req.proto
+        {
+            return false;
+        }
+        if self.port != 0 && self.port != req.remote_port {
+            return false;
+        }
+        if !self.process.is_empty() && !match_process(&self.process, req) {
+            return false;
+        }
+        match self.remote_kind {
+            RemoteKind::Any => {}
+            RemoteKind::Ip => {
+                let Some((lo, hi)) = parse_net(&self.remote_value) else {
+                    return false;
+                };
+                if req.remote_ip < lo || req.remote_ip > hi {
+                    return false;
+                }
+            }
+            RemoteKind::Domain => match req.domain {
+                Some(d) if match_domain(&self.remote_value, d) => {}
+                _ => return false,
+            },
+        }
+        true
+    }
+}
+
+/// 求值输入:从连接与 rDNS 域名构造
+pub struct MatchReq<'a> {
+    pub process: &'a str,
+    pub proc_path: Option<&'a str>,
+    pub proto: Protocol,
+    pub remote_ip: u32,
+    pub remote_port: u16,
+    /// rDNS 域名(未解析/无 PTR 为 None)
+    pub domain: Option<&'a str>,
+    pub direction: Direction,
+}
+
+impl<'a> MatchReq<'a> {
+    pub fn from_conn(conn: &'a Connection, domain: Option<&'a str>) -> Self {
+        MatchReq {
+            process: &conn.process,
+            proc_path: conn.proc_path.as_deref(),
+            proto: conn.proto,
+            remote_ip: u32::from(conn.remote_ip),
+            remote_port: conn.remote_port,
+            domain,
+            direction: conn_direction(conn),
+        }
+    }
+}
+
+/// 表快照无方向语义,按远端端口近似:远端端口在临时端口范围视为对端
+/// 主动连入(入站),否则视为本机出站;UDP 表行无远端语义统一按出站
+pub fn conn_direction(conn: &Connection) -> Direction {
+    if conn.proto == Protocol::Udp || conn.remote_port < EPHEMERAL_MIN {
+        Direction::Out
+    } else {
+        Direction::In
+    }
+}
+
+/// 网段解析:CIDR "10.0.0.0/8"、前缀 "142.250."、单 IP "1.2.3.4";
+/// 返回区间 [min, max],前缀风格与历史页远端筛选一致
+pub fn parse_net(input: &str) -> Option<(u32, u32)> {
+    let s = input.trim();
+    if let Some((addr, mask)) = s.split_once('/') {
+        let ip: Ipv4Addr = addr.trim().parse().ok()?;
+        let prefix: u32 = mask.trim().parse().ok()?;
+        if prefix > 32 {
+            return None;
+        }
+        let v = u32::from(ip);
+        let lo = if prefix == 0 {
+            0
+        } else {
+            v & (u32::MAX << (32 - prefix))
+        };
+        let hi = if prefix == 0 {
+            u32::MAX
+        } else {
+            v | (u32::MAX >> prefix)
+        };
+        Some((lo, hi))
+    } else {
+        crate::history_query::parse_ip_prefix(s)
+    }
+}
+
+/// 进程匹配:完整路径结尾(前带分隔符,避免误匹配同级前缀名)或映像名精确相等
+fn match_process(value: &str, req: &MatchReq) -> bool {
+    let v = value.trim().to_lowercase();
+    if let Some(path) = req.proc_path {
+        let p = path.to_lowercase();
+        if p == v || p.ends_with(&format!("\\{v}")) {
+            return true;
+        }
+    }
+    req.process.to_lowercase() == v
+}
+
+/// 域名匹配:精确相等或子域名后缀(.value)
+fn match_domain(value: &str, host: &str) -> bool {
+    let v = value.trim().to_lowercase();
+    let h = host.to_lowercase();
+    h == v || h.ends_with(&format!(".{v}"))
+}
+
+/// 内存规则集(priority 升序、同值按 id),变更同步落库
+pub struct RuleSet {
+    pub rules: Vec<Rule>,
+}
+
+impl RuleSet {
+    pub fn load(db: &Db) -> RuleSet {
+        let mut rules = Vec::new();
+        let result = (|| -> rusqlite::Result<()> {
+            let mut stmt = db.prepare(
+                "SELECT id, name, enabled, priority, action, direction, proto, process,
+                        remote_kind, remote_value, port
+                 FROM rules ORDER BY priority ASC, id ASC",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok(Rule {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    enabled: row.get::<_, i64>(2)? != 0,
+                    priority: row.get(3)?,
+                    action: parse_action(&row.get::<_, String>(4)?),
+                    direction: parse_direction(&row.get::<_, String>(5)?),
+                    proto: parse_proto(&row.get::<_, String>(6)?),
+                    process: row.get(7)?,
+                    remote_kind: parse_remote_kind(&row.get::<_, String>(8)?),
+                    remote_value: row.get(9)?,
+                    port: row.get::<_, i64>(10)? as u16,
+                })
+            })?;
+            for r in rows {
+                rules.push(r?);
+            }
+            Ok(())
+        })();
+        if let Err(e) = result {
+            eprintln!("[Rules] 规则加载失败: {e}");
+        }
+        RuleSet { rules }
+    }
+
+    /// 求值:按优先级首个命中的启用规则;无命中返回 None(默认放行)
+    pub fn evaluate(&self, req: &MatchReq) -> Option<&Rule> {
+        self.rules.iter().find(|r| r.enabled && r.matches(req))
+    }
+
+    /// 新建规则并落库,追加为最低优先级
+    pub fn insert(&mut self, db: &Db, mut rule: Rule) -> rusqlite::Result<()> {
+        rule.priority = self.rules.last().map_or(10, |r| r.priority + 10);
+        db.execute(
+            "INSERT INTO rules (name, enabled, priority, action, direction, proto,
+                                process, remote_kind, remote_value, port, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![
+                rule.name,
+                rule.enabled as i64,
+                rule.priority,
+                rule.action.as_str(),
+                rule.direction.as_str(),
+                rule.proto.map(|p| p.as_str()).unwrap_or_default(),
+                rule.process,
+                rule.remote_kind.as_str(),
+                rule.remote_value,
+                rule.port as i64,
+                history::unix_now() as i64,
+            ],
+        )?;
+        rule.id = db.last_insert_rowid();
+        self.rules.push(rule);
+        Ok(())
+    }
+
+    /// 覆盖更新规则并落库(含启停;重排走 move_rule)
+    pub fn update(&mut self, db: &Db, rule: &Rule) -> rusqlite::Result<()> {
+        db.execute(
+            "UPDATE rules SET name=?1, enabled=?2, priority=?3, action=?4, direction=?5,
+                              proto=?6, process=?7, remote_kind=?8, remote_value=?9, port=?10
+             WHERE id=?11",
+            params![
+                rule.name,
+                rule.enabled as i64,
+                rule.priority,
+                rule.action.as_str(),
+                rule.direction.as_str(),
+                rule.proto.map(|p| p.as_str()).unwrap_or_default(),
+                rule.process,
+                rule.remote_kind.as_str(),
+                rule.remote_value,
+                rule.port as i64,
+                rule.id,
+            ],
+        )?;
+        if let Some(slot) = self.rules.iter_mut().find(|r| r.id == rule.id) {
+            *slot = rule.clone();
+        }
+        self.rules.sort_by_key(|r| (r.priority, r.id));
+        Ok(())
+    }
+
+    pub fn delete(&mut self, db: &Db, id: i64) -> rusqlite::Result<()> {
+        db.execute("DELETE FROM rules WHERE id = ?1", [id])?;
+        self.rules.retain(|r| r.id != id);
+        Ok(())
+    }
+
+    /// 仅切换启停(不改变优先级排序)
+    pub fn set_enabled(&mut self, db: &Db, id: i64, enabled: bool) -> rusqlite::Result<()> {
+        db.execute(
+            "UPDATE rules SET enabled=?1 WHERE id=?2",
+            params![enabled as i64, id],
+        )?;
+        if let Some(r) = self.rules.iter_mut().find(|r| r.id == id) {
+            r.enabled = enabled;
+        }
+        Ok(())
+    }
+
+    /// 上移/下移:与相邻规则交换 priority(delta -1 上移 / +1 下移)
+    pub fn move_rule(&mut self, db: &Db, id: i64, delta: i64) -> rusqlite::Result<()> {
+        let idx = match self.rules.iter().position(|r| r.id == id) {
+            Some(i) => i,
+            None => return Ok(()),
+        };
+        let target = idx as i64 + delta;
+        if target < 0 || target as usize >= self.rules.len() {
+            return Ok(());
+        }
+        let t = target as usize;
+        let (a, b) = (self.rules[idx].clone(), self.rules[t].clone());
+        self.rules.swap(idx, t);
+        db.execute(
+            "UPDATE rules SET priority=?1 WHERE id=?2",
+            params![b.priority, b.id],
+        )?;
+        db.execute(
+            "UPDATE rules SET priority=?1 WHERE id=?2",
+            params![a.priority, a.id],
+        )?;
+        Ok(())
+    }
+}
+
+fn parse_action(s: &str) -> Action {
+    if s == Action::Allow.as_str() {
+        Action::Allow
+    } else {
+        Action::Block
+    }
+}
+
+fn parse_direction(s: &str) -> Direction {
+    match s {
+        "out" => Direction::Out,
+        "in" => Direction::In,
+        _ => Direction::Any,
+    }
+}
+
+fn parse_remote_kind(s: &str) -> RemoteKind {
+    match s {
+        "ip" => RemoteKind::Ip,
+        "domain" => RemoteKind::Domain,
+        _ => RemoteKind::Any,
+    }
+}
+
+/// 空串 = 任意协议
+fn parse_proto(s: &str) -> Option<Protocol> {
+    if s == Protocol::Udp.as_str() {
+        Some(Protocol::Udp)
+    } else if s == Protocol::Tcp.as_str() {
+        Some(Protocol::Tcp)
+    } else {
+        None
+    }
+}

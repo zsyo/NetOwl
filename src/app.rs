@@ -20,10 +20,12 @@ use crate::i18n::I18n;
 use crate::local_ip;
 use crate::model::{Connection, Place};
 use crate::rdns;
+use crate::rules;
 use crate::theme;
 use crate::traffic;
 use crate::tray::{self, Tray};
 use crate::ui::{self, Page};
+use crate::ui_rules;
 use crate::world;
 
 /// 重绘节奏:地图页动画 30fps,静态页面低频
@@ -66,6 +68,9 @@ pub struct NetOwlApp {
     /// 历史页状态与查询只读连接
     history: history_query::PageState,
     history_db: history::Db,
+    /// 规则集(内存 + SQLite 同步,规则页编辑与连接页求值共用)
+    rules: rules::RuleSet,
+    rules_page: ui_rules::PageState,
     /// 本机公网 IP 探测(公共接口并发,最先成功者胜出)
     local_probe: local_ip::Probe,
     /// 本机公网 IP 的归属定位键;探测失败/未收录时为 None(地图用默认点位)
@@ -94,6 +99,8 @@ impl NetOwlApp {
         let pending_restore = config.window_position();
         let pending_restore =
             pending_restore.map(|(x, y, w, h)| (x, y, w, h, config.window.maximized));
+        let history_db = crate::db::open();
+        let rules = rules::RuleSet::load(&history_db);
         NetOwlApp {
             page: Page::Map,
             last_page: Page::Map,
@@ -106,7 +113,9 @@ impl NetOwlApp {
             writer: history::Writer::spawn(config.general.history_days),
             tracker: history::Tracker::new(),
             history: history_query::PageState::new(),
-            history_db: crate::db::open(),
+            history_db,
+            rules,
+            rules_page: ui_rules::PageState::new(),
             local_probe: local_ip::Probe::new(),
             local_place: None,
             local_probe_at: Instant::now(),
@@ -384,6 +393,8 @@ impl eframe::App for NetOwlApp {
             icon_tex: &self.icon_tex,
             history: &mut self.history,
             history_db: &self.history_db,
+            rules: &mut self.rules,
+            rules_page: &mut self.rules_page,
             writer: &self.writer,
             local_pos,
         };

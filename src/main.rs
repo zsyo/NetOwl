@@ -17,12 +17,14 @@ mod map;
 mod model;
 mod paths;
 mod rdns;
+mod rules;
 mod theme;
 mod traffic;
 mod tray;
 mod triangulate;
 mod ui;
 mod ui_history;
+mod ui_rules;
 mod world;
 
 use std::sync::Arc;

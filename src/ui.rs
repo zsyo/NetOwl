@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use eframe::egui;
-use egui::{Button, Color32, CornerRadius, Frame, Label, Margin, RichText, Stroke};
+use egui::{Button, Color32, CornerRadius, Label, RichText, Stroke};
 
 use crate::basemap;
 use crate::collector::CollectorKind;
@@ -16,8 +16,10 @@ use crate::i18n::I18n;
 use crate::map;
 use crate::model::{Connection, Signing, fmt_bytes};
 use crate::rdns;
+use crate::rules;
 use crate::theme;
 use crate::ui_history;
+use crate::ui_rules;
 
 /// 主窗口页面
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -149,6 +151,10 @@ pub struct UiCtx<'a> {
     pub history: &'a mut history_query::PageState,
     /// 历史查询只读连接
     pub history_db: &'a history::Db,
+    /// 规则集(连接页求值与规则页编辑)
+    pub rules: &'a mut rules::RuleSet,
+    /// 规则页状态
+    pub rules_page: &'a mut ui_rules::PageState,
     /// 历史写线程句柄(手动清空)
     pub writer: &'a history::Writer,
     pub local_pos: (f32, f32),
@@ -169,9 +175,15 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
             );
             false
         }
-        Page::Connections => {
-            connections_ui(ui, ctx.conns, ctx.i18n, ctx.rdns, ctx.icon_tex, ctx.config)
-        }
+        Page::Connections => connections_ui(
+            ui,
+            ctx.conns,
+            ctx.i18n,
+            ctx.rdns,
+            ctx.icon_tex,
+            ctx.config,
+            ctx.rules,
+        ),
         Page::History => ui_history::show(
             ui,
             ctx.history,
@@ -182,18 +194,15 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
             ctx.config,
         ),
         Page::Rules => {
-            placeholder_ui(
-                ui,
-                &ctx.i18n.t("rules-title"),
-                &ctx.i18n.t("rules-placeholder"),
-            );
+            ui_rules::show(ui, ctx.rules_page, ctx.i18n, ctx.history_db, ctx.rules);
             false
         }
         Page::Settings => settings_ui(ui, ctx.config, ctx.i18n),
     }
 }
 
-/// 连接列表页;返回是否直接改动了配置(隐藏本地/局域网开关)
+/// 连接列表页;返回是否直接改动了配置(隐藏本地/局域网开关)。
+/// 末列显示规则求值动作(允许/阻断,规则引擎默认放行)
 fn connections_ui(
     ui: &mut egui::Ui,
     conns: &[Connection],
@@ -201,6 +210,7 @@ fn connections_ui(
     rdns: &rdns::Rdns,
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
     config: &mut Config,
+    rules: &rules::RuleSet,
 ) -> bool {
     ui.heading(theme::accent_text(&i18n.t("conns-title"), 20.0));
     ui.label(theme::dim_text(&i18n.t("conns-subtitle"), 13.0));
@@ -239,7 +249,7 @@ fn connections_ui(
         .auto_shrink(false)
         .show(ui, |ui| {
             egui::Grid::new("connections_grid")
-                .num_columns(6)
+                .num_columns(7)
                 .spacing([24.0, 9.0])
                 .striped(true)
                 .show(ui, |ui| {
@@ -250,6 +260,7 @@ fn connections_ui(
                         "col-location",
                         "col-down",
                         "col-up",
+                        "col-action",
                     ] {
                         ui.label(
                             RichText::new(i18n.t(key))
@@ -345,6 +356,26 @@ fn connections_ui(
                                 .size(13.0)
                                 .color(theme::c().outbound),
                         );
+                        // 规则求值:命中规则的连接标注动作,未命中默认放行不标注
+                        match rules.evaluate(&rules::MatchReq::from_conn(
+                            conn,
+                            rdns.lookup(conn.remote_ip),
+                        )) {
+                            Some(hit) => {
+                                let (key, color) = match hit.action {
+                                    rules::Action::Allow => {
+                                        ("conn-action-allow", theme::c().status_ok)
+                                    }
+                                    rules::Action::Block => {
+                                        ("conn-action-block", theme::c().danger)
+                                    }
+                                };
+                                ui.label(RichText::new(i18n.t(key)).size(13.0).color(color));
+                            }
+                            None => {
+                                ui.label("");
+                            }
+                        }
                         ui.end_row();
                     }
                 });
@@ -499,19 +530,4 @@ fn settings_ui(ui: &mut egui::Ui, config: &mut Config, i18n: &mut I18n) -> bool 
     ui.add_space(6.0);
     ui.label(theme::dim_text(&i18n.t("settings-history-days-hint"), 12.0));
     days.changed()
-}
-
-/// 占位页统一卡片
-fn placeholder_ui(ui: &mut egui::Ui, title: &str, body: &str) {
-    ui.heading(theme::accent_text(title, 20.0));
-    ui.add_space(20.0);
-    Frame::new()
-        .fill(theme::c().bg_card)
-        .stroke(Stroke::new(1.0, theme::c().stroke))
-        .corner_radius(CornerRadius::same(theme::RADIUS_LG))
-        .inner_margin(Margin::same(20))
-        .show(ui, |ui| {
-            ui.set_max_width(440.0);
-            ui.label(RichText::new(body).size(13.0).color(theme::c().text_dim));
-        });
 }

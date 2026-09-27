@@ -50,9 +50,13 @@ col-remote = 远端地址
 col-location = 位置
 col-down = 下载
 col-up = 上传
+col-port = 端口
+col-action = 动作
 conns-empty = 暂无活跃连接
 conn-loc-unknown = 未知归属
 conn-proc-unknown = 未知进程
+conn-action-allow = 允许
+conn-action-block = 阻断
 
 proc-signed = 已签名
 proc-unsigned = 未签名
@@ -97,7 +101,41 @@ history-empty = 所选范围内没有历史记录
 history-truncated = 已达单次查询上限 {$n} 条,请缩小时间范围或增加筛选
 
 rules-title = 规则
-rules-placeholder = 规则引擎将在后续里程碑接入:允许/拒绝策略、进程与网段匹配、持久化。
+rules-subtitle = 规则按优先级自上而下评估,首个命中的启用规则决定动作,未命中默认放行
+rules-new = 新建规则
+rules-col-enabled = 启用
+rules-col-name = 名称
+rules-col-action = 动作
+rules-col-direction = 方向
+rules-col-remote = 远端
+rules-col-ops = 操作
+rules-empty = 暂无规则,点击"新建规则"添加
+rules-new-title = 新建规则
+rules-edit-title = 编辑规则
+rules-move-up = 上移
+rules-move-down = 下移
+rules-edit = 编辑
+rules-delete = 删除
+rules-save = 保存
+rules-cancel = 取消
+rule-action-allow = 允许
+rule-action-block = 阻断
+rule-direction-any = 任意方向
+rule-direction-out = 出站
+rule-direction-in = 入站
+rule-proto-any = 任意协议
+rule-remote-any = 任意远端
+rule-remote-ip = IP 网段
+rule-remote-domain = 域名
+rules-process-hint = 映像名或路径结尾,如 chrome.exe;留空匹配任意进程
+rules-direction-hint = 当前按远端端口近似判定,>=49152 视为入站
+rules-remote-ip-hint = 如 10.0.0.0/8、142.250. 或 1.2.3.4
+rules-remote-domain-hint = 域名后缀,如 example.com
+rules-port-any-hint = 0 = 任意端口
+rules-err-name = 名称不能为空
+rules-err-remote = 网段格式无法解析
+rules-err-remote-empty = 域名不能为空
+rules-err-save = 保存失败,请查看日志
 
 settings-title = 设置
 settings-language = 语言

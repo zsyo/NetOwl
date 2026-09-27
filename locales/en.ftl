@@ -50,9 +50,13 @@ col-remote = Remote address
 col-location = Location
 col-down = Down
 col-up = Up
+col-port = Port
+col-action = Action
 conns-empty = No active connections
 conn-loc-unknown = Unknown
 conn-proc-unknown = Unknown process
+conn-action-allow = Allow
+conn-action-block = Block
 
 proc-signed = Signed
 proc-unsigned = Unsigned
@@ -97,7 +101,41 @@ history-empty = No history records in the selected range
 history-truncated = Query limit of {$n} rows reached; narrow the time range or add filters
 
 rules-title = Rules
-rules-placeholder = The rule engine arrives in a later milestone: allow/deny policies, process and network matching, persistence.
+rules-subtitle = Rules are evaluated top-down by priority; the first enabled match decides the action, unmatched connections are allowed
+rules-new = New Rule
+rules-col-enabled = On
+rules-col-name = Name
+rules-col-action = Action
+rules-col-direction = Direction
+rules-col-remote = Remote
+rules-col-ops = Ops
+rules-empty = No rules yet; click "New Rule" to add one
+rules-new-title = New Rule
+rules-edit-title = Edit Rule
+rules-move-up = Up
+rules-move-down = Down
+rules-edit = Edit
+rules-delete = Delete
+rules-save = Save
+rules-cancel = Cancel
+rule-action-allow = Allow
+rule-action-block = Block
+rule-direction-any = Any direction
+rule-direction-out = Outbound
+rule-direction-in = Inbound
+rule-proto-any = Any protocol
+rule-remote-any = Any remote
+rule-remote-ip = IP range
+rule-remote-domain = Domain
+rules-process-hint = Image name or path suffix, e.g. chrome.exe; empty matches any process
+rules-direction-hint = Approximated by remote port for now; >=49152 counts as inbound
+rules-remote-ip-hint = e.g. 10.0.0.0/8, 142.250. or 1.2.3.4
+rules-remote-domain-hint = Domain suffix, e.g. example.com
+rules-port-any-hint = 0 = any port
+rules-err-name = Name must not be empty
+rules-err-remote = Cannot parse the IP range
+rules-err-remote-empty = Domain must not be empty
+rules-err-save = Save failed; check the log
 
 settings-title = Settings
 settings-language = Language
