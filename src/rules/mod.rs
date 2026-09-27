@@ -5,6 +5,7 @@
 //! 任何规则时默认放行。表快照无方向语义,方向按远端端口近似判定,
 //! ETW 事件源落地后以真实方向替换。
 
+pub mod io;
 pub mod wfp;
 
 use std::collections::HashMap;

@@ -1,6 +1,8 @@
 //! 规则页:规则列表(启停/上移下移/编辑/删除)与编辑弹窗;
 //! 模型与求值引擎见 rules.rs。
 
+use std::time::{Duration, Instant};
+
 use eframe::egui;
 use egui::{CornerRadius, RichText};
 use rusqlite::Connection as Db;
@@ -15,15 +17,41 @@ use crate::ui::theme;
 const TOOLBAR_ROW_H: f32 = 26.0;
 /// 编辑弹窗控件列宽度
 const FIELD_WIDTH: f32 = 220.0;
+/// 工具栏反馈消息展示时长
+const FEEDBACK_TIMEOUT: Duration = Duration::from_secs(6);
+/// 导出对话框默认文件名
+const EXPORT_FILE_NAME: &str = "netowl-rules.json";
 
 /// 规则页状态:编辑弹窗草稿(切页保持)
 pub struct PageState {
     pub draft: Option<Draft>,
+    /// 最近一次导入/导出的反馈消息(工具栏右侧,超时自动消失)
+    pub feedback: Option<Feedback>,
 }
 
 impl PageState {
     pub fn new() -> Self {
-        PageState { draft: None }
+        PageState {
+            draft: None,
+            feedback: None,
+        }
+    }
+}
+
+/// 工具栏反馈消息
+pub struct Feedback {
+    is_err: bool,
+    text: String,
+    at: Instant,
+}
+
+impl Feedback {
+    fn now(is_err: bool, text: String) -> Feedback {
+        Feedback {
+            is_err,
+            text,
+            at: Instant::now(),
+        }
     }
 }
 
@@ -117,11 +145,88 @@ pub fn show(
         {
             state.draft = Some(Draft::new_rule());
         }
+        if ui
+            .button(RichText::new(i18n.t("rules-export")).size(13.0))
+            .clicked()
+        {
+            do_export(rules, state, i18n);
+        }
+        if ui
+            .button(RichText::new(i18n.t("rules-import")).size(13.0))
+            .clicked()
+        {
+            do_import(db, rules, state, i18n);
+        }
+        feedback_label(ui, state);
     });
     ui.add_space(8.0);
 
     rules_table(ui, state, i18n, db, rules);
     edit_window(ui, state, i18n, db, rules);
+}
+
+/// 导出:原生保存对话框选路径,持久规则写为 JSON 文件
+fn do_export(rules: &RuleSet, state: &mut PageState, i18n: &I18n) {
+    let Some(path) = rfd::FileDialog::new()
+        .add_filter("JSON", &["json"])
+        .set_file_name(EXPORT_FILE_NAME)
+        .save_file()
+    else {
+        return;
+    };
+    let n = rules.rules.iter().filter(|r| r.id > 0).count();
+    let result = std::fs::write(&path, rules.export_json()).map(|_| n);
+    state.feedback = Some(match result {
+        Ok(n) => Feedback::now(
+            false,
+            i18n.t_with_args("rules-export-done", &[("n", n.to_string())]),
+        ),
+        Err(e) => Feedback::now(
+            true,
+            i18n.t_with_args("rules-export-failed", &[("err", e.to_string())]),
+        ),
+    });
+}
+
+/// 导入:原生打开对话框选 JSON 文件,规则追加为最低优先级
+fn do_import(db: &Db, rules: &mut RuleSet, state: &mut PageState, i18n: &I18n) {
+    let Some(path) = rfd::FileDialog::new()
+        .add_filter("JSON", &["json"])
+        .pick_file()
+    else {
+        return;
+    };
+    let result = std::fs::read_to_string(&path)
+        .map_err(|e| e.to_string())
+        .and_then(|text| rules.import_json(db, &text));
+    state.feedback = Some(match result {
+        Ok(n) => Feedback::now(
+            false,
+            i18n.t_with_args("rules-import-done", &[("n", n.to_string())]),
+        ),
+        Err(e) => Feedback::now(true, i18n.t_with_args("rules-import-failed", &[("err", e)])),
+    });
+}
+
+/// 工具栏右侧反馈消息(成功绿色/失败警示色,超时自动消失)
+fn feedback_label(ui: &mut egui::Ui, state: &mut PageState) {
+    if state
+        .feedback
+        .as_ref()
+        .is_some_and(|fb| fb.at.elapsed() > FEEDBACK_TIMEOUT)
+    {
+        state.feedback = None;
+    }
+    if let Some(fb) = &state.feedback {
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let color = if fb.is_err {
+                theme::c().danger
+            } else {
+                theme::c().status_ok
+            };
+            ui.label(RichText::new(&fb.text).size(12.0).color(color));
+        });
+    }
 }
 
 /// 拦截引擎状态行:未提权/失败时用警示色提示(只读标注模式)
