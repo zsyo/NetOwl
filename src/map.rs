@@ -38,6 +38,19 @@ fn arc_ctrl(p0: Pos2, p1: Pos2) -> Pos2 {
     mid + Vec2::new(-d.y, d.x) / len * lift
 }
 
+/// 经度差归一到 (-180, 180]:连线取最短方向,跨太平洋不再横穿大陆
+fn wrap_delta(d: f32) -> f32 {
+    d - 360.0 * (d / 360.0).round()
+}
+
+/// 鼠标到点的最短距离:x 差对世界周期取模,任意 wrap 副本均可命中
+fn wrap_dist(h: Pos2, pos: Pos2, cycle_px: f32) -> f32 {
+    let dx = (h.x - pos.x).rem_euclid(cycle_px);
+    let dx = dx.min(cycle_px - dx);
+    let dy = h.y - pos.y;
+    (dx * dx + dy * dy).sqrt()
+}
+
 /// 由 id/字节数派生稳定的 [0,1) 相位偏移,让粒子/脉冲错落
 fn hash_phase(seed: u64) -> f32 {
     ((seed as f32 * 0.618_034) % 1.0).abs()
@@ -73,66 +86,93 @@ pub fn draw(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n, view: &mut Vie
 
     let local = proj.project(LOCAL.lon, LOCAL.lat);
     let agg = aggregate(conns);
+    let cycle_px = proj.cycle_px();
 
     for c in conns {
-        let end = proj.project(city(c.city).lon, city(c.city).lat);
+        // 城市端取最短方向等效经度(跨太平洋走短弧),主几何按可见世界副本
+        // 平移铺开,屏幕边缘两侧由相邻副本自然接续
+        let geo = city(c.city);
+        let end_lon = LOCAL.lon + wrap_delta(geo.lon - LOCAL.lon);
+        let city_pos = proj.project(end_lon, geo.lat);
         let inbound = c.inbound_dominant();
-        let (start, end) = if inbound { (end, local) } else { (local, end) };
+        let (start, end) = if inbound { (city_pos, local) } else { (local, city_pos) };
         let ctrl = arc_ctrl(start, end);
         let color = if inbound { theme::c().inbound } else { theme::c().outbound };
-        let hovered = hover_pos.is_some_and(|h| h.distance(end) < 20.0);
+        let hovered = hover_pos.is_some_and(|h| wrap_dist(h, end, cycle_px) < 20.0);
         let stroke = if hovered {
             Stroke::new(2.0, color.gamma_multiply(0.9))
         } else {
             Stroke::new(1.4, color.gamma_multiply(0.45))
         };
-        painter.add(Shape::QuadraticBezier(QuadraticBezierShape {
-            points: [start, ctrl, end],
-            closed: false,
-            fill: Color32::TRANSPARENT,
-            stroke: stroke.into(),
-        }));
-        // 粒子与尾迹
+        // 曲线横向 bbox 为端点包围盒(控制点 x 居中),据此求可见副本区间
+        let (min_x, max_x) = (start.x.min(end.x), start.x.max(end.x));
+        let k0 = ((rect.left() - max_x) / cycle_px).floor() as i32;
+        let k1 = ((rect.right() - min_x) / cycle_px).floor() as i32;
+        // 粒子与尾迹(主副本算一次,副本平移)
         let phase = (t * 0.22 + hash_phase(c.id)) % 1.0;
-        for k in 0..3u32 {
-            let pt = bezier(start, ctrl, end, (phase - 0.02 * k as f32).rem_euclid(1.0));
-            painter.circle_filled(pt, 2.6 - 0.7 * k as f32, color.gamma_multiply(0.9 - 0.3 * k as f32));
+        let trail: Vec<Pos2> = (0..3u32)
+            .map(|k| bezier(start, ctrl, end, (phase - 0.02 * k as f32).rem_euclid(1.0)))
+            .collect();
+        for k in k0..=k1 {
+            let off = Vec2::new(k as f32 * cycle_px, 0.0);
+            painter.add(Shape::QuadraticBezier(QuadraticBezierShape {
+                points: [start + off, ctrl + off, end + off],
+                closed: false,
+                fill: Color32::TRANSPARENT,
+                stroke: stroke.into(),
+            }));
+            for (i, pt) in trail.iter().enumerate() {
+                painter.circle_filled(
+                    *pt + off,
+                    2.6 - 0.7 * i as f32,
+                    color.gamma_multiply(0.9 - 0.3 * i as f32),
+                );
+            }
         }
     }
 
-    // 城市节点:半径随连接数增长,外圈脉冲;命中悬停的城市记下来
+    // 城市节点:半径随连接数增长,外圈脉冲;命中悬停的城市记下来。
+    // 节点与标签对每个可见 wrap 副本各画一份
     let mut hovered_key = None;
     for (key, (count, bytes)) in &agg {
         let c = city(key);
         let pos = proj.project(c.lon, c.lat);
         let r = 4.0 + 2.2 * (*count as f32).sqrt();
-        let hovered = hover_pos.is_some_and(|h| h.distance(pos) < r + 8.0);
+        let hovered = hover_pos.is_some_and(|h| wrap_dist(h, pos, cycle_px) < r + 8.0);
         if hovered {
             hovered_key = Some(*key);
         }
         let pulse_alpha = 0.35 + 0.3 * (0.5 + 0.5 * (t * 2.0 + hash_phase(*bytes) * std::f32::consts::TAU).sin());
-        painter.circle_stroke(pos, r + 5.0, Stroke::new(1.5, theme::c().map_node.gamma_multiply(pulse_alpha)));
-        painter.circle_filled(pos, r, if hovered { theme::c().accent } else { theme::c().map_node });
-        painter.circle_stroke(pos, r, Stroke::new(1.0, theme::c().text));
-        painter.text(
-            pos + Vec2::new(0.0, r + 13.0),
-            Align2::CENTER_CENTER,
-            i18n.t(&format!("city-{key}")),
-            FontId::proportional(11.0),
-            if hovered { theme::c().text } else { theme::c().text_dim },
-        );
+        let (k0, k1) = proj.visible_cycles(pos.x, rect);
+        for k in k0..=k1 {
+            let pos = pos + Vec2::new(k as f32 * cycle_px, 0.0);
+            painter.circle_stroke(pos, r + 5.0, Stroke::new(1.5, theme::c().map_node.gamma_multiply(pulse_alpha)));
+            painter.circle_filled(pos, r, if hovered { theme::c().accent } else { theme::c().map_node });
+            painter.circle_stroke(pos, r, Stroke::new(1.0, theme::c().text));
+            painter.text(
+                pos + Vec2::new(0.0, r + 13.0),
+                Align2::CENTER_CENTER,
+                i18n.t(&format!("city-{key}")),
+                FontId::proportional(11.0),
+                if hovered { theme::c().text } else { theme::c().text_dim },
+            );
+        }
     }
 
     // 本机节点(标签放上方,避开东亚密集城市的下方标签)
-    painter.circle_stroke(local, 10.0, Stroke::new(1.5, theme::c().accent.gamma_multiply(0.5)));
-    painter.circle_filled(local, 6.0, theme::c().accent);
-    painter.text(
-        local + Vec2::new(0.0, -16.0),
-        Align2::CENTER_BOTTOM,
-        i18n.t("map-local"),
-        FontId::proportional(11.0),
-        theme::c().text,
-    );
+    let (k0, k1) = proj.visible_cycles(local.x, rect);
+    for k in k0..=k1 {
+        let pos = local + Vec2::new(k as f32 * cycle_px, 0.0);
+        painter.circle_stroke(pos, 10.0, Stroke::new(1.5, theme::c().accent.gamma_multiply(0.5)));
+        painter.circle_filled(pos, 6.0, theme::c().accent);
+        painter.text(
+            pos + Vec2::new(0.0, -16.0),
+            Align2::CENTER_BOTTOM,
+            i18n.t("map-local"),
+            FontId::proportional(11.0),
+            theme::c().text,
+        );
+    }
 
     if let Some(key) = hovered_key {
         info_card(&painter, rect, key, conns, i18n);
@@ -171,13 +211,17 @@ fn handle_input(ui: &egui::Ui, resp: &egui::Response, canvas: Rect, view: &mut V
     }
 }
 
-/// 视口中心钳制:保证地图世界与视口保持相交
+/// 视口钳制:经度方向无缝循环,仅把中心与动画目标同步归一化到
+/// [-180, 180) 防止数值无限增长(同步平移不改变动画相对关系);
+/// 纬度仍限制中心使视口不脱出世界
 fn clamp_view(canvas: Rect, view: &mut View) {
     let ppd = Projection::fit_ppd(canvas) * view.zoom;
-    let half_lon = (canvas.width() * 0.5) / ppd;
     let half_lat = (canvas.height() * 0.5) / ppd;
-    view.center_lon = clamp_center(view.center_lon, half_lon, 180.0);
-    view.target_lon = clamp_center(view.target_lon, half_lon, 180.0);
+    let shift = (view.center_lon / 360.0).round() * 360.0;
+    if shift != 0.0 {
+        view.center_lon -= shift;
+        view.target_lon -= shift;
+    }
     view.center_lat = clamp_center(view.center_lat, half_lat, 90.0);
     view.target_lat = clamp_center(view.target_lat, half_lat, 90.0);
 }

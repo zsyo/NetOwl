@@ -62,7 +62,9 @@ impl Default for View {
     }
 }
 
-/// 等距圆柱投影:像素/度线性映射,画布中心对应视图中心
+/// 等距圆柱投影:像素/度线性映射,画布中心对应视图中心。
+/// 经度方向以 360 度为周期无缝平铺(wrap-around),世界可按副本循环绘制
+#[derive(Clone, Copy)]
 pub struct Projection {
     center: Pos2,
     pub center_lon: f32,
@@ -101,6 +103,28 @@ impl Projection {
             self.center_lat - (p.y - self.center.y) / self.ppd,
         )
     }
+
+    /// 世界横向周期宽度(像素)
+    pub fn cycle_px(&self) -> f32 {
+        360.0 * self.ppd
+    }
+
+    /// 水平平移 n 个世界周期的投影副本:等距圆柱下副本即纯平移,
+    /// project/unproject 在副本坐标系内保持互逆
+    pub fn shifted(&self, n: i32) -> Projection {
+        let mut p = *self;
+        p.center_lon -= n as f32 * 360.0;
+        p
+    }
+
+    /// 屏幕坐标 x 的点可见的世界副本序号区间(边界多画一个,不可见副本由裁剪兜底)
+    pub fn visible_cycles(&self, x: f32, rect: Rect) -> (i32, i32) {
+        let w = self.cycle_px();
+        (
+            ((rect.left() - x) / w).floor() as i32,
+            ((rect.right() - x) / w).floor() as i32,
+        )
+    }
 }
 
 /// 绘制完整底图:海洋底色、网格、世界层(NE)、中国层(DataV 覆盖)、
@@ -112,13 +136,24 @@ pub fn draw(painter: &egui::Painter, rect: Rect, proj: &Projection, labels_zh: b
 
     let data = map_data();
     let idx = if proj.zoom >= DETAIL_ZOOM { 1 } else { 0 };
-    draw_level(painter, rect, proj, &data.world[idx]);
 
-    // 中国层:陆地填充 + 海岸/国界,整体覆盖世界层之上
-    draw_level(painter, rect, proj, &data.china[idx]);
+    // 经度方向 wrap:数据落在 [-180,180],按可见经度窗口求覆盖的世界副本,
+    // 每个副本(平移 k*360 度)完整走一遍层序;副本屏幕区间互不重叠,
+    // 不可见部分由环级/段级/标签剔除自然过滤
+    let (lon_l, _) = proj.unproject(rect.left_top());
+    let (lon_r, _) = proj.unproject(rect.right_bottom());
+    let k_min = ((lon_l.min(lon_r) + 180.0) / 360.0).floor() as i32;
+    let k_max = ((lon_r.max(lon_l) + 180.0) / 360.0).floor() as i32;
+    for k in k_min..=k_max {
+        let p = proj.shifted(k);
+        draw_level(painter, rect, &p, &data.world[idx]);
 
-    draw_south_sea_line(painter, rect, proj, &data.south_sea_line);
-    draw_labels(painter, rect, proj, &data.labels, labels_zh);
+        // 中国层:陆地填充 + 海岸/国界,整体覆盖世界层之上
+        draw_level(painter, rect, &p, &data.china[idx]);
+
+        draw_south_sea_line(painter, rect, &p, &data.south_sea_line);
+        draw_labels(painter, rect, &p, &data.labels, labels_zh);
+    }
 }
 
 /// 单层底图:陆地与洞环填充、海岸线与国界(共享边检测在解码期完成)
@@ -141,7 +176,8 @@ fn draw_level(
     painter.add(Shape::Mesh(Arc::new(coast)));
 }
 
-/// 经纬网格:按视口范围绘制,放大后加密
+/// 经纬网格:按视口范围绘制,放大后加密;
+/// 经线随 wrap 自由跨周期,纬线端点延伸到可见经度窗口
 fn draw_grid(painter: &egui::Painter, rect: Rect, proj: &Projection) {
     let (lon0, lat0) = proj.unproject(rect.left_top());
     let (lon1, lat1) = proj.unproject(rect.right_bottom());
@@ -152,9 +188,6 @@ fn draw_grid(painter: &egui::Painter, rect: Rect, proj: &Projection) {
     let first = (lon0.floor() as i32).div_euclid(step) * step;
     for lon in (first..=lon1.ceil() as i32).step_by(step as usize) {
         let lon = lon as f32;
-        if !(-180.0..=180.0).contains(&lon) {
-            continue;
-        }
         painter.line_segment(
             [proj.project(lon, 90.0), proj.project(lon, -90.0)],
             egui::Stroke::new(1.0, theme::c().map_grid),
@@ -164,7 +197,7 @@ fn draw_grid(painter: &egui::Painter, rect: Rect, proj: &Projection) {
     for lat in (first..=lat1.ceil() as i32).step_by(step as usize) {
         let lat = (lat as f32).clamp(-90.0, 90.0);
         painter.line_segment(
-            [proj.project(-180.0, lat), proj.project(180.0, lat)],
+            [proj.project(lon0, lat), proj.project(lon1, lat)],
             egui::Stroke::new(1.0, theme::c().map_grid),
         );
     }
