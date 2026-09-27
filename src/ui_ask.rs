@@ -17,7 +17,7 @@ use crate::theme;
 
 /// 弹窗尺寸(逻辑点)与右下角边距
 const WIDTH: f32 = 430.0;
-const HEIGHT: f32 = 282.0;
+const HEIGHT: f32 = 320.0;
 const MARGIN: f32 = 16.0;
 
 /// 主屏工作区(物理像素,已排除任务栏)换算为逻辑点;查询失败退回
@@ -112,7 +112,8 @@ pub fn show(ctx: &egui::Context, item: &mut AskItem, i18n: &I18n) -> Option<Deci
                     ));
                     ui.add_space(8.0);
 
-                    // 倒计时:超时自动执行默认动作(拒绝·仅本次)
+                    // 倒计时:超时自动执行默认动作(拒绝·仅本次);
+                    // 剩余秒数直接显示在条内,高度需容纳文字避免垂直裁剪
                     let remaining = item
                         .deadline
                         .checked_duration_since(std::time::Instant::now())
@@ -120,16 +121,12 @@ pub fn show(ctx: &egui::Context, item: &mut AskItem, i18n: &I18n) -> Option<Deci
                     let total = crate::ask::ASK_TIMEOUT.as_secs_f32().max(0.001);
                     ui.add(
                         egui::ProgressBar::new(remaining.as_secs_f32() / total)
-                            .show_percentage()
-                            .desired_height(8.0),
+                            .desired_height(18.0)
+                            .text(i18n.t_with_args(
+                                "ask-timeout-hint",
+                                &[("n", remaining.as_secs().to_string())],
+                            )),
                     );
-                    ui.label(theme::dim_text(
-                        &i18n.t_with_args(
-                            "ask-timeout-hint",
-                            &[("n", remaining.as_secs().to_string())],
-                        ),
-                        12.0,
-                    ));
                     ui.add_space(8.0);
 
                     // 生效范围:仅本次 / 永久·仅此目标 / 永久·整个程序
@@ -159,8 +156,10 @@ pub fn show(ctx: &egui::Context, item: &mut AskItem, i18n: &I18n) -> Option<Deci
                     });
                     ui.add_space(10.0);
 
-                    // 动作按钮:允许为主按钮(accent 填充白字),拒绝 danger 描边
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    // 动作按钮:允许为主按钮(accent 填充白字),拒绝 danger 描边;
+                    // cross 用 Min:按钮行按内容高度排列(用 Center 会占满
+                    // 剩余高度导致按钮垂直悬空在窗口中部)
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
                         let btn = |ui: &mut egui::Ui, key: &str, allow: bool| {
                             let mut text = RichText::new(i18n.t(key)).size(14.0).strong();
                             if allow {
