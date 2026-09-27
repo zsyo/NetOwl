@@ -50,13 +50,16 @@ pub fn nav_ui(
     collector_kind: CollectorKind,
 ) {
     ui.add_space(4.0);
-    ui.label(
-        RichText::new(i18n.t("app-name"))
-            .size(22.0)
-            .strong()
-            .color(theme::c().accent),
-    );
-    ui.label(theme::dim_text(&i18n.t("app-subtitle"), 10.0));
+    // 品牌名与副标题居中
+    ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+        ui.label(
+            RichText::new(i18n.t("app-name"))
+                .size(22.0)
+                .strong()
+                .color(theme::c().accent),
+        );
+        ui.label(theme::dim_text(&i18n.t("app-subtitle"), 10.0));
+    });
     ui.add_space(10.0);
     ui.separator();
     ui.add_space(6.0);
@@ -88,51 +91,68 @@ pub fn nav_ui(
         }
     }
 
-    // 底部状态区(bottom_up:先绘制的贴底)
+    // 底部状态区(bottom_up:先绘制的贴底)。速率行给固定宽度起点:
+    // "下载/上传"标签不随速率长短移动,速率只向右延伸,整体近似居中
     ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
         ui.add_space(8.0);
-        // 实时总速率(GetIfTable2 接口字节采样差值);bottom_up 先绘制的贴底,
-        // 故先上传后下载,让下载行在上
-        ui.label(
-            RichText::new(i18n.t_with_args(
-                "nav-rate-up",
-                &[("rate", format!("{}/s", fmt_bytes(rates.1)))],
-            ))
-            .size(12.0)
-            .color(theme::c().outbound),
-        );
-        ui.label(
-            RichText::new(i18n.t_with_args(
-                "nav-rate-down",
-                &[("rate", format!("{}/s", fmt_bytes(rates.0)))],
-            ))
-            .size(12.0)
-            .color(theme::c().inbound),
-        );
-        ui.add_space(6.0);
+        let x = ((ui.available_width() - RATE_ROW_WIDTH) / 2.0).max(0.0) + 40.0;
+        rate_row(ui, i18n, "nav-rate-up", rates.1, theme::c().outbound, x);
+        rate_row(ui, i18n, "nav-rate-down", rates.0, theme::c().inbound, x);
+        ui.add_space(8.0);
         ui.separator();
         ui.add_space(6.0);
+
+        // 状态行/条数水平居中(按文本实测宽度计算偏移;
+        // bottom_up 内嵌套占满式布局会把内容顶到菜单下方,故逐行偏移)
+        let text = i18n.t("status-monitoring");
+        let w = 14.0 + 8.0 + text_width(ui, &text, 13.0);
         ui.horizontal(|ui| {
+            ui.add_space(((ui.available_width() - w) / 2.0).max(0.0));
             let (rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
             ui.painter()
                 .circle_filled(rect.center(), 4.0, theme::c().status_ok);
-            ui.label(theme::dim_text(&i18n.t("status-monitoring"), 13.0));
+            ui.label(theme::dim_text(&text, 13.0));
         });
+        let text = i18n.t_with_args("status-conn-count", &[("count", conns.len().to_string())]);
+        ui.horizontal(|ui| {
+            ui.add_space(((ui.available_width() - text_width(ui, &text, 11.0)) / 2.0).max(0.0));
+            ui.label(RichText::new(text).size(11.0).color(theme::c().text_dim));
+        });
+        // 模拟数据源提示(真实采集时无独立状态行,避免与绿点行重复)
+        if collector_kind == CollectorKind::Mock {
+            let text = i18n.t("status-mock");
+            ui.horizontal(|ui| {
+                ui.add_space(((ui.available_width() - text_width(ui, &text, 11.0)) / 2.0).max(0.0));
+                ui.label(RichText::new(text).size(11.0).color(theme::c().text_dim));
+            });
+        }
+    });
+}
+
+/// 速率行固定宽度:标签起点固定,速率在行内向右延伸,整体近似居中
+const RATE_ROW_WIDTH: f32 = 150.0;
+
+/// 侧栏字体下文本宽度(居中偏移计算用)
+fn text_width(ui: &egui::Ui, text: &str, size: f32) -> f32 {
+    ui.painter()
+        .layout_no_wrap(
+            text.to_owned(),
+            egui::FontId::proportional(size),
+            egui::Color32::WHITE,
+        )
+        .rect
+        .width()
+}
+
+/// 一行速率:"下载/上传"标签 + 速率,经固定偏移实现近似居中
+fn rate_row(ui: &mut egui::Ui, i18n: &I18n, key: &str, rate: u64, color: Color32, x: f32) {
+    ui.horizontal(|ui| {
+        ui.add_space(x);
+        ui.label(RichText::new(i18n.t(key)).size(12.0).color(color));
         ui.label(
-            RichText::new(
-                i18n.t_with_args("status-conn-count", &[("count", conns.len().to_string())]),
-            )
-            .size(11.0)
-            .color(theme::c().text_dim),
-        );
-        let status_key = match collector_kind {
-            CollectorKind::Real => "status-monitoring",
-            CollectorKind::Mock => "status-mock",
-        };
-        ui.label(
-            RichText::new(i18n.t(status_key))
-                .size(11.0)
-                .color(theme::c().text_dim),
+            RichText::new(format!("{}/s", fmt_bytes(rate)))
+                .size(12.0)
+                .color(color),
         );
     });
 }

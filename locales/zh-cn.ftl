@@ -14,8 +14,8 @@ status-monitoring = 监控中
 status-mock = 模拟数据
 status-conn-count = { $count } 条连接
 
-nav-rate-down = 下载 {$rate}
-nav-rate-up = 上传 {$rate}
+nav-rate-down = 下载
+nav-rate-up = 上传
 
 map-title = 流量地图
 map-subtitle = 实时网络连接可视化

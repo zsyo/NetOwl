@@ -56,7 +56,7 @@ fn main() -> eframe::Result {
     let restore_target = cfg.window_position();
     let mut viewport = egui::ViewportBuilder::default()
         .with_title(APP_NAME)
-        .with_min_inner_size([920.0, 620.0])
+        .with_min_inner_size([1280.0, 720.0])
         .with_icon(Arc::new(icon::window_icon()));
     match restore_target {
         Some((x, y, w, h)) => {
@@ -68,7 +68,7 @@ fn main() -> eframe::Result {
                 .with_inner_size([w as f32, h as f32]);
         }
         None => {
-            viewport = viewport.with_inner_size([1180.0, 760.0]);
+            viewport = viewport.with_inner_size([1440.0, 800.0]);
         }
     }
     let options = eframe::NativeOptions {

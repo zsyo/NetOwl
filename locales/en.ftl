@@ -14,8 +14,8 @@ status-monitoring = Monitoring
 status-mock = Mock data
 status-conn-count = { $count } connections
 
-nav-rate-down = Down {$rate}
-nav-rate-up = Up {$rate}
+nav-rate-down = Down
+nav-rate-up = Up
 
 map-title = Traffic Map
 map-subtitle = Live network connections visualization

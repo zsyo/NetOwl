@@ -151,12 +151,26 @@ fn wfp_status_line(ui: &mut egui::Ui, i18n: &I18n, status: &wfp::Status) {
     }
 }
 
-fn header(ui: &mut egui::Ui, text: String) {
-    ui.label(
-        RichText::new(text)
-            .size(12.0)
-            .strong()
-            .color(theme::c().text_dim),
+/// 表格列宽(逻辑点);表头与数据列同宽,add_sized 居中
+const COL_ENABLED: f32 = 30.0;
+const COL_NAME: f32 = 170.0;
+const COL_ACTION: f32 = 40.0;
+const COL_DIRECTION: f32 = 64.0;
+const COL_PROTO: f32 = 44.0;
+const COL_PROCESS: f32 = 160.0;
+const COL_REMOTE: f32 = 160.0;
+const COL_PORT: f32 = 44.0;
+const COL_OPS: f32 = 200.0;
+
+fn header_cell(ui: &mut egui::Ui, w: f32, text: String) {
+    ui.add_sized(
+        [w, 16.0],
+        egui::Label::new(
+            RichText::new(text)
+                .size(12.0)
+                .strong()
+                .color(theme::c().text_dim),
+        ),
     );
 }
 
@@ -181,19 +195,15 @@ fn rules_table(
                 .spacing([14.0, 7.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    for key in [
-                        "rules-col-enabled",
-                        "rules-col-name",
-                        "rules-col-action",
-                        "rules-col-direction",
-                        "col-proto",
-                        "col-process",
-                        "rules-col-remote",
-                        "col-port",
-                        "rules-col-ops",
-                    ] {
-                        header(ui, i18n.t(key));
-                    }
+                    header_cell(ui, COL_ENABLED, i18n.t("rules-col-enabled"));
+                    header_cell(ui, COL_NAME, i18n.t("rules-col-name"));
+                    header_cell(ui, COL_ACTION, i18n.t("rules-col-action"));
+                    header_cell(ui, COL_DIRECTION, i18n.t("rules-col-direction"));
+                    header_cell(ui, COL_PROTO, i18n.t("col-proto"));
+                    header_cell(ui, COL_PROCESS, i18n.t("col-process"));
+                    header_cell(ui, COL_REMOTE, i18n.t("rules-col-remote"));
+                    header_cell(ui, COL_PORT, i18n.t("col-port"));
+                    header_cell(ui, COL_OPS, i18n.t("rules-col-ops"));
                     ui.end_row();
 
                     // 删除会缩短 rules 数组,同帧继续按旧索引渲染会越界
@@ -202,10 +212,15 @@ fn rules_table(
                     for i in 0..rules.rules.len() {
                         let rule = rules.rules[i].clone();
                         let mut enabled = rule.enabled;
-                        if ui.checkbox(&mut enabled, "").changed() {
+                        let cb = ui.add_sized(
+                            [COL_ENABLED, 18.0],
+                            egui::Checkbox::without_text(&mut enabled),
+                        );
+                        if cb.changed() {
                             let _ = rules.set_enabled(db, rule.id, enabled);
                         }
-                        ui.add(
+                        ui.add_sized(
+                            [COL_NAME, 18.0],
                             egui::Label::new(
                                 RichText::new(&rule.name).size(13.0).color(theme::c().text),
                             )
@@ -215,39 +230,60 @@ fn rules_table(
                             Action::Allow => ("rule-action-allow", theme::c().status_ok),
                             Action::Block => ("rule-action-block", theme::c().danger),
                         };
-                        ui.label(
-                            RichText::new(i18n.t(action_key))
-                                .size(13.0)
-                                .color(action_color),
+                        ui.add_sized(
+                            [COL_ACTION, 18.0],
+                            egui::Label::new(
+                                RichText::new(i18n.t(action_key))
+                                    .size(13.0)
+                                    .color(action_color),
+                            ),
                         );
-                        ui.label(theme::dim_text(&direction_name(i18n, rule.direction), 13.0));
-                        ui.label(theme::dim_text(&proto_name(i18n, rule.proto), 13.0));
-                        ui.add(
+                        ui.add_sized(
+                            [COL_DIRECTION, 18.0],
+                            egui::Label::new(theme::dim_text(
+                                &direction_name(i18n, rule.direction),
+                                13.0,
+                            )),
+                        );
+                        ui.add_sized(
+                            [COL_PROTO, 18.0],
+                            egui::Label::new(theme::dim_text(&proto_name(i18n, rule.proto), 13.0)),
+                        );
+                        ui.add_sized(
+                            [COL_PROCESS, 18.0],
                             egui::Label::new(theme::dim_text(&process_display(&rule), 13.0))
                                 .wrap_mode(egui::TextWrapMode::Truncate),
                         );
-                        ui.add(
+                        ui.add_sized(
+                            [COL_REMOTE, 18.0],
                             egui::Label::new(theme::dim_text(&remote_display(&rule), 13.0))
                                 .wrap_mode(egui::TextWrapMode::Truncate),
                         );
-                        ui.label(theme::dim_text(&port_display(rule.port), 13.0));
-                        ui.horizontal(|ui| {
-                            if small_btn(ui, i18n.t("rules-move-up")).clicked() {
-                                let _ = rules.move_rule(db, rule.id, -1);
-                            }
-                            if small_btn(ui, i18n.t("rules-move-down")).clicked() {
-                                let _ = rules.move_rule(db, rule.id, 1);
-                            }
-                            if small_btn(ui, i18n.t("rules-edit")).clicked() {
-                                state.draft = Some(Draft::from_rule(&rule));
-                            }
-                            if small_btn(ui, i18n.t("rules-delete")).clicked() {
-                                if let Err(e) = rules.delete(db, rule.id) {
-                                    eprintln!("[Rules] 删除规则 {} 失败: {e}", rule.id);
+                        ui.add_sized(
+                            [COL_PORT, 18.0],
+                            egui::Label::new(theme::dim_text(&port_display(rule.port), 13.0)),
+                        );
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(COL_OPS, 26.0),
+                            egui::Layout::left_to_right(egui::Align::Min),
+                            |ui| {
+                                if small_btn(ui, i18n.t("rules-move-up")).clicked() {
+                                    let _ = rules.move_rule(db, rule.id, -1);
                                 }
-                                removed = true;
-                            }
-                        });
+                                if small_btn(ui, i18n.t("rules-move-down")).clicked() {
+                                    let _ = rules.move_rule(db, rule.id, 1);
+                                }
+                                if small_btn(ui, i18n.t("rules-edit")).clicked() {
+                                    state.draft = Some(Draft::from_rule(&rule));
+                                }
+                                if small_btn(ui, i18n.t("rules-delete")).clicked() {
+                                    if let Err(e) = rules.delete(db, rule.id) {
+                                        eprintln!("[Rules] 删除规则 {} 失败: {e}", rule.id);
+                                    }
+                                    removed = true;
+                                }
+                            },
+                        );
                         ui.end_row();
                         if removed {
                             break;
