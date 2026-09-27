@@ -76,4 +76,16 @@ fn migrate(conn: &Connection) {
         conn.execute("INSERT INTO schema_version (version) VALUES (2)", [])
             .unwrap_or_else(|e| panic!("[Db] 写入 schema 版本失败: {e}"));
     }
+    if current < 3 {
+        // 版本 3:开启增量 auto_vacuum,使清理删除的空间可归还文件系统
+        // (INCREMENTAL 回收由 history.rs 清理后显式触发,写放大小于 FULL)。
+        // auto_vacuum 只能对空库直接生效,已有数据的库须 VACUUM 重建一次;
+        // main 先于其余连接 open,本迁移天然串行且仅执行一次
+        conn.pragma_update(None, "auto_vacuum", "INCREMENTAL")
+            .unwrap_or_else(|e| panic!("[Db] 设置 auto_vacuum 失败: {e}"));
+        conn.execute("VACUUM", [])
+            .unwrap_or_else(|e| panic!("[Db] auto_vacuum 迁移重建失败: {e}"));
+        conn.execute("INSERT INTO schema_version (version) VALUES (3)", [])
+            .unwrap_or_else(|e| panic!("[Db] 写入 schema 版本失败: {e}"));
+    }
 }

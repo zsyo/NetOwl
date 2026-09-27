@@ -244,18 +244,52 @@ fn cleanup(conn: &Db, retention: &AtomicU32, last_cleanup: &mut Instant) {
     *last_cleanup = Instant::now();
     let before = unix_now().saturating_sub(days as u64 * 86400);
     match conn.execute("DELETE FROM conn_events WHERE last_seen < ?1", [before as i64]) {
-        Ok(n) if n > 0 => eprintln!("[History] 自动清理 {days} 天前历史 {n} 行"),
+        Ok(n) if n > 0 => {
+            eprintln!("[History] 自动清理 {days} 天前历史 {n} 行");
+            reclaim_space(conn);
+        }
         Ok(_) => {}
         Err(e) => eprintln!("[History] 自动清理失败: {e}"),
     }
 }
 
-/// 清空 N 天前的数据
+/// 清理 N 天前的数据(0 = 清空全部),随后归还释放的空间
 fn purge_before(conn: &Db, days: u32) {
-    let before = unix_now().saturating_sub(days as u64 * 86400);
-    match conn.execute("DELETE FROM conn_events WHERE last_seen < ?1", [before as i64]) {
-        Ok(n) => eprintln!("[History] 已清空 {days} 天前历史 {n} 行"),
-        Err(e) => eprintln!("[History] 清空历史失败: {e}"),
+    let result = if days == 0 {
+        conn.execute("DELETE FROM conn_events", [])
+    } else {
+        let before = unix_now().saturating_sub(days as u64 * 86400);
+        conn.execute("DELETE FROM conn_events WHERE last_seen < ?1", [before as i64])
+    };
+    match result {
+        Ok(n) => {
+            if days == 0 {
+                eprintln!("[History] 已清空全部历史 {n} 行");
+            } else {
+                eprintln!("[History] 已清理 {days} 天前历史 {n} 行");
+            }
+            reclaim_space(conn);
+        }
+        Err(e) => eprintln!("[History] 清理历史失败: {e}"),
+    }
+}
+
+/// 把 DELETE 释放的空闲页归还文件系统并截断 WAL,库文件尺寸随之回落;
+/// 空闲页不存在时近零开销。文件可收缩依赖 INCREMENTAL auto_vacuum(见 db.rs)。
+/// incremental_vacuum 每归还一批页产生一行,须消费完全部行才完成
+/// (execute_batch 内部只 step 一次,会中途放弃,只归还首批)
+fn reclaim_space(conn: &Db) {
+    let reclaim = || -> rusqlite::Result<()> {
+        let mut stmt = conn.prepare("PRAGMA incremental_vacuum")?;
+        let mut rows = stmt.query([])?;
+        while rows.next()?.is_some() {}
+        Ok(())
+    };
+    if let Err(e) = reclaim() {
+        eprintln!("[History] 归还空闲页失败: {e}");
+    }
+    if let Err(e) = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);") {
+        eprintln!("[History] 截断 WAL 失败: {e}");
     }
 }
 
