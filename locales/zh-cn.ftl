@@ -71,6 +71,21 @@ settings-history-days = 历史自动清理
 settings-history-days-unit = 天
 settings-history-days-hint = 自动删除超过该天数的历史数据,0 表示不自动清理
 
+settings-ask = 新连接询问
+settings-ask-on = 为未命中规则的新连接弹窗询问
+settings-ask-hint = 仅询问公网目标,本地与局域网连接不弹;永久选项写入规则页,可随时修改
+
+ask-title = 新连接
+ask-question = {$process} 要连接到
+ask-timeout-hint = {$n} 秒后自动拒绝
+ask-always-hint = 永久选项写入规则页,可随时修改;询问期间该连接保持阻断
+ask-allow = 允许
+ask-deny = 拒绝
+ask-scope = 生效范围
+ask-scope-once = 仅本次
+ask-scope-target = 永久·仅此目标
+ask-scope-process = 永久·整个程序
+
 history-title = 连接历史
 history-subtitle = 已完结连接的记录(连接关闭时落盘)
 history-view-detail = 明细

@@ -71,6 +71,10 @@ settings-history-days = Auto-clean history
 settings-history-days-unit = days
 settings-history-days-hint = Delete history older than this many days; 0 disables auto-clean
 
+settings-ask = New connection prompts
+settings-ask-on = Ask for new connections that match no rule
+settings-ask-hint = Public targets only; local and LAN connections never prompt. "Always" options are saved to the Rules page
+
 history-title = Connection History
 history-subtitle = Records of completed connections (written on close)
 history-view-detail = Detail
@@ -102,6 +106,16 @@ history-truncated = Query limit of {$n} rows reached; narrow the time range or a
 
 rules-title = Rules
 rules-subtitle = Rules are evaluated top-down by priority; the first enabled match decides the action, unmatched connections are allowed
+ask-title = New Connection
+ask-question = {$process} wants to connect to
+ask-timeout-hint = Auto-deny in {$n} s
+ask-always-hint = "Always" options are saved to the Rules page; the connection stays blocked while asking
+ask-allow = Allow
+ask-deny = Deny
+ask-scope = Scope
+ask-scope-once = This time only
+ask-scope-target = Always · this target
+ask-scope-process = Always · whole program
 wfp-status-active = Enforcement active: {$n} WFP filters
 wfp-status-noadmin = Not running as administrator: rules only annotate connections and do not block; restart as admin to enforce
 wfp-status-failed = Enforcement engine failed to start: {$err}

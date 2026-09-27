@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 
 use eframe::egui;
 
+use crate::ask::{Asker, Decision, Scope};
 use crate::basemap;
 use crate::collector::{self, Collector, CollectorKind};
 use crate::config::Config;
@@ -26,6 +27,7 @@ use crate::theme;
 use crate::traffic;
 use crate::tray::{self, Tray};
 use crate::ui::{self, Page};
+use crate::ui_ask;
 use crate::ui_rules;
 use crate::wfp;
 use crate::world;
@@ -78,6 +80,8 @@ pub struct NetOwlApp {
     /// WFP 拦截引擎(启用规则翻译为过滤器,管理线程持有动态会话)
     wfp: wfp::Manager,
     wfp_sync_at: Instant,
+    /// 新连接询问(Little Snitch 式弹窗)
+    asker: Asker,
     /// 本机公网 IP 探测(公共接口并发,最先成功者胜出)
     local_probe: local_ip::Probe,
     /// 本机公网 IP 的归属定位键;探测失败/未收录时为 None(地图用默认点位)
@@ -125,6 +129,7 @@ impl NetOwlApp {
             rules_page: ui_rules::PageState::new(),
             wfp: wfp::Manager::spawn(),
             wfp_sync_at: Instant::now(),
+            asker: Asker::new(),
             local_probe: local_ip::Probe::new(),
             local_place: None,
             local_probe_at: Instant::now(),
@@ -337,18 +342,58 @@ impl NetOwlApp {
     }
 
     /// WFP 过滤器同步:与采集同频重建目标集合(进程路径粘滞展开,
-    /// 见 RuleSet::wfp_specs);mock 数据源下清空过滤器,拦截只针对真实连接
+    /// 见 RuleSet::wfp_specs);mock 数据源下清空过滤器,拦截只针对
+    /// 真实连接。询问中的连接追加最高 weight 的临时阻断(安全默认)
     fn poll_wfp(&mut self) {
         if self.wfp_sync_at.elapsed() < WFP_SYNC_INTERVAL {
             return;
         }
         self.wfp_sync_at = Instant::now();
-        let specs = if self.collector.kind() == CollectorKind::Real {
+        let mut specs = if self.collector.kind() == CollectorKind::Real {
             self.rules.wfp_specs(&self.conns)
         } else {
             Vec::new()
         };
+        if let Some(item) = self.asker.active.as_ref() {
+            specs.insert(0, item.pending_block_spec());
+        }
         self.wfp.sync(Arc::new(specs));
+    }
+
+    /// 新连接询问:开关开启时检测未命中规则的公网连接并入队;
+    /// 倒计时超时执行默认动作(拒绝·仅本次)
+    fn poll_ask(&mut self) {
+        if self.collector.kind() != CollectorKind::Real || !self.config.general.ask_connections {
+            self.asker.clear();
+            return;
+        }
+        self.asker.update(&self.conns, &self.rules, &self.rdns);
+        self.asker.poll();
+        if self.asker.expired() {
+            self.apply_decision(Decision {
+                allow: false,
+                scope: Scope::Once,
+            });
+        }
+    }
+
+    /// 应用询问决策:永久选项落库,仅本次选项写入内存临时规则
+    fn apply_decision(&mut self, d: Decision) {
+        let Some(item) = self.asker.take() else {
+            return;
+        };
+        let action = if d.allow {
+            crate::rules::Action::Allow
+        } else {
+            crate::rules::Action::Block
+        };
+        let rule = item.to_rule(action);
+        match d.scope {
+            Scope::Once => self.rules.insert_temp(rule),
+            Scope::Target | Scope::Process => {
+                let _ = self.rules.insert(&self.history_db, rule);
+            }
+        }
     }
 
     fn mark_config_dirty(&mut self) {
@@ -368,6 +413,7 @@ impl eframe::App for NetOwlApp {
         self.poll_icons(ctx);
         self.writer.set_retention(self.config.general.history_days);
         self.poll_history();
+        self.poll_ask();
         self.poll_wfp();
 
         // 进入设置页时重扫 locales,加载运行期间新增的词条文件;
@@ -457,6 +503,16 @@ impl eframe::App for NetOwlApp {
             _ => REPAINT_IDLE,
         };
         ui.ctx().request_repaint_after(repaint);
+
+        // 新连接询问弹窗(独立 viewport);决策即时生效
+        let decision = self
+            .asker
+            .active
+            .as_mut()
+            .and_then(|item| ui_ask::show(ui.ctx(), item, &self.i18n));
+        if let Some(d) = decision {
+            self.apply_decision(d);
+        }
         if config_changed {
             self.mark_config_dirty();
         }

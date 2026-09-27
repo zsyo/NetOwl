@@ -216,6 +216,8 @@ pub struct RuleSet {
     /// 连接被阻断后快照可能抓不到进程行,已展开路径保持,避免
     /// 拦截窗口抖动;规则删除/改进程条件时清理
     sticky_paths: HashMap<i64, std::collections::BTreeSet<String>>,
+    /// 会话内临时规则(询问"仅本次")的下一个负数 id
+    next_temp_id: i64,
 }
 
 impl RuleSet {
@@ -253,12 +255,22 @@ impl RuleSet {
         RuleSet {
             rules,
             sticky_paths: HashMap::new(),
+            next_temp_id: -1,
         }
     }
 
     /// 求值:按优先级首个命中的启用规则;无命中返回 None(默认放行)
     pub fn evaluate(&self, req: &MatchReq) -> Option<&Rule> {
         self.rules.iter().find(|r| r.enabled && r.matches(req))
+    }
+
+    /// 插入会话内临时规则(不落库;负数 id,优先于全部持久规则)。
+    /// 新连接询问的"仅本次"决策走此入口
+    pub fn insert_temp(&mut self, mut rule: Rule) {
+        rule.id = self.next_temp_id;
+        self.next_temp_id -= 1;
+        rule.priority = self.rules.first().map_or(0, |r| r.priority - 10);
+        self.rules.insert(0, rule);
     }
 
     /// 新建规则并落库,追加为最低优先级

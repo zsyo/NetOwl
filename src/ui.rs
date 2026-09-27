@@ -539,5 +539,21 @@ fn settings_ui(ui: &mut egui::Ui, config: &mut Config, i18n: &mut I18n) -> bool 
     );
     ui.add_space(6.0);
     ui.label(theme::dim_text(&i18n.t("settings-history-days-hint"), 12.0));
-    days.changed()
+    ui.add_space(16.0);
+
+    // 新连接询问弹窗(默认关闭;开启后未命中规则的公网新连接弹窗询问)
+    ui.label(
+        RichText::new(i18n.t("settings-ask"))
+            .size(14.0)
+            .strong()
+            .color(theme::c().text),
+    );
+    ui.add_space(4.0);
+    let ask = ui.checkbox(
+        &mut config.general.ask_connections,
+        i18n.t("settings-ask-on"),
+    );
+    ui.add_space(6.0);
+    ui.label(theme::dim_text(&i18n.t("settings-ask-hint"), 12.0));
+    days.changed() || ask.changed()
 }

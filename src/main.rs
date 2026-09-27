@@ -3,6 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod ask;
 mod basemap;
 mod collector;
 mod config;
@@ -23,6 +24,7 @@ mod traffic;
 mod tray;
 mod triangulate;
 mod ui;
+mod ui_ask;
 mod ui_history;
 mod ui_rules;
 mod wfp;

@@ -44,6 +44,9 @@ pub struct GeneralConfig {
     /// 连接页与历史页隐藏私网远端(RFC1918)
     #[serde(default = "default_true")]
     pub hide_lan: bool,
+    /// 新连接询问弹窗(默认关闭):开启后未命中规则的公网新连接弹窗询问
+    #[serde(default)]
+    pub ask_connections: bool,
 }
 
 impl Default for GeneralConfig {
@@ -56,6 +59,7 @@ impl Default for GeneralConfig {
             history_remind: true,
             hide_local: true,
             hide_lan: true,
+            ask_connections: false,
         }
     }
 }
