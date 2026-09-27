@@ -37,6 +37,16 @@
   排除回环/隧道;**必须排除 InterfaceAndOperStatusFlags.FilterInterface(bit1)
   接口——WFP 轻量过滤/QoS 过滤接口会镜像底层物理网卡计数,不过滤速率成倍
   虚高**;窗口可见 1s 采样、隐藏 5s,表查询失败沿用旧速率)
+- src/history.rs - 历史落盘(conn_events 事件表,每条已完结连接一行整行
+  INSERT;Tracker 对比前后快照生成事件,mock 不入库;后台写线程批量事务,
+  托盘退出 flush 并 join;自动清理小时级节流,天数 0 = 不清理;归属地不落库)
+- src/history_query.rs - 历史查询与页面状态(明细/聚合 SQL 全参数绑定,
+  LIMIT 500;远端前缀解析为网段 BETWEEN;proto None 绑空串而非 NULL——
+  SQL 侧 ?5 = '' 判定,NULL 比较恒假会过滤全部行;本月起点/时间格式化走
+  Win32 SystemTime;PageState 含视图/筛选/结果/清空)
+- src/ui_history.rs - 历史页(双视图切换、档位筛选、库大小显示、超 1 GiB
+  提醒卡[勾选不再提醒=一票否决持久化,手动清空还原]、清空 N 天前工具;
+  位置列实时反查 geoip)
 - src/collector/ - 连接采集(mod.rs:Collector trait 与 real/mock 工厂 +
   CollectorKind,icon_image 默认返回 Pending;mock.rs:模拟数据供演示/测试;
   query.rs:Win32 查询原语,GetExtendedTcpTable/GetExtendedUdpTable owner-PID

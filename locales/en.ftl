@@ -6,6 +6,7 @@ app-subtitle = Network Monitor
 
 nav-map = Traffic Map
 nav-connections = Connections
+nav-history = History
 nav-rules = Rules
 nav-settings = Settings
 
@@ -62,6 +63,32 @@ proc-path-unknown = Path unavailable
 settings-history-days = Auto-clean history
 settings-history-days-unit = days
 settings-history-days-hint = Delete history older than this many days; 0 disables auto-clean
+
+history-title = Connection History
+history-subtitle = Records of completed connections (written on close)
+history-view-detail = Detail
+history-view-aggregate = Aggregate
+history-range-1h = Last hour
+history-range-6h = Last 6 hours
+history-range-24h = Last 24 hours
+history-range-7d = Last 7 days
+history-range-month = This month
+history-filter-process = Process…
+history-filter-remote = Remote IP…
+history-filter-proto-all = All protocols
+history-refresh = Refresh
+history-db-size = Database {$size}
+history-purge = Purge
+history-remind-text = History database has reached {$size}; consider cleaning up old data
+history-remind-dismiss = Don't remind again
+history-col-process = Process
+history-col-first = First seen
+history-col-duration = Duration
+history-col-count = Connections
+history-col-total = Total time
+history-col-last = Last active
+history-empty = No history records in the selected range
+history-truncated = Query limit of {$n} rows reached; narrow the time range or add filters
 
 rules-title = Rules
 rules-placeholder = The rule engine arrives in a later milestone: allow/deny policies, process and network matching, persistence.

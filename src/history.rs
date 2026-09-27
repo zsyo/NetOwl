@@ -3,18 +3,24 @@
 //! 写入模型:连接消失时整行落盘(每行自含 first/last_seen),后台写线程
 //! 批量事务执行,UI 线程不受磁盘波动影响;运行中的连接不落盘,托盘退出
 //! 时统一补写,崩溃最多丢最近活跃连接。归属地不落库(geoip 数据会随重建
-//! 漂移),渲染时实时反查。查询见本模块后续功能点。
+//! 漂移),渲染时实时反查。查询与历史页状态见 history_query。
 
 use std::collections::{HashMap, HashSet};
 use std::net::Ipv4Addr;
+use std::path::Path;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
-use rusqlite::{params, Connection as Db};
+use rusqlite::params;
+
+pub use rusqlite::Connection as Db;
 
 use crate::model::{Connection, Protocol, Signing};
+
+/// 自动清理检查间隔
+const CLEANUP_INTERVAL: Duration = Duration::from_secs(3600);
 
 /// 当前 unix 秒
 pub fn unix_now() -> u64 {
@@ -100,6 +106,7 @@ impl Tracker {
 
 enum Msg {
     Events(Vec<ClosedConn>),
+    Purge(u32),
 }
 
 /// 历史写线程句柄;退出前调用 shutdown 确保队列清空
@@ -136,6 +143,13 @@ impl Writer {
         }
     }
 
+    /// 请求清空 N 天前的历史(写线程执行,完成后由调用方刷新展示)
+    pub fn purge(&self, days: u32) {
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(Msg::Purge(days));
+        }
+    }
+
     /// 关闭通道并等待写线程处理完剩余消息
     pub fn shutdown(&mut self) {
         self.tx = None;
@@ -155,10 +169,30 @@ fn run(rx: Receiver<Msg>, retention: std::sync::Arc<AtomicU32>) {
     let mut conn = crate::db::open();
     let mut last_cleanup = Instant::now();
     loop {
-        match rx.recv_timeout(Duration::from_secs(1)) {
-            Ok(Msg::Events(events)) => write_batch(&mut conn, &events),
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
+        // 先等第一条消息,再把已排队的全部收齐,单轮统一处理
+        let first = match rx.recv_timeout(Duration::from_secs(1)) {
+            Ok(m) => m,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                cleanup(&conn, &retention, &mut last_cleanup);
+                continue;
+            }
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        };
+        let mut events = Vec::new();
+        let mut purge = None;
+        match first {
+            Msg::Events(mut e) => events.append(&mut e),
+            Msg::Purge(days) => purge = Some(days),
+        }
+        while let Ok(m) = rx.try_recv() {
+            match m {
+                Msg::Events(mut e) => events.append(&mut e),
+                Msg::Purge(days) => purge = Some(days),
+            }
+        }
+        write_batch(&mut conn, &events);
+        if let Some(days) = purge {
+            purge_before(&conn, days);
         }
         cleanup(&conn, &retention, &mut last_cleanup);
     }
@@ -216,5 +250,20 @@ fn cleanup(conn: &Db, retention: &AtomicU32, last_cleanup: &mut Instant) {
     }
 }
 
-/// 自动清理检查间隔
-const CLEANUP_INTERVAL: Duration = Duration::from_secs(3600);
+/// 清空 N 天前的数据
+fn purge_before(conn: &Db, days: u32) {
+    let before = unix_now().saturating_sub(days as u64 * 86400);
+    match conn.execute("DELETE FROM conn_events WHERE last_seen < ?1", [before as i64]) {
+        Ok(n) => eprintln!("[History] 已清空 {days} 天前历史 {n} 行"),
+        Err(e) => eprintln!("[History] 清空历史失败: {e}"),
+    }
+}
+
+/// netowl.db(+wal)当前字节数;文件尚未创建时为 0
+pub fn db_size() -> u64 {
+    let base = Path::new(crate::paths::DATA_DIR).join("netowl.db");
+    let mut size = std::fs::metadata(&base).map(|m| m.len()).unwrap_or(0);
+    let wal = base.with_file_name("netowl.db-wal");
+    size += std::fs::metadata(&wal).map(|m| m.len()).unwrap_or(0);
+    size
+}

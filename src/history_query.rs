@@ -1,0 +1,308 @@
+//! 历史查询与页面状态(conn_events 只读侧;写入见 history.rs)。
+//! 归属地不落库,渲染时实时反查 geoip;全部查询走 rusqlite 参数绑定。
+
+use std::net::Ipv4Addr;
+use std::time::{Duration, Instant};
+
+use windows::Win32::Foundation::{FILETIME, SYSTEMTIME};
+use windows::Win32::System::SystemInformation::GetLocalTime;
+use windows::Win32::System::Time::{
+    FileTimeToSystemTime, SystemTimeToFileTime, SystemTimeToTzSpecificLocalTime,
+};
+
+use crate::history::{db_size, unix_now, Db, Writer};
+use crate::model::Protocol;
+
+/// 历史库超容提醒阈值(1 GiB)
+pub const REMIND_SIZE: u64 = 1024 * 1024 * 1024;
+/// 明细/聚合单次查询行数上限
+pub const QUERY_LIMIT: usize = 500;
+/// FILETIME(1601 起 100ns)与 unix 秒的基准差(秒)
+const EPOCH_DELTA: u64 = 11_644_473_600;
+
+/// 历史筛选条件;时间窗为 [start, +inf):连接存活期与窗口相交即命中
+pub struct Filter {
+    pub start: u64,
+    /// 进程名模糊匹配(空 = 不过滤)
+    pub process: String,
+    /// 远端 IP 网段范围 [min, max](None = 不过滤)
+    pub remote: Option<(u32, u32)>,
+    pub proto: Option<Protocol>,
+}
+
+impl Filter {
+    /// WHERE 条件公共段(时间窗 + 三项筛选,参数绑定)
+    fn where_clause() -> &'static str {
+        "WHERE last_seen >= ?1
+             AND (?2 = '' OR process LIKE '%' || ?2 || '%')
+             AND (?3 IS NULL OR (remote_ip >= ?3 AND remote_ip <= ?4))
+             AND (?5 = '' OR proto = ?5)"
+    }
+
+    /// 与 where_clause 参数位一一对应(全部 owned);
+    /// proto 为 None 时绑空串(SQL 侧以 ?5 = '' 判定不过滤,NULL 比较恒假)
+    fn bind(&self) -> [Box<dyn rusqlite::ToSql>; 5] {
+        [
+            Box::new(self.start as i64),
+            Box::new(self.process.clone()),
+            Box::new(self.remote.map(|(lo, _)| lo as i64)),
+            Box::new(self.remote.map(|(_, hi)| hi as i64)),
+            Box::new(self.proto.map(|p| p.as_str().to_owned()).unwrap_or_default()),
+        ]
+    }
+}
+
+/// 明细行(一条已完结连接)
+pub struct DetailRow {
+    pub first_seen: u64,
+    pub last_seen: u64,
+    pub pid: u32,
+    pub process: String,
+    pub proc_path: Option<String>,
+    pub proto: Protocol,
+    pub remote_ip: Ipv4Addr,
+    pub remote_port: u16,
+}
+
+/// 聚合行(进程 x 协议 x 远端)
+pub struct AggregateRow {
+    pub process: String,
+    pub proto: Protocol,
+    pub remote_ip: Ipv4Addr,
+    pub count: u64,
+    pub total_secs: u64,
+    pub last_active: u64,
+}
+
+/// 明细查询:按最后活动倒序,最多 QUERY_LIMIT 行
+pub fn query_detail(db: &Db, f: &Filter) -> rusqlite::Result<Vec<DetailRow>> {
+    let sql = format!(
+        "SELECT first_seen, last_seen, pid, process, proc_path, proto, remote_ip, remote_port
+         FROM conn_events {} ORDER BY last_seen DESC LIMIT {QUERY_LIMIT}",
+        Filter::where_clause()
+    );
+    let mut stmt = db.prepare_cached(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(f.bind()), |row| {
+        Ok(DetailRow {
+            first_seen: row.get::<_, i64>(0)? as u64,
+            last_seen: row.get::<_, i64>(1)? as u64,
+            pid: row.get::<_, i64>(2)? as u32,
+            process: row.get(3)?,
+            proc_path: row.get(4)?,
+            proto: parse_proto(&row.get::<_, String>(5)?),
+            remote_ip: Ipv4Addr::from(row.get::<_, i64>(6)? as u32),
+            remote_port: row.get::<_, i64>(7)? as u16,
+        })
+    })?;
+    rows.collect()
+}
+
+/// 聚合查询:按进程 x 协议 x 远端汇总(次数/累计时长/最近活动)
+pub fn query_aggregate(db: &Db, f: &Filter) -> rusqlite::Result<Vec<AggregateRow>> {
+    let sql = format!(
+        "SELECT process, proto, remote_ip, COUNT(*) AS n,
+                SUM(last_seen - first_seen) AS total, MAX(last_seen) AS last_active
+         FROM conn_events {} GROUP BY process, proto, remote_ip
+         ORDER BY last_active DESC LIMIT {QUERY_LIMIT}",
+        Filter::where_clause()
+    );
+    let mut stmt = db.prepare_cached(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(f.bind()), |row| {
+        Ok(AggregateRow {
+            process: row.get(0)?,
+            proto: parse_proto(&row.get::<_, String>(1)?),
+            remote_ip: Ipv4Addr::from(row.get::<_, i64>(2)? as u32),
+            count: row.get::<_, i64>(3)? as u64,
+            total_secs: row.get::<_, i64>(4)?.max(0) as u64,
+            last_active: row.get::<_, i64>(5)? as u64,
+        })
+    })?;
+    rows.collect()
+}
+
+fn parse_proto(s: &str) -> Protocol {
+    if s == Protocol::Udp.as_str() {
+        Protocol::Udp
+    } else {
+        Protocol::Tcp
+    }
+}
+
+/// 远端前缀解析:"142.250." / "142.250.73.78" -> 网段范围(前缀补零);
+/// 空串或非法输入返回 None(视为不过滤)
+pub fn parse_ip_prefix(input: &str) -> Option<(u32, u32)> {
+    let s = input.trim().trim_end_matches('.');
+    if s.is_empty() {
+        return None;
+    }
+    let mut octets = [0u8; 4];
+    let mut filled = 0;
+    for part in s.split('.') {
+        let v: u8 = part.trim().parse().ok()?;
+        octets[filled] = v;
+        filled += 1;
+        if filled > 4 {
+            return None;
+        }
+    }
+    let min = u32::from(Ipv4Addr::new(octets[0], octets[1], octets[2], octets[3]));
+    let max = if filled == 4 {
+        min
+    } else {
+        min | ((1u32 << ((4 - filled) * 8)) - 1)
+    };
+    Some((min, max))
+}
+
+/// unix 秒时长 -> "H:MM:SS" / "M:SS"
+pub fn fmt_duration(secs: u64) -> String {
+    let (h, m, s) = (secs / 3600, (secs % 3600) / 60, secs % 60);
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
+}
+
+/// 本地时区本月 1 日 0 时起的 unix 秒
+pub fn month_start() -> u64 {
+    unsafe {
+        let mut st = GetLocalTime();
+        st.wDay = 1;
+        st.wHour = 0;
+        st.wMinute = 0;
+        st.wSecond = 0;
+        st.wMilliseconds = 0;
+        let mut ft = FILETIME::default();
+        SystemTimeToFileTime(&st, &mut ft).expect("[History] 本月起点换算失败");
+        let ticks = ((ft.dwHighDateTime as u64) << 32) | ft.dwLowDateTime as u64;
+        (ticks.saturating_sub(EPOCH_DELTA * 10_000_000)) / 10_000_000
+    }
+}
+
+/// unix 秒 -> 本地时间 "MM-DD HH:MM:SS"
+pub fn fmt_local(unix: u64) -> String {
+    unsafe {
+        let ticks = unix.saturating_add(EPOCH_DELTA) * 10_000_000;
+        let ft = FILETIME {
+            dwLowDateTime: ticks as u32,
+            dwHighDateTime: (ticks >> 32) as u32,
+        };
+        let mut utc = SYSTEMTIME::default();
+        FileTimeToSystemTime(&ft, &mut utc).expect("[History] 时间换算失败");
+        let mut local = SYSTEMTIME::default();
+        SystemTimeToTzSpecificLocalTime(None, &utc, &mut local).expect("[History] 本地时间换算失败");
+        format!(
+            "{:02}-{:02} {:02}:{:02}:{:02}",
+            local.wMonth, local.wDay, local.wHour, local.wMinute, local.wSecond
+        )
+    }
+}
+
+/// 历史页视图形态
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ViewMode {
+    Detail,
+    Aggregate,
+}
+
+/// 时间范围档位
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Range {
+    LastHour,
+    Last6Hours,
+    Last24Hours,
+    Last7Days,
+    ThisMonth,
+}
+
+impl Range {
+    /// 档位对应的时间窗起点(unix 秒);本月取本地时区月初零点
+    pub fn start(&self, now: u64) -> u64 {
+        match self {
+            Range::LastHour => now.saturating_sub(3600),
+            Range::Last6Hours => now.saturating_sub(6 * 3600),
+            Range::Last24Hours => now.saturating_sub(24 * 3600),
+            Range::Last7Days => now.saturating_sub(7 * 86400),
+            Range::ThisMonth => month_start(),
+        }
+    }
+}
+
+/// 查询结果(与视图形态对应)
+pub enum Rows {
+    Detail(Vec<DetailRow>),
+    Aggregate(Vec<AggregateRow>),
+}
+
+/// 历史页状态:视图、筛选、结果与维护操作
+pub struct PageState {
+    pub view: ViewMode,
+    pub range: Range,
+    /// 进程名筛选(模糊)
+    pub process: String,
+    /// 远端 IP 前缀筛选文本
+    pub remote: String,
+    pub proto: Option<Protocol>,
+    pub rows: Rows,
+    /// 结果或库大小需要重新加载
+    pub dirty: bool,
+    pub db_size: u64,
+    /// 手动清空输入的天数
+    pub purge_days: u32,
+    /// 已发起清空,延迟数帧后刷新(等写线程完成)
+    purge_pending: Option<Instant>,
+}
+
+impl PageState {
+    pub fn new() -> Self {
+        PageState {
+            view: ViewMode::Detail,
+            range: Range::Last24Hours,
+            process: String::new(),
+            remote: String::new(),
+            proto: None,
+            rows: Rows::Detail(Vec::new()),
+            dirty: true,
+            db_size: 0,
+            purge_days: 30,
+            purge_pending: None,
+        }
+    }
+
+    /// 发起清空;还原超容提醒由调用方处理(config)
+    pub fn request_purge(&mut self, writer: &Writer) {
+        if self.purge_days == 0 {
+            return;
+        }
+        writer.purge(self.purge_days);
+        self.purge_pending = Some(Instant::now());
+    }
+
+    /// 按需重新加载:dirty(进入页面/筛选变化)或清空完成后
+    pub fn refresh_if_needed(&mut self, db: &Db) {
+        if let Some(at) = self.purge_pending
+            && at.elapsed() >= Duration::from_millis(300)
+        {
+            self.dirty = true;
+            self.purge_pending = None;
+        }
+        if !self.dirty {
+            return;
+        }
+        let filter = Filter {
+            start: self.range.start(unix_now()),
+            process: self.process.trim().to_owned(),
+            remote: parse_ip_prefix(&self.remote),
+            proto: self.proto,
+        };
+        self.rows = match self.view {
+            ViewMode::Detail => Rows::Detail(query_detail(db, &filter).unwrap_or_default()),
+            ViewMode::Aggregate => {
+                Rows::Aggregate(query_aggregate(db, &filter).unwrap_or_default())
+            }
+        };
+        self.db_size = db_size();
+        self.dirty = false;
+    }
+}

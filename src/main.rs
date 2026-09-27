@@ -9,6 +9,7 @@ mod config;
 mod db;
 mod geoip;
 mod history;
+mod history_query;
 mod i18n;
 mod icon;
 mod local_ip;
@@ -21,6 +22,7 @@ mod traffic;
 mod tray;
 mod triangulate;
 mod ui;
+mod ui_history;
 mod world;
 
 use std::sync::Arc;

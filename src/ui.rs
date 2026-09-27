@@ -10,17 +10,21 @@ use crate::basemap;
 use crate::collector::CollectorKind;
 use crate::config::Config;
 use crate::geoip;
+use crate::history;
+use crate::history_query;
 use crate::i18n::I18n;
 use crate::map;
 use crate::model::{Connection, Signing, fmt_bytes};
 use crate::rdns;
 use crate::theme;
+use crate::ui_history;
 
 /// 主窗口页面
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Page {
     Map,
     Connections,
+    History,
     Rules,
     Settings,
 }
@@ -28,6 +32,7 @@ pub enum Page {
 const NAV_ITEMS: &[(Page, &str)] = &[
     (Page::Map, "nav-map"),
     (Page::Connections, "nav-connections"),
+    (Page::History, "nav-history"),
     (Page::Rules, "nav-rules"),
     (Page::Settings, "nav-settings"),
 ];
@@ -128,6 +133,12 @@ pub struct UiCtx<'a> {
     pub rates: (u64, u64),
     /// 进程图标纹理(键 = 映像路径);None 表示已提取且无图标
     pub icon_tex: &'a HashMap<String, Option<egui::TextureHandle>>,
+    /// 历史页状态
+    pub history: &'a mut history_query::PageState,
+    /// 历史查询只读连接
+    pub history_db: &'a history::Db,
+    /// 历史写线程句柄(手动清空)
+    pub writer: &'a history::Writer,
     pub local_pos: (f32, f32),
 }
 
@@ -142,6 +153,15 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
             connections_ui(ui, ctx.conns, ctx.i18n, ctx.rdns, ctx.icon_tex);
             false
         }
+        Page::History => ui_history::show(
+            ui,
+            ctx.history,
+            ctx.i18n,
+            ctx.icon_tex,
+            ctx.history_db,
+            ctx.writer,
+            ctx.config,
+        ),
         Page::Rules => {
             placeholder_ui(
                 ui,

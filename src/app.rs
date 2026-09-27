@@ -15,6 +15,7 @@ use crate::collector::{self, Collector, CollectorKind};
 use crate::config::Config;
 use crate::geoip;
 use crate::history;
+use crate::history_query;
 use crate::i18n::I18n;
 use crate::local_ip;
 use crate::model::{Connection, Place};
@@ -62,6 +63,9 @@ pub struct NetOwlApp {
     writer: history::Writer,
     /// 连接快照对比器:跟踪活跃连接,消失时生成完结事件
     tracker: history::Tracker,
+    /// 历史页状态与查询只读连接
+    history: history_query::PageState,
+    history_db: history::Db,
     /// 本机公网 IP 探测(公共接口并发,最先成功者胜出)
     local_probe: local_ip::Probe,
     /// 本机公网 IP 的归属定位键;探测失败/未收录时为 None(地图用默认点位)
@@ -101,6 +105,8 @@ impl NetOwlApp {
             icon_tex: HashMap::new(),
             writer: history::Writer::spawn(config.general.history_days),
             tracker: history::Tracker::new(),
+            history: history_query::PageState::new(),
+            history_db: crate::db::open(),
             local_probe: local_ip::Probe::new(),
             local_place: None,
             local_probe_at: Instant::now(),
@@ -326,9 +332,13 @@ impl eframe::App for NetOwlApp {
         self.writer.set_retention(self.config.general.history_days);
         self.poll_history();
 
-        // 进入设置页时重扫 locales,加载运行期间新增的词条文件
+        // 进入设置页时重扫 locales,加载运行期间新增的词条文件;
+        // 进入历史页时标记重新加载(结果与库大小)
         if self.page == Page::Settings && self.last_page != Page::Settings {
             self.i18n.refresh_languages();
+        }
+        if self.page == Page::History && self.last_page != Page::History {
+            self.history.dirty = true;
         }
         self.last_page = self.page;
 
@@ -368,6 +378,9 @@ impl eframe::App for NetOwlApp {
             rdns: &self.rdns,
             rates: self.rates,
             icon_tex: &self.icon_tex,
+            history: &mut self.history,
+            history_db: &self.history_db,
+            writer: &self.writer,
             local_pos,
         };
         let mut config_changed = false;
