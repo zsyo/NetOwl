@@ -1,18 +1,13 @@
-//! 连接采集:Collector trait 是 UI 唯一数据入口(AGENTS.md 架构规范),
-//! 骨架期由 MockCollector 供给模拟数据,后续以 ETW/TCP 表实现替换。
+//! 模拟采集器:维持 8~28 条活跃连接,每秒累加流量,小概率关闭/新建。
+//! 供演示与测试(设置页可切换数据源)。
 
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use crate::collector::{Collector, CollectorKind};
 use crate::model::{Connection, Protocol};
 use crate::world::CITIES;
-
-/// 连接采集器
-pub trait Collector {
-    /// 推进内部状态并返回当前连接快照
-    fn snapshot(&mut self) -> Vec<Connection>;
-}
 
 /// xorshift64* 伪随机数:骨架期避免引入 rand 依赖(AGENTS.md 规范 8)
 struct Rng(u64);
@@ -118,7 +113,7 @@ impl MockCollector {
             proto: if self.rng.chance(85) { Protocol::Tcp } else { Protocol::Udp },
             remote_ip: ip,
             remote_port: port,
-            city: city.key,
+            city: Some(city.key),
             bytes_in: self.rng.range(2 << 20),
             bytes_out: self.rng.range(2 << 18),
             first_seen: Instant::now(),
@@ -155,5 +150,9 @@ impl Collector for MockCollector {
         let mut conns: Vec<Connection> = self.conns.values().cloned().collect();
         conns.sort_by_key(|c| std::cmp::Reverse(c.total_bytes()));
         conns
+    }
+
+    fn kind(&self) -> CollectorKind {
+        CollectorKind::Mock
     }
 }

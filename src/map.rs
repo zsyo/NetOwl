@@ -89,9 +89,11 @@ pub fn draw(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n, view: &mut Vie
     let cycle_px = proj.cycle_px();
 
     for c in conns {
+        // 归属未知(真实采集且缺 GeoIP 数据)的连接不上图,连接列表仍完整可见;
         // 城市端取最短方向等效经度(跨太平洋走短弧),主几何按可见世界副本
         // 平移铺开,屏幕边缘两侧由相邻副本自然接续
-        let geo = city(c.city);
+        let Some(key) = c.city else { continue };
+        let geo = city(key);
         let end_lon = LOCAL.lon + wrap_delta(geo.lon - LOCAL.lon);
         let city_pos = proj.project(end_lon, geo.lat);
         let inbound = c.inbound_dominant();
@@ -238,7 +240,8 @@ fn clamp_center(v: f32, half: f32, limit: f32) -> f32 {
 fn aggregate(conns: &[Connection]) -> Agg {
     let mut agg: Agg = BTreeMap::new();
     for c in conns {
-        let entry = agg.entry(c.city).or_insert((0, 0));
+        let Some(key) = c.city else { continue };
+        let entry = agg.entry(key).or_insert((0, 0));
         entry.0 += 1;
         entry.1 += c.total_bytes();
     }
@@ -258,7 +261,7 @@ fn info_card(
     const HEAD_H: f32 = 42.0;
     const MAX_ROWS: usize = 6;
 
-    let rows: Vec<&Connection> = conns.iter().filter(|conn| conn.city == key).collect();
+    let rows: Vec<&Connection> = conns.iter().filter(|conn| conn.city == Some(key)).collect();
     let shown = rows.len().min(MAX_ROWS);
     let extra = rows.len() - shown;
     let total: u64 = rows.iter().map(|conn| conn.total_bytes()).sum();
@@ -290,7 +293,7 @@ fn info_card(
     for conn in rows.iter().take(MAX_ROWS) {
         let process = format!("{} ({})", conn.process, conn.pid);
         painter.text(Pos2::new(card.left() + 14.0, y + 8.0), Align2::LEFT_CENTER, process, FontId::proportional(12.0), theme::c().text);
-        let remote = format!("{}:{} {}", conn.remote_ip, conn.remote_port, conn.proto.as_str());
+        let remote = format!("{} {}", conn.remote_display(), conn.proto.as_str());
         painter.text(Pos2::new(card.right() - 14.0, y + 8.0), Align2::RIGHT_CENTER, remote, FontId::monospace(11.0), theme::c().text_dim);
         y += LINE_H;
     }

@@ -47,6 +47,8 @@ col-location = 位置
 col-down = 下载
 col-up = 上传
 conns-empty = 暂无活跃连接
+conn-loc-unknown = 未知归属
+conn-proc-unknown = 未知进程
 
 rules-title = 规则
 rules-placeholder = 规则引擎将在后续里程碑接入:允许/拒绝策略、进程与网段匹配、持久化。
@@ -58,3 +60,7 @@ settings-theme = 界面主题
 settings-theme-hint = 深色与浅色立即生效,并同步保存到配置文件
 theme-dark = 深色
 theme-light = 浅色
+settings-datasource = 数据源
+datasource-real = 真实采集
+datasource-mock = 模拟演示
+settings-datasource-hint = 模拟数据仅供演示与测试,切换立即生效并保存到配置文件

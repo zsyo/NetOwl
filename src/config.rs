@@ -21,7 +21,7 @@ pub struct Config {
     pub window: WindowConfig,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct GeneralConfig {
     /// 界面语言代码(空表示未设置,跟随首次启动时的系统语言)
     #[serde(default)]
@@ -29,6 +29,23 @@ pub struct GeneralConfig {
     /// 界面主题:"dark" / "light"
     #[serde(default)]
     pub theme: String,
+    /// 连接数据源:"real"(真实采集)/ "mock"(模拟演示)
+    #[serde(default = "default_collector")]
+    pub collector: String,
+}
+
+impl Default for GeneralConfig {
+    fn default() -> Self {
+        GeneralConfig {
+            language: String::new(),
+            theme: String::new(),
+            collector: default_collector(),
+        }
+    }
+}
+
+fn default_collector() -> String {
+    "real".to_owned()
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -77,6 +94,9 @@ impl Config {
                     }
                     if cfg.general.theme != "light" && cfg.general.theme != "dark" {
                         cfg.general.theme = "dark".to_owned();
+                    }
+                    if cfg.general.collector != "real" && cfg.general.collector != "mock" {
+                        cfg.general.collector = "real".to_owned();
                     }
                     return cfg;
                 }

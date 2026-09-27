@@ -17,8 +17,15 @@
 ## 项目结构
 - src/main.rs - 应用入口(NativeOptions、窗口图标、run_native)
 - src/app.rs - NetOwlApp:状态编排(托盘事件、采集 tick、页面切换、关闭到托盘、退出)
-- src/model.rs - Connection/Protocol 等数据结构
-- src/collector.rs - Collector trait + MockCollector(模拟数据;真实采集后续以 ETW/TCP 表实现替换)
+- src/model.rs - Connection/Protocol 等数据结构(city 为 Option:真实采集
+  且缺 GeoIP 时归属未知,地图不绘制,列表显示占位;UDP 表行远端以 *:* 展示)
+- src/collector/ - 连接采集(mod.rs:Collector trait 与 real/mock 工厂 +
+  CollectorKind;mock.rs:模拟数据供演示/测试;windows_table.rs:真实采集,
+  GetExtendedTcpTable/GetExtendedUdpTable owner-PID 快照(1s 节流,TCP 仅
+  SYN_SENT..LAST_ACK 活动状态),OpenProcess+QueryFullProcessImageNameW 反查
+  进程名并按 PID 缓存(行消失即剔除,PID 4 特判 System);连接身份为四元组
+  +PID,hash 派生稳定 id;表快照无字节语义,下载/上传列为 0,字节/速率待
+  ETW;均为只读 API,无需管理员权限)
 - src/i18n/ - 多语言模块(mod.rs:locales 扫描/加载/语言列表;translate.rs:查找/插值/回退/告警)
 - locales/ - fluent 词条文件(zh-cn.ftl / en.ftl;目录缺失时使用编译期内嵌兜底)
 - src/theme.rs - 主题(深/浅两套 Palette 调色板 + AtomicUsize 主题索引,

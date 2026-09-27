@@ -47,6 +47,8 @@ col-location = Location
 col-down = Down
 col-up = Up
 conns-empty = No active connections
+conn-loc-unknown = Unknown
+conn-proc-unknown = Unknown process
 
 rules-title = Rules
 rules-placeholder = The rule engine arrives in a later milestone: allow/deny policies, process and network matching, persistence.
@@ -58,3 +60,7 @@ settings-theme = Interface theme
 settings-theme-hint = Dark and light apply immediately and are saved to the config file
 theme-dark = Dark
 theme-light = Light
+settings-datasource = Data source
+datasource-real = Live collection
+datasource-mock = Mock
+settings-datasource-hint = Mock data is for demo and testing only; switching applies immediately and is saved to the config file

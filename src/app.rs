@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use eframe::egui;
 
 use crate::basemap;
-use crate::collector::{Collector, MockCollector};
+use crate::collector::{self, Collector, CollectorKind};
 use crate::config::Config;
 use crate::i18n::I18n;
 use crate::model::Connection;
@@ -65,7 +65,7 @@ impl NetOwlApp {
             page: Page::Map,
             last_page: Page::Map,
             map_view: basemap::View::global(),
-            collector: Box::new(MockCollector::new()),
+            collector: collector::build(CollectorKind::from_config(&config.general.collector)),
             i18n,
             config,
             conns: Vec::new(),
@@ -198,6 +198,15 @@ impl NetOwlApp {
         }
     }
 
+    /// 数据源配置与当前实例不一致(设置页切换)时重建采集器,切换即时生效
+    fn ensure_collector(&mut self) {
+        let kind = CollectorKind::from_config(&self.config.general.collector);
+        if kind != self.collector.kind() {
+            self.collector = collector::build(kind);
+            self.mark_config_dirty();
+        }
+    }
+
     fn mark_config_dirty(&mut self) {
         self.config_dirty = true;
         self.config_dirty_since = Instant::now();
@@ -207,6 +216,7 @@ impl NetOwlApp {
 impl eframe::App for NetOwlApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.handle_tray_commands(ctx);
+        self.ensure_collector();
         self.conns = self.collector.snapshot();
 
         // 进入设置页时重扫 locales,加载运行期间新增的词条文件
@@ -235,10 +245,13 @@ impl eframe::App for NetOwlApp {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // 字段级拆借用:conns 只读,config 需可变(设置页改数据源)
         let page = &mut self.page;
         let conns = &self.conns;
         let i18n = &mut self.i18n;
         let map_view = &mut self.map_view;
+        let config = &mut self.config;
+        let collector_kind = self.collector.kind();
 
         egui::Panel::left("nav")
             .exact_size(210.0)
@@ -248,7 +261,7 @@ impl eframe::App for NetOwlApp {
                     .fill(theme::c().bg_panel)
                     .inner_margin(egui::Margin { left: 14, right: 14, top: 18, bottom: 14 }),
             )
-            .show(ui, |ui| ui::nav_ui(ui, page, conns, i18n));
+            .show(ui, |ui| ui::nav_ui(ui, page, conns, i18n, collector_kind));
 
         egui::CentralPanel::default()
             .frame(
@@ -256,7 +269,7 @@ impl eframe::App for NetOwlApp {
                     .fill(theme::c().bg_base)
                     .inner_margin(egui::Margin::same(16)),
             )
-            .show(ui, |ui| ui::central_ui(ui, page, conns, i18n, map_view));
+            .show(ui, |ui| ui::central_ui(ui, page, conns, i18n, map_view, config));
 
         let repaint = match page {
             Page::Map => REPAINT_ANIMATED,

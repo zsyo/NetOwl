@@ -5,6 +5,8 @@ use eframe::egui;
 use egui::{Button, Color32, CornerRadius, Frame, Margin, RichText, Stroke};
 
 use crate::basemap;
+use crate::collector::CollectorKind;
+use crate::config::Config;
 use crate::i18n::I18n;
 use crate::map;
 use crate::model::{Connection, fmt_bytes};
@@ -27,7 +29,13 @@ const NAV_ITEMS: &[(Page, &str)] = &[
 ];
 
 /// 左侧导航栏
-pub fn nav_ui(ui: &mut egui::Ui, page: &mut Page, conns: &[Connection], i18n: &I18n) {
+pub fn nav_ui(
+    ui: &mut egui::Ui,
+    page: &mut Page,
+    conns: &[Connection],
+    i18n: &I18n,
+    collector_kind: CollectorKind,
+) {
     ui.add_space(4.0);
     ui.label(RichText::new(i18n.t("app-name")).size(22.0).strong().color(theme::c().accent));
     ui.label(theme::dim_text(&i18n.t("app-subtitle"), 10.0));
@@ -71,8 +79,12 @@ pub fn nav_ui(ui: &mut egui::Ui, page: &mut Page, conns: &[Connection], i18n: &I
                 .size(11.0)
                 .color(theme::c().text_dim),
         );
+        let status_key = match collector_kind {
+            CollectorKind::Real => "status-monitoring",
+            CollectorKind::Mock => "status-mock",
+        };
         ui.label(
-            RichText::new(i18n.t("status-mock"))
+            RichText::new(i18n.t(status_key))
                 .size(11.0)
                 .color(theme::c().text_dim),
         );
@@ -86,6 +98,7 @@ pub fn central_ui(
     conns: &[Connection],
     i18n: &mut I18n,
     map_view: &mut basemap::View,
+    config: &mut Config,
 ) {
     match page {
         Page::Map => map::draw(ui, conns, i18n, map_view),
@@ -95,7 +108,7 @@ pub fn central_ui(
             &i18n.t("rules-title"),
             &i18n.t("rules-placeholder"),
         ),
-        Page::Settings => settings_ui(ui, i18n),
+        Page::Settings => settings_ui(ui, config, i18n),
     }
 }
 
@@ -124,14 +137,23 @@ fn connections_ui(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n) {
                     ui.end_row();
 
                     for conn in conns {
-                        ui.label(RichText::new(&conn.process).size(13.0).color(theme::c().text));
+                        let process = if conn.process.is_empty() {
+                            format!("{} (PID {})", i18n.t("conn-proc-unknown"), conn.pid)
+                        } else {
+                            conn.process.clone()
+                        };
+                        ui.label(RichText::new(process).size(13.0).color(theme::c().text));
                         ui.label(theme::dim_text(conn.proto.as_str(), 13.0));
                         ui.label(
-                            RichText::new(format!("{}:{}", conn.remote_ip, conn.remote_port))
+                            RichText::new(conn.remote_display())
                                 .size(13.0)
                                 .color(theme::c().text),
                         );
-                        ui.label(theme::dim_text(&i18n.t(&format!("city-{}", conn.city)), 13.0));
+                        let location = match conn.city {
+                            Some(key) => i18n.t(&format!("city-{key}")),
+                            None => i18n.t("conn-loc-unknown"),
+                        };
+                        ui.label(theme::dim_text(&location, 13.0));
                         ui.label(
                             RichText::new(fmt_bytes(conn.bytes_in)).size(13.0).color(theme::c().inbound),
                         );
@@ -144,8 +166,8 @@ fn connections_ui(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n) {
         });
 }
 
-/// 设置页:语言切换(词条即时生效)
-fn settings_ui(ui: &mut egui::Ui, i18n: &mut I18n) {
+/// 设置页:语言切换(词条即时生效)、主题、数据源
+fn settings_ui(ui: &mut egui::Ui, config: &mut Config, i18n: &mut I18n) {
     ui.heading(theme::accent_text(&i18n.t("settings-title"), 20.0));
     ui.add_space(16.0);
     ui.label(RichText::new(i18n.t("settings-language")).size(14.0).strong().color(theme::c().text));
@@ -203,6 +225,36 @@ fn settings_ui(ui: &mut egui::Ui, i18n: &mut I18n) {
         });
     ui.add_space(6.0);
     ui.label(theme::dim_text(&i18n.t("settings-theme-hint"), 12.0));
+    ui.add_space(16.0);
+
+    // 数据源:真实采集 / 模拟演示,切换后由 logic 检测配置变化并重建采集器
+    ui.label(RichText::new(i18n.t("settings-datasource")).size(14.0).strong().color(theme::c().text));
+    ui.add_space(4.0);
+    let current = CollectorKind::from_config(&config.general.collector);
+    let datasource_name = |i18n: &I18n, kind: CollectorKind| match kind {
+        CollectorKind::Real => i18n.t("datasource-real"),
+        CollectorKind::Mock => i18n.t("datasource-mock"),
+    };
+    egui::ComboBox::from_id_salt("settings-datasource-select")
+        .width(180.0)
+        .selected_text(datasource_name(i18n, current))
+        .show_ui(ui, |ui| {
+            for kind in [CollectorKind::Real, CollectorKind::Mock] {
+                let selected = current == kind;
+                let label = RichText::new(datasource_name(i18n, kind))
+                    .size(14.0)
+                    .color(if selected {
+                        theme::c().accent
+                    } else {
+                        theme::c().text
+                    });
+                if ui.selectable_label(selected, label).clicked() {
+                    config.general.collector = kind.as_config().to_owned();
+                }
+            }
+        });
+    ui.add_space(6.0);
+    ui.label(theme::dim_text(&i18n.t("settings-datasource-hint"), 12.0));
 }
 
 /// 占位页统一卡片
