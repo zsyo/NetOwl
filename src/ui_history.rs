@@ -4,7 +4,10 @@
 use std::collections::HashMap;
 
 use eframe::egui;
-use egui::{CornerRadius, Frame, Label, Margin, RichText, Stroke};
+use egui::{
+    CornerRadius, Frame, Label, Margin, RichText, Stroke,
+    containers::menu::MenuButton,
+};
 use rusqlite::Connection as Db;
 
 use crate::config::Config;
@@ -204,33 +207,43 @@ fn toolbar(
             *config_changed = true;
         }
 
-        // 库大小与手动清空(右对齐)
+        // 库大小与手动清理(右对齐):点击弹出档位菜单
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let size = i18n.t_with_args("history-db-size", &[("size", fmt_bytes(state.db_size))]);
             ui.label(theme::dim_text(&size, 12.0));
-            let purge_label = RichText::new(i18n.t("history-purge")).size(13.0);
-            if ui
-                .add(
-                    egui::Button::new(purge_label)
-                        .fill(theme::c().accent_soft)
-                        .corner_radius(CornerRadius::same(theme::RADIUS_SM)),
-                )
-                .clicked()
-                && state.purge_days > 0
-            {
-                state.request_purge(writer);
-                config.general.history_remind = true;
-                *config_changed = true;
-            }
-            ui.add(
-                egui::DragValue::new(&mut state.purge_days)
-                    .range(1..=3650)
-                    .suffix(format!(" {}", i18n.t("settings-history-days-unit"))),
-            );
+            let purge_button = egui::Button::new(RichText::new(i18n.t("history-purge")).size(13.0))
+                .fill(theme::c().accent_soft)
+                .corner_radius(CornerRadius::same(theme::RADIUS_SM));
+            MenuButton::from_button(purge_button).ui(ui, |ui| {
+                ui.with_layout(
+                    egui::Layout::top_down(egui::Align::LEFT).with_cross_justify(true),
+                    |ui| {
+                        for (days, text) in purge_choices(i18n) {
+                            if ui.selectable_label(false, RichText::new(text).size(13.0)).clicked() {
+                                state.request_purge(writer, days);
+                                config.general.history_remind = true;
+                                *config_changed = true;
+                            }
+                        }
+                    },
+                );
+            });
         });
     });
     // 筛选文本失焦与开关变更即刷新(逐帧查询代价已由 dirty 门控)
     state.refresh_if_needed(db, config.general.hide_local, config.general.hide_lan);
+}
+
+/// 清理菜单档位:(删除天数, 词条文案);0 = 清空全部
+fn purge_choices(i18n: &I18n) -> Vec<(u32, String)> {
+    [
+        (0, i18n.t("history-purge-all")),
+        (3, i18n.t_with_args("history-purge-days", &[("n", "3".to_owned())])),
+        (7, i18n.t_with_args("history-purge-days", &[("n", "7".to_owned())])),
+        (30, i18n.t("history-purge-month")),
+    ]
+    .into_iter()
+    .collect()
 }
 
 fn proto_name(i18n: &I18n, proto: Option<Protocol>) -> String {

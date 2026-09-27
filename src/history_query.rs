@@ -260,9 +260,7 @@ pub struct PageState {
     /// 结果或库大小需要重新加载
     pub dirty: bool,
     pub db_size: u64,
-    /// 手动清空输入的天数
-    pub purge_days: u32,
-    /// 已发起清空,延迟数帧后刷新(等写线程完成)
+    /// 已发起清理,延迟数帧后刷新(等写线程完成)
     purge_pending: Option<Instant>,
 }
 
@@ -277,17 +275,14 @@ impl PageState {
             rows: Rows::Detail(Vec::new()),
             dirty: true,
             db_size: 0,
-            purge_days: 30,
             purge_pending: None,
         }
     }
 
-    /// 发起清空;还原超容提醒由调用方处理(config)
-    pub fn request_purge(&mut self, writer: &Writer) {
-        if self.purge_days == 0 {
-            return;
-        }
-        writer.purge(self.purge_days);
+    /// 发起清理:删除 days 天前的数据(0 = 清空全部);
+    /// 还原超容提醒由调用方处理(config)
+    pub fn request_purge(&mut self, writer: &Writer, days: u32) {
+        writer.purge(days);
         self.purge_pending = Some(Instant::now());
     }
 
