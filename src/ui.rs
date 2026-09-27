@@ -36,6 +36,7 @@ pub fn nav_ui(
     page: &mut Page,
     conns: &[Connection],
     i18n: &I18n,
+    rates: (u64, u64),
     collector_kind: CollectorKind,
 ) {
     ui.add_space(4.0);
@@ -68,9 +69,30 @@ pub fn nav_ui(
         }
     }
 
-    // 底部状态区
+    // 底部状态区(bottom_up:先绘制的贴底)
     ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
         ui.add_space(8.0);
+        // 实时总速率(GetIfTable2 接口字节采样差值);bottom_up 先绘制的贴底,
+        // 故先上传后下载,让下载行在上
+        ui.label(
+            RichText::new(i18n.t_with_args(
+                "nav-rate-up",
+                &[("rate", format!("{}/s", fmt_bytes(rates.1)))],
+            ))
+            .size(12.0)
+            .color(theme::c().outbound),
+        );
+        ui.label(
+            RichText::new(i18n.t_with_args(
+                "nav-rate-down",
+                &[("rate", format!("{}/s", fmt_bytes(rates.0)))],
+            ))
+            .size(12.0)
+            .color(theme::c().inbound),
+        );
+        ui.add_space(6.0);
+        ui.separator();
+        ui.add_space(6.0);
         ui.horizontal(|ui| {
             let (rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
             ui.painter().circle_filled(rect.center(), 4.0, theme::c().status_ok);
@@ -100,6 +122,8 @@ pub struct UiCtx<'a> {
     pub map_view: &'a mut basemap::View,
     pub config: &'a mut Config,
     pub rdns: &'a rdns::Rdns,
+    /// 总速率(字节/秒):(下行, 上行)
+    pub rates: (u64, u64),
     pub local_pos: (f32, f32),
 }
 

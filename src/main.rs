@@ -16,6 +16,7 @@ mod model;
 mod paths;
 mod rdns;
 mod theme;
+mod traffic;
 mod tray;
 mod triangulate;
 mod ui;

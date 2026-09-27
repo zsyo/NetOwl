@@ -18,6 +18,7 @@ use crate::local_ip;
 use crate::model::{Connection, Place};
 use crate::rdns;
 use crate::theme;
+use crate::traffic;
 use crate::tray::{self, Tray};
 use crate::ui::{self, Page};
 use crate::world;
@@ -33,6 +34,9 @@ const RESTORE_TIMEOUT: Duration = Duration::from_secs(2);
 const RESTORE_TOLERANCE: i32 = 2;
 /// 本机公网 IP 重探间隔(重拨/换网后点位跟随更新)
 const LOCAL_IP_PROBE_INTERVAL: Duration = Duration::from_secs(10 * 60);
+/// 总速率采样间隔:窗口可见时 1s,隐藏(托盘)时放宽到 5s 降低功耗
+const TRAFFIC_INTERVAL_ACTIVE: Duration = Duration::from_secs(1);
+const TRAFFIC_INTERVAL_HIDDEN: Duration = Duration::from_secs(5);
 
 /// 待恢复的窗口几何(物理像素)
 type WindowRect = (i32, i32, i32, i32, bool);
@@ -46,6 +50,10 @@ pub struct NetOwlApp {
     collector: Box<dyn Collector>,
     /// rDNS 解析(异步 PTR 查询,连接列表/地图信息卡域名优先显示)
     rdns: rdns::Rdns,
+    /// 总上传/下载速率采样(GetIfTable2 接口字节差值)
+    traffic: traffic::Sampler,
+    /// 最近总速率(字节/秒):(下行, 上行),导航栏展示
+    rates: (u64, u64),
     /// 本机公网 IP 探测(公共接口并发,最先成功者胜出)
     local_probe: local_ip::Probe,
     /// 本机公网 IP 的归属定位键;探测失败/未收录时为 None(地图用默认点位)
@@ -80,6 +88,8 @@ impl NetOwlApp {
             map_view: basemap::View::global(),
             collector: collector::build(CollectorKind::from_config(&config.general.collector)),
             rdns: rdns::Rdns::new(),
+            traffic: traffic::Sampler::new(),
+            rates: (0, 0),
             local_probe: local_ip::Probe::new(),
             local_place: None,
             local_probe_at: Instant::now(),
@@ -243,6 +253,13 @@ impl NetOwlApp {
         }
     }
 
+    /// 总速率采样:窗口隐藏(托盘)时放宽采样间隔降低功耗
+    fn poll_traffic(&mut self, ctx: &egui::Context) {
+        let visible = ctx.input(|i| i.viewport().visible()) != Some(false);
+        let interval = if visible { TRAFFIC_INTERVAL_ACTIVE } else { TRAFFIC_INTERVAL_HIDDEN };
+        self.rates = self.traffic.poll(interval);
+    }
+
     fn mark_config_dirty(&mut self) {
         self.config_dirty = true;
         self.config_dirty_since = Instant::now();
@@ -254,6 +271,7 @@ impl eframe::App for NetOwlApp {
         self.handle_tray_commands(ctx);
         self.ensure_collector();
         self.poll_local_ip();
+        self.poll_traffic(ctx);
         self.conns = self.collector.snapshot();
         self.rdns.update(&self.conns);
 
@@ -297,6 +315,7 @@ impl eframe::App for NetOwlApp {
             map_view: &mut self.map_view,
             config: &mut self.config,
             rdns: &self.rdns,
+            rates: self.rates,
             local_pos,
         };
 
@@ -309,7 +328,7 @@ impl eframe::App for NetOwlApp {
                     .inner_margin(egui::Margin { left: 14, right: 14, top: 18, bottom: 14 }),
             )
             .show(ui, |ui| {
-                ui::nav_ui(ui, page, ctx.conns, ctx.i18n, collector_kind)
+                ui::nav_ui(ui, page, ctx.conns, ctx.i18n, ctx.rates, collector_kind)
             });
 
         egui::CentralPanel::default()

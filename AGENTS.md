@@ -31,6 +31,10 @@
   执行,app 每帧 update 收割;并发上限 8 + 每 250ms 派发 2 个限流,成功/失败
   分别 10min/2min TTL 缓存,失效仅对仍活跃连接重查;回环/私网/保留段不查;
   lookup 供列表与地图信息卡域名优先显示,rdns::display 超长截断)
+- src/traffic.rs - 总上传/下载速率(GetIfTable2 各接口 In/OutOctets 采样差值;
+  排除回环/隧道;**必须排除 InterfaceAndOperStatusFlags.FilterInterface(bit1)
+  接口——WFP 轻量过滤/QoS 过滤接口会镜像底层物理网卡计数,不过滤速率成倍
+  虚高**;窗口可见 1s 采样、隐藏 5s,表查询失败沿用旧速率)
 - src/collector/ - 连接采集(mod.rs:Collector trait 与 real/mock 工厂 +
   CollectorKind;mock.rs:模拟数据供演示/测试;windows_table.rs:真实采集,
   GetExtendedTcpTable/GetExtendedUdpTable owner-PID 快照(1s 节流,TCP 仅
