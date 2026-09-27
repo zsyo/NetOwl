@@ -123,6 +123,31 @@ RIVER_SCALERANK_GLOBAL = 3
 RIVER_SCALERANK_DETAIL = 4
 RIVER_SIMPLIFY_EPS_GLOBAL = 0.02
 RIVER_SIMPLIFY_EPS_DETAIL = 0.005
+
+# NE 10m/50m rivers 的长江在江阴以东(约 119.6E 起)整体缺段,两档均无
+# 数据,河流在江苏省内呈断流;按长江南岸主槽实际走向手工补一条过渡
+# 折线,首点精确衔接 NE Yangtze 段终点(扬中),末点到吴淞口外入海
+YANGTZE_MOUTH_PATCH = [
+    (119.6064, 32.1969),
+    (119.85, 32.19),
+    (120.10, 32.02),
+    (120.32, 31.92),  # 江阴
+    (120.62, 31.85),  # 张家港
+    (120.95, 31.72),  # 徐六泾
+    (121.25, 31.57),
+    (121.51, 31.39),  # 吴淞口
+    (121.90, 31.36),
+]
+
+
+def densify_line(pts, step=0.05):
+    """控制点线性加密(步长为度):手工补线点少,直接插值到渲染精度"""
+    out = [pts[0]]
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        n = max(1, int(max(abs(x1 - x0), abs(y1 - y0)) / step))
+        for i in range(1, n + 1):
+            out.append((x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n))
+    return out
 # NE 邻国界顶点向中国边界顶点吸合的半径(量化单位,0.2 度):
 # 分层渲染藏南已由中国层覆盖,这里只消"两国边界相邻不重合"的细缝
 NEAR_SNAP_TOL = 200
@@ -936,6 +961,11 @@ def main():
                                      RIVER_SCALERANK_GLOBAL, RIVER_SIMPLIFY_EPS_GLOBAL)
     rivers_detail = load_river_lines(SRC_RIVERS, QUANT,
                                      RIVER_SCALERANK_DETAIL, RIVER_SIMPLIFY_EPS_DETAIL)
+    # 长江口缺段补线并入两档
+    patch = [(int(round(lon * QUANT)), int(round(lat * QUANT)))
+             for lon, lat in densify_line(YANGTZE_MOUTH_PATCH)]
+    rivers_global.append(patch)
+    rivers_detail.append(patch)
     print(f"rivers: global {len(rivers_global)} lines ({sum(len(p) for p in rivers_global)} pts), "
           f"detail {len(rivers_detail)} lines ({sum(len(p) for p in rivers_detail)} pts)", file=sys.stderr)
     encode_rivers(out, rivers_global)
