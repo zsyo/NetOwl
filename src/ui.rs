@@ -100,9 +100,10 @@ pub fn central_ui(
     i18n: &mut I18n,
     map_view: &mut basemap::View,
     config: &mut Config,
+    local_pos: (f32, f32),
 ) {
     match page {
-        Page::Map => map::draw(ui, conns, i18n, map_view),
+        Page::Map => map::draw(ui, conns, i18n, map_view, local_pos),
         Page::Connections => connections_ui(ui, conns, i18n),
         Page::Rules => placeholder_ui(
             ui,

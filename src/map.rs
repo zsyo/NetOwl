@@ -14,7 +14,6 @@ use crate::geoip;
 use crate::i18n::I18n;
 use crate::model::{Connection, Place, fmt_bytes};
 use crate::theme;
-use crate::world::LOCAL;
 
 /// 视图动画趋近系数(30fps 下约 0.12s 收敛)
 const ANIM_K: f32 = 0.22;
@@ -60,7 +59,13 @@ fn hash_phase(seed: u64) -> f32 {
 /// 归属节点聚合:连接数与累计流量
 type Agg = BTreeMap<Place, (usize, u64)>;
 
-pub fn draw(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n, view: &mut View) {
+pub fn draw(
+    ui: &mut egui::Ui,
+    conns: &[Connection],
+    i18n: &I18n,
+    view: &mut View,
+    local_pos: (f32, f32),
+) {
     ui.horizontal(|ui| {
         ui.heading(theme::accent_text(&i18n.t("map-title"), 20.0));
         ui.label(theme::dim_text(&i18n.t("map-subtitle"), 13.0));
@@ -85,7 +90,7 @@ pub fn draw(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n, view: &mut Vie
 
     basemap::draw(&painter, rect, &proj, i18n.current_lang.starts_with("zh"));
 
-    let local = proj.project(LOCAL.lon, LOCAL.lat);
+    let local = proj.project(local_pos.0, local_pos.1);
     let agg = aggregate(conns);
     let cycle_px = proj.cycle_px();
 
@@ -95,7 +100,7 @@ pub fn draw(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n, view: &mut Vie
         // 平移铺开,屏幕边缘两侧由相邻副本自然接续
         let Some(place) = c.city else { continue };
         let (place_lon, place_lat) = geoip::place_pos(place);
-        let end_lon = LOCAL.lon + wrap_delta(place_lon - LOCAL.lon);
+        let end_lon = local_pos.0 + wrap_delta(place_lon - local_pos.0);
         let end = proj.project(end_lon, place_lat);
         let inbound = c.inbound_dominant();
         let (start, end) = if inbound { (end, local) } else { (local, end) };

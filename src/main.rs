@@ -10,6 +10,7 @@ mod db;
 mod geoip;
 mod i18n;
 mod icon;
+mod local_ip;
 mod map;
 mod model;
 mod paths;

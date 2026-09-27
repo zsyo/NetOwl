@@ -21,9 +21,12 @@
   内网/保留段/未收录 IP 归属未知,地图不绘制,列表显示占位;UDP 表行远端
   以 *:* 展示)
 - src/geoip.rs - GeoIP 归属定位(assets/geoip.bin 编译期内嵌,首用解析一次;
-  IPv4 区间表 LEB128 delta 编码二分查询;中国含港澳台到省级、其余按 ISO 码
-  到国家;place_pos/place_label 为地图与列表的统一归属坐标/显示名入口,
-  显示名双语内嵌不走词条)
+  IPv4 区间表 LEB128 delta 编码二分查询;城市级粒度:中国含港澳台到地级市、
+  外国按城市名匹配 GeoNames,未命中回退省/国家级;place_pos/place_label 为
+  地图与列表的统一归属坐标/显示名入口,显示名双语内嵌不走词条)
+- src/local_ip.rs - 本机公网 IP 探测(6 个知名公共回显接口并发,手写
+  HTTP/1.1 GET 不走系统代理、不引 TLS 依赖,最先返回的合法 IPv4 胜出;
+  app 层每 10 分钟重探,经 geoip 得到本机地图点位,失败回退 world::LOCAL)
 - src/collector/ - 连接采集(mod.rs:Collector trait 与 real/mock 工厂 +
   CollectorKind;mock.rs:模拟数据供演示/测试;windows_table.rs:真实采集,
   GetExtendedTcpTable/GetExtendedUdpTable owner-PID 快照(1s 节流,TCP 仅
@@ -57,10 +60,12 @@
 - tools/build_mapdata.py - 底图数据生成脚本(混合数据源 ->
     assets/mapdata.bin;原始 GeoJSON 放 tools/cache/,该目录不入库)
 - tools/build_geoip.py - GeoIP 归属数据生成脚本(tools/cache/ip2region_v4.xdb
-  [Apache-2.0,持续更新] + DataV 100000_full.json + NE 50m admin_0 ->
-  assets/geoip.bin,NWGI v1 格式;区间 55 万 -> 合并 17.7 万/734KB;
-  ip2region 台湾/港澳段数据源已正确标"中国|台湾省|香港特别行政区",
-  34 省英文名为脚本内手写映射;重生成需下载 ip2region_v4.xdb 到 tools/cache/)
+  [Apache-2.0,持续更新] + DataV 100000_full.json 与各省 {adcode}_full.json
+  [市级政府驻地坐标] + NE 50m admin_0 + GeoNames cities15000[公有领域,外国
+  城市坐标与英文名] -> assets/geoip.bin,NWGI v1 格式;城市级:中国含港澳台
+  到地级市[台湾 DataV 无 full 数据回退省级]、外国 (ISO,城市名) 匹配 GeoNames
+  同名取人口最多者,未命中回退省/国家级;55 万条 -> 合并 49.6 万条/约 2.7MB;
+  重生成需将数据源文件放入 tools/cache/,缺失的会自动下载)
 
 ## 架构规范(egui 即时模式)
 - 数据与绘制分离:collector 产出模型状态,ui/map 只读绘制,绘制逻辑不修改数据

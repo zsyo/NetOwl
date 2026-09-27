@@ -12,11 +12,14 @@ use eframe::egui;
 use crate::basemap;
 use crate::collector::{self, Collector, CollectorKind};
 use crate::config::Config;
+use crate::geoip;
 use crate::i18n::I18n;
-use crate::model::Connection;
+use crate::local_ip;
+use crate::model::{Connection, Place};
 use crate::theme;
 use crate::tray::{self, Tray};
 use crate::ui::{self, Page};
+use crate::world;
 
 /// 重绘节奏:地图页动画 30fps,静态页面低频
 const REPAINT_ANIMATED: Duration = Duration::from_millis(33);
@@ -27,6 +30,8 @@ const CONFIG_SAVE_DEBOUNCE: Duration = Duration::from_millis(500);
 const RESTORE_TIMEOUT: Duration = Duration::from_secs(2);
 /// 恢复匹配容差(物理像素)
 const RESTORE_TOLERANCE: i32 = 2;
+/// 本机公网 IP 重探间隔(重拨/换网后点位跟随更新)
+const LOCAL_IP_PROBE_INTERVAL: Duration = Duration::from_secs(10 * 60);
 
 /// 待恢复的窗口几何(物理像素)
 type WindowRect = (i32, i32, i32, i32, bool);
@@ -38,6 +43,11 @@ pub struct NetOwlApp {
     /// 流量地图视图(中心/缩放,跨帧保持)
     map_view: basemap::View,
     collector: Box<dyn Collector>,
+    /// 本机公网 IP 探测(公共接口并发,最先成功者胜出)
+    local_probe: local_ip::Probe,
+    /// 本机公网 IP 的归属定位键;探测失败/未收录时为 None(地图用默认点位)
+    local_place: Option<Place>,
+    local_probe_at: Instant,
     i18n: I18n,
     config: Config,
     conns: Vec<Connection>,
@@ -66,6 +76,9 @@ impl NetOwlApp {
             last_page: Page::Map,
             map_view: basemap::View::global(),
             collector: collector::build(CollectorKind::from_config(&config.general.collector)),
+            local_probe: local_ip::Probe::new(),
+            local_place: None,
+            local_probe_at: Instant::now(),
             i18n,
             config,
             conns: Vec::new(),
@@ -207,6 +220,25 @@ impl NetOwlApp {
         }
     }
 
+    /// 本机公网 IP 探测:取每轮首个成功结果,归属变化时刷新地图本机点位
+    fn poll_local_ip(&mut self) {
+        if let Some((ip, source)) = self.local_probe.poll() {
+            let place = geoip::locate(ip).map(Place::Geo);
+            if place != self.local_place {
+                self.local_place = place;
+                if place.is_some() {
+                    eprintln!("[LocalIp] 本机公网 IP {ip}({source})");
+                } else {
+                    eprintln!("[LocalIp] 本机公网 IP {ip}({source}) 无归属,回退默认点位");
+                }
+            }
+        }
+        if self.local_probe_at.elapsed() >= LOCAL_IP_PROBE_INTERVAL {
+            self.local_probe_at = Instant::now();
+            self.local_probe.begin_round();
+        }
+    }
+
     fn mark_config_dirty(&mut self) {
         self.config_dirty = true;
         self.config_dirty_since = Instant::now();
@@ -217,6 +249,7 @@ impl eframe::App for NetOwlApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.handle_tray_commands(ctx);
         self.ensure_collector();
+        self.poll_local_ip();
         self.conns = self.collector.snapshot();
 
         // 进入设置页时重扫 locales,加载运行期间新增的词条文件
@@ -252,6 +285,11 @@ impl eframe::App for NetOwlApp {
         let map_view = &mut self.map_view;
         let config = &mut self.config;
         let collector_kind = self.collector.kind();
+        // 本机点位:公网 IP 归属(探测失败/未收录时用默认位置)
+        let local_pos = self
+            .local_place
+            .map(geoip::place_pos)
+            .unwrap_or((world::LOCAL.lon, world::LOCAL.lat));
 
         egui::Panel::left("nav")
             .exact_size(210.0)
@@ -269,7 +307,7 @@ impl eframe::App for NetOwlApp {
                     .fill(theme::c().bg_base)
                     .inner_margin(egui::Margin::same(16)),
             )
-            .show(ui, |ui| ui::central_ui(ui, page, conns, i18n, map_view, config));
+            .show(ui, |ui| ui::central_ui(ui, page, conns, i18n, map_view, config, local_pos));
 
         let repaint = match page {
             Page::Map => REPAINT_ANIMATED,
