@@ -196,6 +196,9 @@ fn rules_table(
                     }
                     ui.end_row();
 
+                    // 删除会缩短 rules 数组,同帧继续按旧索引渲染会越界
+                    // 崩溃:删除后立即结束本帧表格,下一帧按新列表重建
+                    let mut removed = false;
                     for i in 0..rules.rules.len() {
                         let rule = rules.rules[i].clone();
                         let mut enabled = rule.enabled;
@@ -243,8 +246,12 @@ fn rules_table(
                             {
                                 eprintln!("[Rules] 删除规则 {} 失败: {e}", rule.id);
                             }
+                            removed = true;
                         });
                         ui.end_row();
+                        if removed {
+                            break;
+                        }
                     }
                 });
         });
