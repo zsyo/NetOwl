@@ -77,6 +77,11 @@ fn remind_card(
     changed
 }
 
+/// 工具栏行内控件的最小交互高度:egui horizontal 的行高从默认 18px 起步,
+/// 高于行高的控件被强制顶部对齐而矮控件行内居中,造成文字基线错位;统一
+/// 抬高该值,让整行控件在同一行高内垂直居中(取行内最高控件并留余量)
+const TOOLBAR_ROW_H: f32 = 26.0;
+
 /// 工具栏:视图切换、筛选与刷新(左),库大小与清空(右)
 fn toolbar(
     ui: &mut egui::Ui,
@@ -87,6 +92,7 @@ fn toolbar(
     config: &mut Config,
     config_changed: &mut bool,
 ) {
+    ui.style_mut().spacing.interact_size.y = TOOLBAR_ROW_H;
     ui.horizontal(|ui| {
         // 视图切换
         let mut switch = None;
@@ -127,7 +133,7 @@ fn toolbar(
         };
         egui::ComboBox::from_id_salt("history-range")
             .width(120.0)
-            .selected_text(range_name(i18n, state.range))
+            .selected_text(RichText::new(range_name(i18n, state.range)).size(13.0))
             .show_ui(ui, |ui| {
                 for (r, key) in ranges {
                     if ui
@@ -144,18 +150,20 @@ fn toolbar(
         let process = ui.add(
             egui::TextEdit::singleline(&mut state.process)
                 .hint_text(i18n.t("history-filter-process"))
+                .font(egui::FontId::proportional(13.0))
                 .desired_width(110.0),
         );
         let remote = ui.add(
             egui::TextEdit::singleline(&mut state.remote)
                 .hint_text(i18n.t("history-filter-remote"))
+                .font(egui::FontId::proportional(13.0))
                 .desired_width(110.0),
         );
 
         // 协议
         egui::ComboBox::from_id_salt("history-proto")
             .width(90.0)
-            .selected_text(proto_name(i18n, state.proto))
+            .selected_text(RichText::new(proto_name(i18n, state.proto)).size(13.0))
             .show_ui(ui, |ui| {
                 for p in [None, Some(Protocol::Tcp), Some(Protocol::Udp)] {
                     if ui
@@ -168,7 +176,10 @@ fn toolbar(
                 }
             });
 
-        if ui.button(i18n.t("history-refresh")).clicked() {
+        if ui
+            .button(RichText::new(i18n.t("history-refresh")).size(13.0))
+            .clicked()
+        {
             state.dirty = true;
         }
         if process.changed() || remote.changed() || process.lost_focus() || remote.lost_focus() {
@@ -176,15 +187,17 @@ fn toolbar(
         }
 
         // 本地/局域网远端噪音过滤(config 持久化,连接页与历史页共享)
+        let hide_local_text = RichText::new(i18n.t("filter-hide-local")).size(13.0);
         if ui
-            .checkbox(&mut config.general.hide_local, i18n.t("filter-hide-local"))
+            .checkbox(&mut config.general.hide_local, hide_local_text)
             .changed()
         {
             state.dirty = true;
             *config_changed = true;
         }
+        let hide_lan_text = RichText::new(i18n.t("filter-hide-lan")).size(13.0);
         if ui
-            .checkbox(&mut config.general.hide_lan, i18n.t("filter-hide-lan"))
+            .checkbox(&mut config.general.hide_lan, hide_lan_text)
             .changed()
         {
             state.dirty = true;
