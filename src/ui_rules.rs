@@ -241,12 +241,12 @@ fn rules_table(
                             if small_btn(ui, i18n.t("rules-edit")).clicked() {
                                 state.draft = Some(Draft::from_rule(&rule));
                             }
-                            if small_btn(ui, i18n.t("rules-delete")).clicked()
-                                && let Err(e) = rules.delete(db, rule.id)
-                            {
-                                eprintln!("[Rules] 删除规则 {} 失败: {e}", rule.id);
+                            if small_btn(ui, i18n.t("rules-delete")).clicked() {
+                                if let Err(e) = rules.delete(db, rule.id) {
+                                    eprintln!("[Rules] 删除规则 {} 失败: {e}", rule.id);
+                                }
+                                removed = true;
                             }
-                            removed = true;
                         });
                         ui.end_row();
                         if removed {
