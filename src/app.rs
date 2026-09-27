@@ -16,6 +16,7 @@ use crate::geoip;
 use crate::i18n::I18n;
 use crate::local_ip;
 use crate::model::{Connection, Place};
+use crate::rdns;
 use crate::theme;
 use crate::tray::{self, Tray};
 use crate::ui::{self, Page};
@@ -43,6 +44,8 @@ pub struct NetOwlApp {
     /// 流量地图视图(中心/缩放,跨帧保持)
     map_view: basemap::View,
     collector: Box<dyn Collector>,
+    /// rDNS 解析(异步 PTR 查询,连接列表/地图信息卡域名优先显示)
+    rdns: rdns::Rdns,
     /// 本机公网 IP 探测(公共接口并发,最先成功者胜出)
     local_probe: local_ip::Probe,
     /// 本机公网 IP 的归属定位键;探测失败/未收录时为 None(地图用默认点位)
@@ -76,6 +79,7 @@ impl NetOwlApp {
             last_page: Page::Map,
             map_view: basemap::View::global(),
             collector: collector::build(CollectorKind::from_config(&config.general.collector)),
+            rdns: rdns::Rdns::new(),
             local_probe: local_ip::Probe::new(),
             local_place: None,
             local_probe_at: Instant::now(),
@@ -251,6 +255,7 @@ impl eframe::App for NetOwlApp {
         self.ensure_collector();
         self.poll_local_ip();
         self.conns = self.collector.snapshot();
+        self.rdns.update(&self.conns);
 
         // 进入设置页时重扫 locales,加载运行期间新增的词条文件
         if self.page == Page::Settings && self.last_page != Page::Settings {
@@ -278,18 +283,22 @@ impl eframe::App for NetOwlApp {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        // 字段级拆借用:conns 只读,config 需可变(设置页改数据源)
+        // 字段级拆借用:conns/rdns 只读,config/map_view 需可变(设置页与地图交互)
         let page = &mut self.page;
-        let conns = &self.conns;
-        let i18n = &mut self.i18n;
-        let map_view = &mut self.map_view;
-        let config = &mut self.config;
         let collector_kind = self.collector.kind();
         // 本机点位:公网 IP 归属(探测失败/未收录时用默认位置)
         let local_pos = self
             .local_place
             .map(geoip::place_pos)
             .unwrap_or((world::LOCAL.lon, world::LOCAL.lat));
+        let mut ctx = ui::UiCtx {
+            conns: &self.conns,
+            i18n: &mut self.i18n,
+            map_view: &mut self.map_view,
+            config: &mut self.config,
+            rdns: &self.rdns,
+            local_pos,
+        };
 
         egui::Panel::left("nav")
             .exact_size(210.0)
@@ -299,7 +308,9 @@ impl eframe::App for NetOwlApp {
                     .fill(theme::c().bg_panel)
                     .inner_margin(egui::Margin { left: 14, right: 14, top: 18, bottom: 14 }),
             )
-            .show(ui, |ui| ui::nav_ui(ui, page, conns, i18n, collector_kind));
+            .show(ui, |ui| {
+                ui::nav_ui(ui, page, ctx.conns, ctx.i18n, collector_kind)
+            });
 
         egui::CentralPanel::default()
             .frame(
@@ -307,7 +318,7 @@ impl eframe::App for NetOwlApp {
                     .fill(theme::c().bg_base)
                     .inner_margin(egui::Margin::same(16)),
             )
-            .show(ui, |ui| ui::central_ui(ui, page, conns, i18n, map_view, config, local_pos));
+            .show(ui, |ui| ui::central_ui(ui, page, &mut ctx));
 
         let repaint = match page {
             Page::Map => REPAINT_ANIMATED,

@@ -14,6 +14,7 @@ mod local_ip;
 mod map;
 mod model;
 mod paths;
+mod rdns;
 mod theme;
 mod tray;
 mod triangulate;

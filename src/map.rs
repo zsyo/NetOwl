@@ -13,6 +13,7 @@ use crate::basemap::{self, Projection, View};
 use crate::geoip;
 use crate::i18n::I18n;
 use crate::model::{Connection, Place, fmt_bytes};
+use crate::rdns;
 use crate::theme;
 
 /// 视图动画趋近系数(30fps 下约 0.12s 收敛)
@@ -64,6 +65,7 @@ pub fn draw(
     conns: &[Connection],
     i18n: &I18n,
     view: &mut View,
+    rdns: &rdns::Rdns,
     local_pos: (f32, f32),
 ) {
     ui.horizontal(|ui| {
@@ -183,7 +185,7 @@ pub fn draw(
     }
 
     if let Some(place) = hovered_place {
-        info_card(&painter, rect, place, conns, i18n);
+        info_card(&painter, rect, place, conns, i18n, rdns);
     }
 }
 
@@ -261,6 +263,7 @@ fn info_card(
     place: Place,
     conns: &[Connection],
     i18n: &I18n,
+    rdns: &rdns::Rdns,
 ) {
     const WIDTH: f32 = 310.0;
     const LINE_H: f32 = 17.0;
@@ -299,7 +302,11 @@ fn info_card(
     for conn in rows.iter().take(MAX_ROWS) {
         let process = format!("{} ({})", conn.process, conn.pid);
         painter.text(Pos2::new(card.left() + 14.0, y + 8.0), Align2::LEFT_CENTER, process, FontId::proportional(12.0), theme::c().text);
-        let remote = format!("{} {}", conn.remote_display(), conn.proto.as_str());
+        // rDNS 域名优先(卡片行宽有限,超长截断),无 PTR 回退地址:端口
+        let remote = match rdns.lookup(conn.remote_ip) {
+            Some(host) => format!("{} {}", rdns::display(host, conn.remote_port, 24), conn.proto.as_str()),
+            None => format!("{} {}", conn.remote_display(), conn.proto.as_str()),
+        };
         painter.text(Pos2::new(card.right() - 14.0, y + 8.0), Align2::RIGHT_CENTER, remote, FontId::monospace(11.0), theme::c().text_dim);
         y += LINE_H;
     }

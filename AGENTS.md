@@ -27,6 +27,10 @@
 - src/local_ip.rs - 本机公网 IP 探测(6 个知名公共回显接口并发,手写
   HTTP/1.1 GET 不走系统代理、不引 TLS 依赖,最先返回的合法 IPv4 胜出;
   app 层每 10 分钟重探,经 geoip 得到本机地图点位,失败回退 world::LOCAL)
+- src/rdns.rs - rDNS 域名解析(异步 PTR:getnameinfo NI_NAMEREQD 于独立线程
+  执行,app 每帧 update 收割;并发上限 8 + 每 250ms 派发 2 个限流,成功/失败
+  分别 10min/2min TTL 缓存,失效仅对仍活跃连接重查;回环/私网/保留段不查;
+  lookup 供列表与地图信息卡域名优先显示,rdns::display 超长截断)
 - src/collector/ - 连接采集(mod.rs:Collector trait 与 real/mock 工厂 +
   CollectorKind;mock.rs:模拟数据供演示/测试;windows_table.rs:真实采集,
   GetExtendedTcpTable/GetExtendedUdpTable owner-PID 快照(1s 节流,TCP 仅

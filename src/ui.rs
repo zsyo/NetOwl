@@ -2,7 +2,7 @@
 //! 全部界面文本经 I18n 词条获取(AGENTS.md 规范 4)。
 
 use eframe::egui;
-use egui::{Button, Color32, CornerRadius, Frame, Margin, RichText, Stroke};
+use egui::{Button, Color32, CornerRadius, Frame, Label, Margin, RichText, Stroke};
 
 use crate::basemap;
 use crate::collector::CollectorKind;
@@ -11,6 +11,7 @@ use crate::geoip;
 use crate::i18n::I18n;
 use crate::map;
 use crate::model::{Connection, fmt_bytes};
+use crate::rdns;
 use crate::theme;
 
 /// 主窗口页面
@@ -92,30 +93,32 @@ pub fn nav_ui(
     });
 }
 
+/// 各页面共用的绘制上下文(集中可变状态引用,避免签名持续膨胀)
+pub struct UiCtx<'a> {
+    pub conns: &'a [Connection],
+    pub i18n: &'a mut I18n,
+    pub map_view: &'a mut basemap::View,
+    pub config: &'a mut Config,
+    pub rdns: &'a rdns::Rdns,
+    pub local_pos: (f32, f32),
+}
+
 /// 中央区域按页面分发
-pub fn central_ui(
-    ui: &mut egui::Ui,
-    page: &Page,
-    conns: &[Connection],
-    i18n: &mut I18n,
-    map_view: &mut basemap::View,
-    config: &mut Config,
-    local_pos: (f32, f32),
-) {
+pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) {
     match page {
-        Page::Map => map::draw(ui, conns, i18n, map_view, local_pos),
-        Page::Connections => connections_ui(ui, conns, i18n),
+        Page::Map => map::draw(ui, ctx.conns, ctx.i18n, ctx.map_view, ctx.rdns, ctx.local_pos),
+        Page::Connections => connections_ui(ui, ctx.conns, ctx.i18n, ctx.rdns),
         Page::Rules => placeholder_ui(
             ui,
-            &i18n.t("rules-title"),
-            &i18n.t("rules-placeholder"),
+            &ctx.i18n.t("rules-title"),
+            &ctx.i18n.t("rules-placeholder"),
         ),
-        Page::Settings => settings_ui(ui, config, i18n),
+        Page::Settings => settings_ui(ui, ctx.config, ctx.i18n),
     }
 }
 
 /// 连接列表页
-fn connections_ui(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n) {
+fn connections_ui(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n, rdns: &rdns::Rdns) {
     ui.heading(theme::accent_text(&i18n.t("conns-title"), 20.0));
     ui.label(theme::dim_text(&i18n.t("conns-subtitle"), 13.0));
     ui.add_space(10.0);
@@ -146,11 +149,34 @@ fn connections_ui(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n) {
                         };
                         ui.label(RichText::new(process).size(13.0).color(theme::c().text));
                         ui.label(theme::dim_text(conn.proto.as_str(), 13.0));
-                        ui.label(
-                            RichText::new(conn.remote_display())
-                                .size(13.0)
-                                .color(theme::c().text),
-                        );
+                        // rDNS 域名优先,域名下方弱化显示裸 IP;无 PTR 回退地址:端口。
+                        // 单行延伸(Extend)禁用自动折行,列宽由最宽内容撑开
+                        ui.vertical(|ui| match rdns.lookup(conn.remote_ip) {
+                            Some(host) => {
+                                ui.add(
+                                    Label::new(
+                                        RichText::new(rdns::display(host, conn.remote_port, 36))
+                                            .size(13.0)
+                                            .color(theme::c().text),
+                                    )
+                                    .wrap_mode(egui::TextWrapMode::Extend),
+                                );
+                                ui.add(
+                                    Label::new(theme::dim_text(&conn.remote_ip.to_string(), 11.0))
+                                        .wrap_mode(egui::TextWrapMode::Extend),
+                                );
+                            }
+                            None => {
+                                ui.add(
+                                    Label::new(
+                                        RichText::new(conn.remote_display())
+                                            .size(13.0)
+                                            .color(theme::c().text),
+                                    )
+                                    .wrap_mode(egui::TextWrapMode::Extend),
+                                );
+                            }
+                        });
                         let location = match conn.city {
                             Some(place) => geoip::place_label(place, i18n),
                             None => i18n.t("conn-loc-unknown"),
