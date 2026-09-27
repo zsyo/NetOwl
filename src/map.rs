@@ -3,9 +3,11 @@
 
 use std::collections::BTreeMap;
 
+use std::collections::HashMap;
+
 use eframe::egui;
 use egui::{
-    Align2, Color32, CornerRadius, FontId, Pos2, Rect, Sense, Shape, Stroke, StrokeKind, Vec2,
+    Align2, Color32, CornerRadius, FontId, Pos2, Rect, Sense, Shape, Stroke, StrokeKind, TextureHandle, Vec2,
 };
 use egui::epaint::QuadraticBezierShape;
 
@@ -66,6 +68,7 @@ pub fn draw(
     i18n: &I18n,
     view: &mut View,
     rdns: &rdns::Rdns,
+    icon_tex: &HashMap<String, Option<TextureHandle>>,
     local_pos: (f32, f32),
 ) {
     ui.horizontal(|ui| {
@@ -185,7 +188,7 @@ pub fn draw(
     }
 
     if let Some(place) = hovered_place {
-        info_card(&painter, rect, place, conns, i18n, rdns);
+        info_card(&painter, rect, place, conns, i18n, rdns, icon_tex);
     }
 }
 
@@ -264,6 +267,7 @@ fn info_card(
     conns: &[Connection],
     i18n: &I18n,
     rdns: &rdns::Rdns,
+    icon_tex: &HashMap<String, Option<TextureHandle>>,
 ) {
     const WIDTH: f32 = 310.0;
     const LINE_H: f32 = 17.0;
@@ -300,8 +304,28 @@ fn info_card(
 
     let mut y = card.top() + HEAD_H - 4.0;
     for conn in rows.iter().take(MAX_ROWS) {
+        // 进程图标(14px);无图标时文本左缘保持一致,信息卡行不留空位
+        let mut text_x = card.left() + 14.0;
+        if let Some(tex) = conn
+            .proc_path
+            .as_deref()
+            .and_then(|p| icon_tex.get(p))
+            .and_then(|t| t.as_ref())
+        {
+            let icon_rect = Rect::from_min_size(
+                Pos2::new(text_x, y + LINE_H / 2.0 - 7.0),
+                Vec2::new(14.0, 14.0),
+            );
+            painter.image(
+                tex.id(),
+                icon_rect,
+                Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+                Color32::WHITE,
+            );
+            text_x += 18.0;
+        }
         let process = format!("{} ({})", conn.process, conn.pid);
-        painter.text(Pos2::new(card.left() + 14.0, y + 8.0), Align2::LEFT_CENTER, process, FontId::proportional(12.0), theme::c().text);
+        painter.text(Pos2::new(text_x, y + 8.0), Align2::LEFT_CENTER, process, FontId::proportional(12.0), theme::c().text);
         // rDNS 域名优先(卡片行宽有限,超长截断),无 PTR 回退地址:端口
         let remote = match rdns.lookup(conn.remote_ip) {
             Some(host) => format!("{} {}", rdns::display(host, conn.remote_port, 24), conn.proto.as_str()),

@@ -1,6 +1,8 @@
 //! 主窗口布局:导航侧栏与各页面(地图 / 连接 / 规则占位 / 设置)。
 //! 全部界面文本经 I18n 词条获取(AGENTS.md 规范 4)。
 
+use std::collections::HashMap;
+
 use eframe::egui;
 use egui::{Button, Color32, CornerRadius, Frame, Label, Margin, RichText, Stroke};
 
@@ -124,14 +126,16 @@ pub struct UiCtx<'a> {
     pub rdns: &'a rdns::Rdns,
     /// 总速率(字节/秒):(下行, 上行)
     pub rates: (u64, u64),
+    /// 进程图标纹理(键 = 映像路径);None 表示已提取且无图标
+    pub icon_tex: &'a HashMap<String, Option<egui::TextureHandle>>,
     pub local_pos: (f32, f32),
 }
 
 /// 中央区域按页面分发
 pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) {
     match page {
-        Page::Map => map::draw(ui, ctx.conns, ctx.i18n, ctx.map_view, ctx.rdns, ctx.local_pos),
-        Page::Connections => connections_ui(ui, ctx.conns, ctx.i18n, ctx.rdns),
+        Page::Map => map::draw(ui, ctx.conns, ctx.i18n, ctx.map_view, ctx.rdns, ctx.icon_tex, ctx.local_pos),
+        Page::Connections => connections_ui(ui, ctx.conns, ctx.i18n, ctx.rdns, ctx.icon_tex),
         Page::Rules => placeholder_ui(
             ui,
             &ctx.i18n.t("rules-title"),
@@ -142,7 +146,13 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) {
 }
 
 /// 连接列表页
-fn connections_ui(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n, rdns: &rdns::Rdns) {
+fn connections_ui(
+    ui: &mut egui::Ui,
+    conns: &[Connection],
+    i18n: &I18n,
+    rdns: &rdns::Rdns,
+    icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
+) {
     ui.heading(theme::accent_text(&i18n.t("conns-title"), 20.0));
     ui.label(theme::dim_text(&i18n.t("conns-subtitle"), 13.0));
     ui.add_space(10.0);
@@ -171,12 +181,31 @@ fn connections_ui(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n, rdns: &r
                         } else {
                             conn.process.clone()
                         };
-                        // 进程列两行:映像名 + 弱化的签名状态与路径
+                        // 进程列两行:映像名(带图标)+ 弱化的签名状态与路径。
+                        // 无图标的进程也占位 18px,保证各行文字起点对齐不跳动
                         ui.vertical(|ui| {
-                            ui.add(
-                                Label::new(RichText::new(process).size(13.0).color(theme::c().text))
-                                    .wrap_mode(egui::TextWrapMode::Extend),
-                            );
+                            ui.horizontal(|ui| {
+                                let tex = conn
+                                    .proc_path
+                                    .as_deref()
+                                    .and_then(|p| icon_tex.get(p))
+                                    .and_then(|t| t.as_ref());
+                                match tex {
+                                    Some(t) => {
+                                        ui.add(egui::Image::new(t).fit_to_exact_size(egui::vec2(16.0, 16.0)));
+                                    }
+                                    None => {
+                                        ui.allocate_exact_size(
+                                            egui::vec2(16.0, 16.0),
+                                            egui::Sense::hover(),
+                                        );
+                                    }
+                                }
+                                ui.add(
+                                    Label::new(RichText::new(process).size(13.0).color(theme::c().text))
+                                        .wrap_mode(egui::TextWrapMode::Extend),
+                                );
+                            });
                             ui.add(
                                 Label::new(theme::dim_text(&proc_detail(conn, i18n), 11.0))
                                     .wrap_mode(egui::TextWrapMode::Extend),

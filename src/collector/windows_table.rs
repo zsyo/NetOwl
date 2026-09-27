@@ -8,11 +8,12 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use super::icon::{self, IconImage};
 use super::query::{query_process_path, query_tcp, query_udp, ConnKey};
-use super::signature;
-use crate::collector::{Collector, CollectorKind};
+use super::{signature, Collector, CollectorKind, IconState};
 use crate::model::{Connection, Place, Signing};
 
 /// 表快照间隔:连接增减的可见延迟上限(与任务管理器刷新节奏相当)
@@ -22,6 +23,8 @@ const SYSTEM_PID: u32 = 4;
 /// 签名校验在途/每轮派发上限:WinVerifyTrust 对大文件可能秒级,防线程爆发
 const SIG_MAX_INFLIGHT: usize = 4;
 const SIG_DISPATCH_PER_POLL: usize = 2;
+/// 图标提取每轮派发上限(读文件 + GDI 操作,后台线程执行)
+const ICON_DISPATCH_PER_POLL: usize = 4;
 
 /// 进程元数据(按 PID 缓存;签名状态异步回填)
 struct ProcMeta {
@@ -30,6 +33,7 @@ struct ProcMeta {
     signed: Signing,
 }
 
+/// 图标提取状态(按映像路径缓存;None 表示已尝试且无图标)
 /// 真实采集器:每 POLL_INTERVAL 查询一次系统表,快照间维护连接与进程元数据缓存
 pub struct TableCollector {
     /// 有序连接快照(累计流量降序),非轮询帧直接返回
@@ -43,6 +47,13 @@ pub struct TableCollector {
     sig_rx: Receiver<(u32, Signing)>,
     /// 已派发未返回签名结果的 PID
     sig_pending: HashSet<u32>,
+    /// 映像路径 -> 图标状态(常驻缓存:连接关闭后进程再现时图标即取即用)
+    icons: HashMap<String, IconState>,
+    /// 图标提取回报通道(发送端克隆给每个提取线程)
+    icon_tx: Sender<(String, Option<IconImage>)>,
+    icon_rx: Receiver<(String, Option<IconImage>)>,
+    /// 已派发未返回的图标提取请求(按映像路径)
+    icon_inflight: HashSet<String>,
     last_poll: Instant,
     pending_poll: bool,
 }
@@ -50,6 +61,7 @@ pub struct TableCollector {
 impl TableCollector {
     pub fn new() -> Self {
         let (sig_tx, sig_rx) = mpsc::channel();
+        let (icon_tx, icon_rx) = mpsc::channel();
         TableCollector {
             ordered: Vec::new(),
             live: HashMap::new(),
@@ -57,6 +69,10 @@ impl TableCollector {
             sig_tx,
             sig_rx,
             sig_pending: HashSet::new(),
+            icons: HashMap::new(),
+            icon_tx,
+            icon_rx,
+            icon_inflight: HashSet::new(),
             last_poll: Instant::now(),
             pending_poll: true,
         }
@@ -80,6 +96,7 @@ impl TableCollector {
         };
 
         self.collect_signatures();
+        self.collect_icons();
 
         let now = Instant::now();
         let old = std::mem::take(&mut self.live);
@@ -151,6 +168,31 @@ impl TableCollector {
         }
     }
 
+    /// 收割已完成的图标提取结果
+    fn collect_icons(&mut self) {
+        while let Ok((path, img)) = self.icon_rx.try_recv() {
+            self.icon_inflight.remove(&path);
+            self.icons.insert(path, IconState::Ready(img.map(Arc::new)));
+        }
+        // 未派发的 Pending 条目(超出上轮预算的)按上限补齐
+        let budget = ICON_DISPATCH_PER_POLL.saturating_sub(self.icon_inflight.len());
+        for path in self
+            .icons
+            .iter()
+            .filter(|(_, s)| matches!(s, IconState::Pending))
+            .map(|(p, _)| p.clone())
+            .take(budget)
+            .collect::<Vec<_>>()
+        {
+            self.icon_inflight.insert(path.clone());
+            let tx = self.icon_tx.clone();
+            std::thread::spawn(move || {
+                let img = icon::extract(&path);
+                let _ = tx.send((path, img));
+            });
+        }
+    }
+
     /// 为缓存中签名未知的存活进程派发校验(限流:在途/每轮数量双重上限)
     fn dispatch_signature_queries(&mut self, live_pids: &HashSet<u32>) {
         let budget = SIG_MAX_INFLIGHT.saturating_sub(self.sig_pending.len());
@@ -186,6 +228,16 @@ impl Collector for TableCollector {
             self.poll();
         }
         self.ordered.clone()
+    }
+
+    fn icon_image(&mut self, path: &str) -> IconState {
+        match self.icons.get(path) {
+            Some(IconState::Ready(img)) => IconState::Ready(img.clone()),
+            Some(IconState::Pending) | None => {
+                self.icons.entry(path.to_owned()).or_insert(IconState::Pending);
+                IconState::Pending
+            }
+        }
     }
 
     fn kind(&self) -> CollectorKind {

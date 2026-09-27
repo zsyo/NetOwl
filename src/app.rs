@@ -4,6 +4,7 @@
 //! eframe 0.36 的 App trait 拆分为 logic(每帧逻辑,窗口隐藏时仍会被调用)
 //! 与 ui(绘制)。托盘命令、几何捕获与配置写盘节流放在 logic。
 
+use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 
@@ -54,6 +55,8 @@ pub struct NetOwlApp {
     traffic: traffic::Sampler,
     /// 最近总速率(字节/秒):(下行, 上行),导航栏展示
     rates: (u64, u64),
+    /// 进程图标纹理(键 = 映像路径);None 表示已提取且无图标
+    icon_tex: HashMap<String, Option<egui::TextureHandle>>,
     /// 本机公网 IP 探测(公共接口并发,最先成功者胜出)
     local_probe: local_ip::Probe,
     /// 本机公网 IP 的归属定位键;探测失败/未收录时为 None(地图用默认点位)
@@ -90,6 +93,7 @@ impl NetOwlApp {
             rdns: rdns::Rdns::new(),
             traffic: traffic::Sampler::new(),
             rates: (0, 0),
+            icon_tex: HashMap::new(),
             local_probe: local_ip::Probe::new(),
             local_place: None,
             local_probe_at: Instant::now(),
@@ -260,6 +264,32 @@ impl NetOwlApp {
         self.rates = self.traffic.poll(interval);
     }
 
+    /// 进程图标:活跃连接的映像路径逐个请求采集器,到位即建纹理缓存。
+    /// 纹理键 = 路径,同进程连接共享;提取失败缓存 None 不再重复请求
+    fn poll_icons(&mut self, ctx: &egui::Context) {
+        let keys: Vec<String> = self
+            .conns
+            .iter()
+            .filter_map(|c| c.proc_path.clone())
+            .filter(|p| !self.icon_tex.contains_key(p))
+            .collect();
+        for path in keys {
+            if let collector::IconState::Ready(img) = self.collector.icon_image(&path) {
+                let tex = img.map(|i| {
+                    ctx.load_texture(
+                        format!("icon:{path}"),
+                        egui::ColorImage::from_rgba_unmultiplied(
+                            [i.width as usize, i.height as usize],
+                            &i.rgba,
+                        ),
+                        egui::TextureOptions::LINEAR,
+                    )
+                });
+                self.icon_tex.insert(path, tex);
+            }
+        }
+    }
+
     fn mark_config_dirty(&mut self) {
         self.config_dirty = true;
         self.config_dirty_since = Instant::now();
@@ -274,6 +304,7 @@ impl eframe::App for NetOwlApp {
         self.poll_traffic(ctx);
         self.conns = self.collector.snapshot();
         self.rdns.update(&self.conns);
+        self.poll_icons(ctx);
 
         // 进入设置页时重扫 locales,加载运行期间新增的词条文件
         if self.page == Page::Settings && self.last_page != Page::Settings {
@@ -316,6 +347,7 @@ impl eframe::App for NetOwlApp {
             config: &mut self.config,
             rdns: &self.rdns,
             rates: self.rates,
+            icon_tex: &self.icon_tex,
             local_pos,
         };
 
