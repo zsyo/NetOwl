@@ -32,9 +32,11 @@ fn migrate(conn: &Connection) {
     .unwrap_or_else(|e| panic!("[Db] 创建 schema_version 表失败: {e}"));
 
     let current: i64 = conn
-        .query_row("SELECT COALESCE(MAX(version), 0) FROM schema_version", [], |row| {
-            row.get(0)
-        })
+        .query_row(
+            "SELECT COALESCE(MAX(version), 0) FROM schema_version",
+            [],
+            |row| row.get(0),
+        )
         .unwrap_or_else(|e| panic!("[Db] 读取 schema 版本失败: {e}"));
 
     // 后续迁移在此按 current 版本追加

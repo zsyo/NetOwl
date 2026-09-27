@@ -7,13 +7,13 @@
 //! 统计依赖后续 ETW 事件源补齐。
 
 use std::collections::{HashMap, HashSet};
-use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use super::icon::{self, IconImage};
-use super::query::{query_process_path, query_tcp, query_udp, ConnKey};
-use super::{signature, Collector, CollectorKind, IconState};
+use super::query::{ConnKey, query_process_path, query_tcp, query_udp};
+use super::{Collector, CollectorKind, IconState, signature};
 use crate::model::{Connection, Place, Signing};
 
 /// 表快照间隔:连接增减的可见延迟上限(与任务管理器刷新节奏相当)
@@ -112,20 +112,23 @@ impl TableCollector {
             let city = crate::geoip::locate(remote_ip).map(Place::Geo);
             let first_seen = old.get(&key).map_or(now, |c| c.first_seen);
             let meta = self.proc_meta(pid);
-            new_live.insert(key, Connection {
-                id,
-                pid,
-                process: meta.name.clone(),
-                proc_path: meta.path.clone(),
-                signed: meta.signed,
-                proto,
-                remote_ip,
-                remote_port,
-                city,
-                bytes_in: 0,
-                bytes_out: 0,
-                first_seen,
-            });
+            new_live.insert(
+                key,
+                Connection {
+                    id,
+                    pid,
+                    process: meta.name.clone(),
+                    proc_path: meta.path.clone(),
+                    signed: meta.signed,
+                    proto,
+                    remote_ip,
+                    remote_port,
+                    city,
+                    bytes_in: 0,
+                    bytes_out: 0,
+                    first_seen,
+                },
+            );
         }
 
         // 进程元数据缓存只保留本轮出现在连接表中的进程(PID 复用随行消失而自然失效)
@@ -137,8 +140,12 @@ impl TableCollector {
         self.live = new_live;
         self.ordered = self.live.values().cloned().collect();
         // 表快照字节恒为 0:按连接建立时间倒序,最新连接在前
-        self.ordered
-            .sort_by_key(|c| (std::cmp::Reverse(c.total_bytes()), std::cmp::Reverse(c.first_seen)));
+        self.ordered.sort_by_key(|c| {
+            (
+                std::cmp::Reverse(c.total_bytes()),
+                std::cmp::Reverse(c.first_seen),
+            )
+        });
         self.last_poll = now;
     }
 
@@ -147,14 +154,22 @@ impl TableCollector {
     fn proc_meta(&mut self, pid: u32) -> &ProcMeta {
         self.proc_metas.entry(pid).or_insert_with(|| {
             if pid == SYSTEM_PID {
-                return ProcMeta { name: "System".to_owned(), path: None, signed: Signing::Unknown };
+                return ProcMeta {
+                    name: "System".to_owned(),
+                    path: None,
+                    signed: Signing::Unknown,
+                };
             }
             let path = query_process_path(pid);
             let name = path
                 .as_deref()
                 .map(|p| p.rsplit(['\\', '/']).next().unwrap_or_default().to_owned())
                 .unwrap_or_default();
-            ProcMeta { name, path, signed: Signing::Unknown }
+            ProcMeta {
+                name,
+                path,
+                signed: Signing::Unknown,
+            }
         })
     }
 
@@ -234,7 +249,9 @@ impl Collector for TableCollector {
         match self.icons.get(path) {
             Some(IconState::Ready(img)) => IconState::Ready(img.clone()),
             Some(IconState::Pending) | None => {
-                self.icons.entry(path.to_owned()).or_insert(IconState::Pending);
+                self.icons
+                    .entry(path.to_owned())
+                    .or_insert(IconState::Pending);
                 IconState::Pending
             }
         }

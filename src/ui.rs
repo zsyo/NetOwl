@@ -47,7 +47,12 @@ pub fn nav_ui(
     collector_kind: CollectorKind,
 ) {
     ui.add_space(4.0);
-    ui.label(RichText::new(i18n.t("app-name")).size(22.0).strong().color(theme::c().accent));
+    ui.label(
+        RichText::new(i18n.t("app-name"))
+            .size(22.0)
+            .strong()
+            .color(theme::c().accent),
+    );
     ui.label(theme::dim_text(&i18n.t("app-subtitle"), 10.0));
     ui.add_space(10.0);
     ui.separator();
@@ -63,7 +68,11 @@ pub fn nav_ui(
         let response = ui.add_sized(
             [ui.available_width(), 34.0],
             Button::new(label_text)
-                .fill(if selected { theme::c().accent_soft } else { Color32::TRANSPARENT })
+                .fill(if selected {
+                    theme::c().accent_soft
+                } else {
+                    Color32::TRANSPARENT
+                })
                 .stroke(if selected {
                     Stroke::new(1.0, theme::c().accent.gamma_multiply(0.4))
                 } else {
@@ -102,13 +111,16 @@ pub fn nav_ui(
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             let (rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
-            ui.painter().circle_filled(rect.center(), 4.0, theme::c().status_ok);
+            ui.painter()
+                .circle_filled(rect.center(), 4.0, theme::c().status_ok);
             ui.label(theme::dim_text(&i18n.t("status-monitoring"), 13.0));
         });
         ui.label(
-            RichText::new(i18n.t_with_args("status-conn-count", &[("count", conns.len().to_string())]))
-                .size(11.0)
-                .color(theme::c().text_dim),
+            RichText::new(
+                i18n.t_with_args("status-conn-count", &[("count", conns.len().to_string())]),
+            )
+            .size(11.0)
+            .color(theme::c().text_dim),
         );
         let status_key = match collector_kind {
             CollectorKind::Real => "status-monitoring",
@@ -146,10 +158,20 @@ pub struct UiCtx<'a> {
 pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
     match page {
         Page::Map => {
-            map::draw(ui, ctx.conns, ctx.i18n, ctx.map_view, ctx.rdns, ctx.icon_tex, ctx.local_pos);
+            map::draw(
+                ui,
+                ctx.conns,
+                ctx.i18n,
+                ctx.map_view,
+                ctx.rdns,
+                ctx.icon_tex,
+                ctx.local_pos,
+            );
             false
         }
-        Page::Connections => connections_ui(ui, ctx.conns, ctx.i18n, ctx.rdns, ctx.icon_tex, ctx.config),
+        Page::Connections => {
+            connections_ui(ui, ctx.conns, ctx.i18n, ctx.rdns, ctx.icon_tex, ctx.config)
+        }
         Page::History => ui_history::show(
             ui,
             ctx.history,
@@ -187,10 +209,16 @@ fn connections_ui(
     // 本地/局域网远端噪音过滤(config 持久化,连接页与历史页共享)
     let mut changed = false;
     ui.horizontal(|ui| {
-        if ui.checkbox(&mut config.general.hide_local, i18n.t("filter-hide-local")).changed() {
+        if ui
+            .checkbox(&mut config.general.hide_local, i18n.t("filter-hide-local"))
+            .changed()
+        {
             changed = true;
         }
-        if ui.checkbox(&mut config.general.hide_lan, i18n.t("filter-hide-lan")).changed() {
+        if ui
+            .checkbox(&mut config.general.hide_lan, i18n.t("filter-hide-lan"))
+            .changed()
+        {
             changed = true;
         }
     });
@@ -215,8 +243,20 @@ fn connections_ui(
                 .spacing([24.0, 9.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    for key in ["col-process", "col-proto", "col-remote", "col-location", "col-down", "col-up"] {
-                        ui.label(RichText::new(i18n.t(key)).size(12.0).strong().color(theme::c().text_dim));
+                    for key in [
+                        "col-process",
+                        "col-proto",
+                        "col-remote",
+                        "col-location",
+                        "col-down",
+                        "col-up",
+                    ] {
+                        ui.label(
+                            RichText::new(i18n.t(key))
+                                .size(12.0)
+                                .strong()
+                                .color(theme::c().text_dim),
+                        );
                     }
                     ui.end_row();
 
@@ -237,7 +277,10 @@ fn connections_ui(
                                     .and_then(|t| t.as_ref());
                                 match tex {
                                     Some(t) => {
-                                        ui.add(egui::Image::new(t).fit_to_exact_size(egui::vec2(16.0, 16.0)));
+                                        ui.add(
+                                            egui::Image::new(t)
+                                                .fit_to_exact_size(egui::vec2(16.0, 16.0)),
+                                        );
                                     }
                                     None => {
                                         ui.allocate_exact_size(
@@ -247,8 +290,10 @@ fn connections_ui(
                                     }
                                 }
                                 ui.add(
-                                    Label::new(RichText::new(process).size(13.0).color(theme::c().text))
-                                        .wrap_mode(egui::TextWrapMode::Extend),
+                                    Label::new(
+                                        RichText::new(process).size(13.0).color(theme::c().text),
+                                    )
+                                    .wrap_mode(egui::TextWrapMode::Extend),
                                 );
                             });
                             ui.add(
@@ -291,10 +336,14 @@ fn connections_ui(
                         };
                         ui.label(theme::dim_text(&location, 13.0));
                         ui.label(
-                            RichText::new(fmt_bytes(conn.bytes_in)).size(13.0).color(theme::c().inbound),
+                            RichText::new(fmt_bytes(conn.bytes_in))
+                                .size(13.0)
+                                .color(theme::c().inbound),
                         );
                         ui.label(
-                            RichText::new(fmt_bytes(conn.bytes_out)).size(13.0).color(theme::c().outbound),
+                            RichText::new(fmt_bytes(conn.bytes_out))
+                                .size(13.0)
+                                .color(theme::c().outbound),
                         );
                         ui.end_row();
                     }
@@ -331,7 +380,12 @@ fn tail_path(path: &str, max: usize) -> String {
 fn settings_ui(ui: &mut egui::Ui, config: &mut Config, i18n: &mut I18n) -> bool {
     ui.heading(theme::accent_text(&i18n.t("settings-title"), 20.0));
     ui.add_space(16.0);
-    ui.label(RichText::new(i18n.t("settings-language")).size(14.0).strong().color(theme::c().text));
+    ui.label(
+        RichText::new(i18n.t("settings-language"))
+            .size(14.0)
+            .strong()
+            .color(theme::c().text),
+    );
     ui.add_space(4.0);
 
     let current_name = i18n
@@ -361,7 +415,12 @@ fn settings_ui(ui: &mut egui::Ui, config: &mut Config, i18n: &mut I18n) -> bool 
     ui.add_space(16.0);
 
     // 界面主题:切换立即生效(调色板与 Visuals 同步刷新)
-    ui.label(RichText::new(i18n.t("settings-theme")).size(14.0).strong().color(theme::c().text));
+    ui.label(
+        RichText::new(i18n.t("settings-theme"))
+            .size(14.0)
+            .strong()
+            .color(theme::c().text),
+    );
     ui.add_space(4.0);
     let theme_name = if theme::is_dark() {
         i18n.t("theme-dark")
@@ -389,7 +448,12 @@ fn settings_ui(ui: &mut egui::Ui, config: &mut Config, i18n: &mut I18n) -> bool 
     ui.add_space(16.0);
 
     // 数据源:真实采集 / 模拟演示,切换后由 logic 检测配置变化并重建采集器
-    ui.label(RichText::new(i18n.t("settings-datasource")).size(14.0).strong().color(theme::c().text));
+    ui.label(
+        RichText::new(i18n.t("settings-datasource"))
+            .size(14.0)
+            .strong()
+            .color(theme::c().text),
+    );
     ui.add_space(4.0);
     let current = CollectorKind::from_config(&config.general.collector);
     let datasource_name = |i18n: &I18n, kind: CollectorKind| match kind {
@@ -402,13 +466,14 @@ fn settings_ui(ui: &mut egui::Ui, config: &mut Config, i18n: &mut I18n) -> bool 
         .show_ui(ui, |ui| {
             for kind in [CollectorKind::Real, CollectorKind::Mock] {
                 let selected = current == kind;
-                let label = RichText::new(datasource_name(i18n, kind))
-                    .size(14.0)
-                    .color(if selected {
-                        theme::c().accent
-                    } else {
-                        theme::c().text
-                    });
+                let label =
+                    RichText::new(datasource_name(i18n, kind))
+                        .size(14.0)
+                        .color(if selected {
+                            theme::c().accent
+                        } else {
+                            theme::c().text
+                        });
                 if ui.selectable_label(selected, label).clicked() {
                     config.general.collector = kind.as_config().to_owned();
                 }
@@ -419,7 +484,12 @@ fn settings_ui(ui: &mut egui::Ui, config: &mut Config, i18n: &mut I18n) -> bool 
     ui.add_space(16.0);
 
     // 历史数据自动清理天数(0 = 不自动清理)
-    ui.label(RichText::new(i18n.t("settings-history-days")).size(14.0).strong().color(theme::c().text));
+    ui.label(
+        RichText::new(i18n.t("settings-history-days"))
+            .size(14.0)
+            .strong()
+            .color(theme::c().text),
+    );
     ui.add_space(4.0);
     let days = ui.add(
         egui::DragValue::new(&mut config.general.history_days)

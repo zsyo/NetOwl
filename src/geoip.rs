@@ -47,7 +47,12 @@ impl GeoIp {
             let name_zh = r.str();
             let name_en = r.str();
             let (lon, lat) = r.f32x2();
-            places.push(PlaceEntry { name_zh, name_en, lon, lat });
+            places.push(PlaceEntry {
+                name_zh,
+                name_en,
+                lon,
+                lat,
+            });
         }
         let n = r.u32() as usize;
         let mut geo = GeoIp {

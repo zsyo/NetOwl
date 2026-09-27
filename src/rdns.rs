@@ -11,8 +11,8 @@ use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
 use windows::Win32::Networking::WinSock::{
-    getnameinfo, AF_INET, IN_ADDR, IN_ADDR_0, NI_NAMEREQD, SOCKADDR, SOCKADDR_IN, WSADATA,
-    WSAStartup, socklen_t,
+    AF_INET, IN_ADDR, IN_ADDR_0, NI_NAMEREQD, SOCKADDR, SOCKADDR_IN, WSADATA, WSAStartup,
+    getnameinfo, socklen_t,
 };
 
 use crate::model::Connection;
@@ -35,7 +35,11 @@ struct Entry {
 
 impl Entry {
     fn expired(&self, now: Instant) -> bool {
-        let ttl = if self.name.is_some() { HOST_TTL } else { NEG_TTL };
+        let ttl = if self.name.is_some() {
+            HOST_TTL
+        } else {
+            NEG_TTL
+        };
         now.duration_since(self.at) >= ttl
     }
 }
@@ -70,7 +74,13 @@ impl Rdns {
     pub fn update(&mut self, conns: &[Connection]) {
         while let Ok((ip, name)) = self.rx.try_recv() {
             self.pending.remove(&ip);
-            self.cache.insert(ip, Entry { name, at: Instant::now() });
+            self.cache.insert(
+                ip,
+                Entry {
+                    name,
+                    at: Instant::now(),
+                },
+            );
         }
 
         let now = Instant::now();
@@ -82,7 +92,8 @@ impl Rdns {
 
         // 连接已消失的不再派发;不活跃且过期的缓存释放,防止无限积累
         self.queue.retain(|ip| wanted.contains(ip));
-        self.cache.retain(|ip, e| wanted.contains(ip) || !e.expired(now));
+        self.cache
+            .retain(|ip, e| wanted.contains(ip) || !e.expired(now));
 
         for ip in &wanted {
             let stale = match self.cache.get(ip) {
@@ -185,9 +196,5 @@ fn ptr_query(ip: Ipv4Addr) -> Option<String> {
     }
     let len = host.iter().position(|&b| b == 0).unwrap_or(host.len());
     let name = String::from_utf8_lossy(&host[..len]).into_owned();
-    if name.is_empty() {
-        None
-    } else {
-        Some(name)
-    }
+    if name.is_empty() { None } else { Some(name) }
 }

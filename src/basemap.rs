@@ -8,11 +8,11 @@
 use std::sync::Arc;
 
 use eframe::egui;
-use egui::{Align2, Color32, CornerRadius, FontId, Pos2, Rect, Shape, Vec2};
 use egui::epaint::{Mesh, Vertex, WHITE_UV};
+use egui::{Align2, Color32, CornerRadius, FontId, Pos2, Rect, Shape, Vec2};
 
 use crate::theme;
-use crate::world::{map_data, LabelKind, MapLabel, MapLevel, RingKind};
+use crate::world::{LabelKind, MapLabel, MapLevel, RingKind, map_data};
 
 /// 放大超过该倍数后切换到 50m 精细档
 const DETAIL_ZOOM: f32 = 3.0;
@@ -133,7 +133,11 @@ impl Projection {
 /// 十段线与名称标签。中国层陆地填充盖住 NE 中伸入中国境内的邻国
 /// 国界线与误划几何,中国边界与省界画在最顶层
 pub fn draw(painter: &egui::Painter, rect: Rect, proj: &Projection, labels_zh: bool) {
-    painter.rect_filled(rect, CornerRadius::same(theme::RADIUS_LG), theme::c().bg_map);
+    painter.rect_filled(
+        rect,
+        CornerRadius::same(theme::RADIUS_LG),
+        theme::c().bg_map,
+    );
     draw_grid(painter, rect, proj);
 
     let data = map_data();
@@ -162,12 +166,7 @@ pub fn draw(painter: &egui::Painter, rect: Rect, proj: &Projection, labels_zh: b
 }
 
 /// 单层底图:陆地与洞环填充、海岸线与国界(共享边检测在解码期完成)
-fn draw_level(
-    painter: &egui::Painter,
-    rect: Rect,
-    proj: &Projection,
-    level: &MapLevel,
-) {
+fn draw_level(painter: &egui::Painter, rect: Rect, proj: &Projection, level: &MapLevel) {
     let mut land = Mesh::default();
     let mut holes = Mesh::default();
     add_fill(level, &mut land, &mut holes, rect, proj);
@@ -229,10 +228,22 @@ fn add_fill(level: &MapLevel, land: &mut Mesh, holes: &mut Mesh, rect: Rect, pro
         } else {
             &level.hole_tris[ring.tri_start as usize..(ring.tri_start + ring.tri_len) as usize]
         };
-        let color = if ring.kind == RingKind::Land { theme::c().map_land } else { theme::c().bg_map };
-        let target = if ring.kind == RingKind::Land { &mut *land } else { &mut *holes };
+        let color = if ring.kind == RingKind::Land {
+            theme::c().map_land
+        } else {
+            theme::c().bg_map
+        };
+        let target = if ring.kind == RingKind::Land {
+            &mut *land
+        } else {
+            &mut *holes
+        };
         for &[a, b, c] in tris {
-            let (p0, p1, p2) = (scratch[a as usize], scratch[b as usize], scratch[c as usize]);
+            let (p0, p1, p2) = (
+                scratch[a as usize],
+                scratch[b as usize],
+                scratch[c as usize],
+            );
             if !tri_visible(p0, p1, p2, rect) {
                 continue;
             }
@@ -243,8 +254,24 @@ fn add_fill(level: &MapLevel, land: &mut Mesh, holes: &mut Mesh, rect: Rect, pro
 
 /// 海岸线与国界:固定屏幕线宽的 quad 段
 fn add_lines(level: &MapLevel, coast: &mut Mesh, border: &mut Mesh, rect: Rect, proj: &Projection) {
-    draw_line_set(level, &level.coast, COAST_WIDTH, theme::c().map_coast, coast, rect, proj);
-    draw_line_set(level, &level.border, BORDER_WIDTH, theme::c().map_border, border, rect, proj);
+    draw_line_set(
+        level,
+        &level.coast,
+        COAST_WIDTH,
+        theme::c().map_coast,
+        coast,
+        rect,
+        proj,
+    );
+    draw_line_set(
+        level,
+        &level.border,
+        BORDER_WIDTH,
+        theme::c().map_border,
+        border,
+        rect,
+        proj,
+    );
 }
 
 fn draw_line_set(
@@ -283,22 +310,31 @@ fn push_culled_segment(
     if br.x < rect.left() || tl.x > rect.right() || br.y < rect.top() || tl.y > rect.bottom() {
         return;
     }
-    push_segment(mesh, proj.project(la, ta), proj.project(lb, tb), half, color);
+    push_segment(
+        mesh,
+        proj.project(la, ta),
+        proj.project(lb, tb),
+        half,
+        color,
+    );
 }
 
 /// 主要河流:固定屏幕线宽折线(数据已按档抽稀),逐段视口剔除;
 /// 绘制于世界/中国层之上,不受中国层陆地填充覆盖
-fn draw_rivers(
-    painter: &egui::Painter,
-    rect: Rect,
-    proj: &Projection,
-    lines: &[Vec<(f32, f32)>],
-) {
+fn draw_rivers(painter: &egui::Painter, rect: Rect, proj: &Projection, lines: &[Vec<(f32, f32)>]) {
     let mut mesh = Mesh::default();
     let half = RIVER_WIDTH * 0.5;
     for line in lines {
         for pair in line.windows(2) {
-            push_culled_segment(&mut mesh, rect, proj, pair[0], pair[1], half, theme::c().map_river);
+            push_culled_segment(
+                &mut mesh,
+                rect,
+                proj,
+                pair[0],
+                pair[1],
+                half,
+                theme::c().map_river,
+            );
         }
     }
     painter.add(Shape::Mesh(Arc::new(mesh)));
@@ -330,16 +366,28 @@ fn draw_labels(
         }
         let (text, color, size) = match label.kind {
             LabelKind::Country => {
-                let name = if labels_zh { &label.name_zh } else { &label.name_en };
+                let name = if labels_zh {
+                    &label.name_zh
+                } else {
+                    &label.name_en
+                };
                 (name.clone(), theme::c().map_label_country, 11.0)
             }
             LabelKind::Sea => {
-                let name = if labels_zh { &label.name_zh } else { &label.name_en };
+                let name = if labels_zh {
+                    &label.name_zh
+                } else {
+                    &label.name_en
+                };
                 (name.clone(), theme::c().map_label_sea, 10.0)
             }
             // 省名与国家名同字号逻辑但用弱化色,不与国家名争视觉层级
             LabelKind::Province => {
-                let name = if labels_zh { &label.name_zh } else { &label.name_en };
+                let name = if labels_zh {
+                    &label.name_zh
+                } else {
+                    &label.name_en
+                };
                 (name.clone(), theme::c().map_label_province, 10.0)
             }
         };
@@ -358,18 +406,17 @@ fn draw_labels(
 }
 
 /// 南海断续国界(十段线):独立线宽与颜色,不与海岸/国界混同
-fn draw_south_sea_line(
-    painter: &egui::Painter,
-    rect: Rect,
-    proj: &Projection,
-    segs: &[[f32; 4]],
-) {
+fn draw_south_sea_line(painter: &egui::Painter, rect: Rect, proj: &Projection, segs: &[[f32; 4]]) {
     let mut mesh = Mesh::default();
     for &[lon0, lat0, lon1, lat1] in segs {
         let (a, b) = (proj.project(lon0, lat0), proj.project(lon1, lat1));
         let (min_x, max_x) = (a.x.min(b.x), a.x.max(b.x));
         let (min_y, max_y) = (a.y.min(b.y), a.y.max(b.y));
-        if max_x < rect.left() || min_x > rect.right() || max_y < rect.top() || min_y > rect.bottom() {
+        if max_x < rect.left()
+            || min_x > rect.right()
+            || max_y < rect.top()
+            || min_y > rect.bottom()
+        {
             continue;
         }
         push_segment(&mut mesh, a, b, 1.0, theme::c().map_south_sea_line);
@@ -378,13 +425,7 @@ fn draw_south_sea_line(
 }
 
 /// 英文国家名:大写 + 字距(逐字符绘制,egui 无字距 API)
-fn draw_spaced_upper(
-    painter: &egui::Painter,
-    center: Pos2,
-    text: &str,
-    size: f32,
-    color: Color32,
-) {
+fn draw_spaced_upper(painter: &egui::Painter, center: Pos2, text: &str, size: f32, color: Color32) {
     const SPACING: f32 = 1.5;
     let upper = text.to_uppercase();
     let font = FontId::proportional(size);
@@ -395,8 +436,8 @@ fn draw_spaced_upper(
             .width()
     };
     let chars: Vec<char> = upper.chars().collect();
-    let total: f32 =
-        chars.iter().map(|c| width(&c.to_string())).sum::<f32>() + SPACING * (chars.len() - 1) as f32;
+    let total: f32 = chars.iter().map(|c| width(&c.to_string())).sum::<f32>()
+        + SPACING * (chars.len() - 1) as f32;
     let mut x = center.x - total * 0.5;
     for c in chars {
         let s = c.to_string();
@@ -421,7 +462,11 @@ fn tri_visible(a: Pos2, b: Pos2, c: Pos2, rect: Rect) -> bool {
 fn push_tri(mesh: &mut Mesh, a: Pos2, b: Pos2, c: Pos2, color: Color32) {
     let base = mesh.vertices.len() as u32;
     for p in [a, b, c] {
-        mesh.vertices.push(Vertex { pos: p, uv: WHITE_UV, color });
+        mesh.vertices.push(Vertex {
+            pos: p,
+            uv: WHITE_UV,
+            color,
+        });
     }
     mesh.indices.extend_from_slice(&[base, base + 1, base + 2]);
 }
@@ -435,7 +480,12 @@ fn push_segment(mesh: &mut Mesh, a: Pos2, b: Pos2, half: f32, color: Color32) {
     let n = Vec2::new(-d.y / len, d.x / len) * half;
     let base = mesh.vertices.len() as u32;
     for p in [a - n, a + n, b + n, b - n] {
-        mesh.vertices.push(Vertex { pos: p, uv: WHITE_UV, color });
+        mesh.vertices.push(Vertex {
+            pos: p,
+            uv: WHITE_UV,
+            color,
+        });
     }
-    mesh.indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
+    mesh.indices
+        .extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
 }

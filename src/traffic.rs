@@ -8,9 +8,7 @@
 use std::time::{Duration, Instant};
 
 use windows::Win32::Foundation::ERROR_SUCCESS;
-use windows::Win32::NetworkManagement::IpHelper::{
-    FreeMibTable, GetIfTable2, MIB_IF_TABLE2,
-};
+use windows::Win32::NetworkManagement::IpHelper::{FreeMibTable, GetIfTable2, MIB_IF_TABLE2};
 
 /// IANA ifType:不计入总速率的接口类型
 /// (软件回环 24 无外部流量;隧道 131 场景下物理网卡已有同份流量)
@@ -31,7 +29,10 @@ pub struct Sampler {
 
 impl Sampler {
     pub fn new() -> Self {
-        Sampler { last: None, rates: (0, 0) }
+        Sampler {
+            last: None,
+            rates: (0, 0),
+        }
     }
 
     /// 距上次采样达到 interval 才重新读表,否则沿用最近速率;
@@ -65,7 +66,8 @@ fn interface_octets() -> Option<(u64, u64)> {
         }
         let (mut total_in, mut total_out) = (0u64, 0u64);
         // ANY_SIZE 惯用法:行数组容量由 NumEntries 给出
-        let rows = std::slice::from_raw_parts((*table).Table.as_ptr(), (*table).NumEntries as usize);
+        let rows =
+            std::slice::from_raw_parts((*table).Table.as_ptr(), (*table).NumEntries as usize);
         for row in rows {
             if row.Type == IF_TYPE_SOFTWARE_LOOPBACK
                 || row.Type == IF_TYPE_TUNNEL

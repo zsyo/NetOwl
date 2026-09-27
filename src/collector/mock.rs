@@ -41,16 +41,35 @@ impl Rng {
 
 /// 模拟进程池:常见联网进程
 const PROCESSES: &[&str] = &[
-    "chrome.exe", "msedge.exe", "Code.exe", "steam.exe", "spotify.exe",
-    "discord.exe", "svchost.exe", "outlook.exe", "explorer.exe", "NetOwl.exe",
+    "chrome.exe",
+    "msedge.exe",
+    "Code.exe",
+    "steam.exe",
+    "spotify.exe",
+    "discord.exe",
+    "svchost.exe",
+    "outlook.exe",
+    "explorer.exe",
+    "NetOwl.exe",
 ];
 
 /// 每城市绑定的假公网网段首字节(仅用于演示观感,非真实归属)
 const CITY_PREFIX: &[(&str, u8)] = &[
-    ("shanghai", 101), ("tokyo", 126), ("seoul", 175), ("hongkong", 27),
-    ("macau", 182), ("taipei", 111), ("singapore", 103),
-    ("mumbai", 49), ("moscow", 95), ("frankfurt", 92), ("amsterdam", 145),
-    ("london", 51), ("newyork", 74), ("sanjose", 104), ("sydney", 1),
+    ("shanghai", 101),
+    ("tokyo", 126),
+    ("seoul", 175),
+    ("hongkong", 27),
+    ("macau", 182),
+    ("taipei", 111),
+    ("singapore", 103),
+    ("mumbai", 49),
+    ("moscow", 95),
+    ("frankfurt", 92),
+    ("amsterdam", 145),
+    ("london", 51),
+    ("newyork", 74),
+    ("sanjose", 104),
+    ("sydney", 1),
     ("saopaulo", 177),
 ];
 
@@ -106,26 +125,36 @@ impl MockCollector {
         let process = PROCESSES[self.rng.range(PROCESSES.len() as u64) as usize];
         let id = self.next_id;
         self.next_id += 1;
-        self.conns.insert(id, Connection {
+        self.conns.insert(
             id,
-            pid: (1000 + self.rng.range(90000)) as u32,
-            process: process.to_owned(),
-            // 模拟数据不携带真实映像路径与签名
-            proc_path: None,
-            signed: Signing::Unknown,
-            proto: if self.rng.chance(85) { Protocol::Tcp } else { Protocol::Udp },
-            remote_ip: ip,
-            remote_port: port,
-            city: Some(Place::City(city.key)),
-            bytes_in: self.rng.range(2 << 20),
-            bytes_out: self.rng.range(2 << 18),
-            first_seen: Instant::now(),
-        });
+            Connection {
+                id,
+                pid: (1000 + self.rng.range(90000)) as u32,
+                process: process.to_owned(),
+                // 模拟数据不携带真实映像路径与签名
+                proc_path: None,
+                signed: Signing::Unknown,
+                proto: if self.rng.chance(85) {
+                    Protocol::Tcp
+                } else {
+                    Protocol::Udp
+                },
+                remote_ip: ip,
+                remote_port: port,
+                city: Some(Place::City(city.key)),
+                bytes_in: self.rng.range(2 << 20),
+                bytes_out: self.rng.range(2 << 18),
+                first_seen: Instant::now(),
+            },
+        );
     }
 
     /// 推进模拟:流量累加、随机关闭、到点新建
     fn advance(&mut self, now: Instant) {
-        let dt = now.duration_since(self.last_tick).as_secs_f32().clamp(0.0, 5.0);
+        let dt = now
+            .duration_since(self.last_tick)
+            .as_secs_f32()
+            .clamp(0.0, 5.0);
         self.last_tick = now;
         let mut expired = Vec::new();
         for conn in self.conns.values_mut() {

@@ -112,7 +112,12 @@ impl I18n {
         {
             candidates.push(dir.join(LOCALES_DIR_NAME));
             // 预留跨平台安装布局:Linux 系统安装(/usr/bin/../lib/netowl/locales)
-            candidates.push(dir.join("..").join("lib").join("netowl").join(LOCALES_DIR_NAME));
+            candidates.push(
+                dir.join("..")
+                    .join("lib")
+                    .join("netowl")
+                    .join(LOCALES_DIR_NAME),
+            );
             // macOS .app Resources
             candidates.push(dir.join("..").join("Resources").join(LOCALES_DIR_NAME));
             candidates.push(dir.join("..").join(LOCALES_DIR_NAME));
@@ -206,7 +211,9 @@ impl I18n {
         if let Some(msg) = bundle.get_message(LANG_NAME_KEY)
             && let Some(pattern) = msg.value()
         {
-            return bundle.format_pattern(pattern, None, &mut errors).to_string();
+            return bundle
+                .format_pattern(pattern, None, &mut errors)
+                .to_string();
         }
         code.to_string()
     }

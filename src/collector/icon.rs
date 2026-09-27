@@ -4,16 +4,14 @@
 //! 读取文件与 GDI 调用可能阻塞数十毫秒,调用方须在工作线程执行;
 //! 提取失败(无图标资源/文件已消失)返回 None,由调用方缓存避免重复尝试。
 
-use windows::core::PCWSTR;
 use windows::Win32::Graphics::Gdi::{
-    CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, GetObjectW, BITMAP, BITMAPINFO,
-    BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP, HDC,
+    BI_RGB, BITMAP, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleDC, DIB_RGB_COLORS, DeleteDC,
+    DeleteObject, GetDIBits, GetObjectW, HBITMAP, HDC,
 };
 use windows::Win32::Storage::FileSystem::FILE_ATTRIBUTE_NORMAL;
-use windows::Win32::UI::Shell::{
-    SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON,
-};
+use windows::Win32::UI::Shell::{SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGetFileInfoW};
 use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, ICONINFO};
+use windows::core::PCWSTR;
 
 /// 提取出的图标位图(非预乘 alpha)
 pub struct IconImage {
@@ -45,7 +43,9 @@ pub fn extract(path: &str) -> Option<IconImage> {
 }
 
 /// HICON -> 32bpp RGBA(非预乘);GetIconInfo 成功后位图句柄由调用方释放
-unsafe fn hicon_to_rgba(hicon: windows::Win32::UI::WindowsAndMessaging::HICON) -> Option<IconImage> {
+unsafe fn hicon_to_rgba(
+    hicon: windows::Win32::UI::WindowsAndMessaging::HICON,
+) -> Option<IconImage> {
     unsafe {
         let mut info = ICONINFO::default();
         GetIconInfo(hicon, &mut info).ok()?;
@@ -117,6 +117,10 @@ unsafe fn read_rgba(hbm: HBITMAP, w: i32, h: i32) -> Option<IconImage> {
                 *a = 255;
             }
         }
-        Some(IconImage { width: w as u32, height: h as u32, rgba: buf })
+        Some(IconImage {
+            width: w as u32,
+            height: h as u32,
+            rgba: buf,
+        })
     }
 }

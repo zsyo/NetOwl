@@ -4,13 +4,14 @@
 //! 不弹窗、不做吊销联网检查。大文件哈希可能耗时秒级,调用方必须在
 //! 工作线程执行(采集器按 PID 异步派发,结果缓存)。
 
-use windows::core::{PCWSTR, PWSTR, GUID};
 use windows::Win32::Foundation::{HANDLE, HWND};
 use windows::Win32::Security::WinTrust::{
-    WinVerifyTrust, WINTRUST_ACTION_GENERIC_VERIFY_V2, WINTRUST_DATA, WINTRUST_DATA_0,
+    WINTRUST_ACTION_GENERIC_VERIFY_V2, WINTRUST_DATA, WINTRUST_DATA_0,
     WINTRUST_DATA_PROVIDER_FLAGS, WINTRUST_FILE_INFO, WTD_CHOICE_FILE, WTD_REVOKE_NONE,
     WTD_STATEACTION_CLOSE, WTD_STATEACTION_VERIFY, WTD_UI_NONE, WTD_UICONTEXT_EXECUTE,
+    WinVerifyTrust,
 };
+use windows::core::{GUID, PCWSTR, PWSTR};
 
 use crate::model::Signing;
 
@@ -32,7 +33,9 @@ pub fn verify(path: &str) -> Signing {
         dwUIChoice: WTD_UI_NONE,
         fdwRevocationChecks: WTD_REVOKE_NONE,
         dwUnionChoice: WTD_CHOICE_FILE,
-        Anonymous: WINTRUST_DATA_0 { pFile: &mut file_info },
+        Anonymous: WINTRUST_DATA_0 {
+            pFile: &mut file_info,
+        },
         dwStateAction: WTD_STATEACTION_VERIFY,
         hWVTStateData: HANDLE::default(),
         pwszURLReference: PWSTR::null(),
@@ -57,6 +60,10 @@ pub fn verify(path: &str) -> Signing {
 
 unsafe fn run(action: &mut GUID, wd: &mut WINTRUST_DATA) -> i32 {
     unsafe {
-        WinVerifyTrust(HWND::default(), action, wd as *mut WINTRUST_DATA as *mut core::ffi::c_void)
+        WinVerifyTrust(
+            HWND::default(),
+            action,
+            wd as *mut WINTRUST_DATA as *mut core::ffi::c_void,
+        )
     }
 }

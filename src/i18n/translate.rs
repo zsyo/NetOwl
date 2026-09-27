@@ -56,7 +56,11 @@ impl I18n {
             None => msg.value(),
         }?;
         let mut errors = vec![];
-        Some(bundle.format_pattern(pattern, args, &mut errors).to_string())
+        Some(
+            bundle
+                .format_pattern(pattern, args, &mut errors)
+                .to_string(),
+        )
     }
 
     /// 记录缺失键告警(相同键仅告警一次)

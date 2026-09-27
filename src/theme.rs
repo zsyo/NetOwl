@@ -3,8 +3,8 @@
 //! 颜色全部经 [`c()`] 取当前主题调色板,禁止散落硬编码色值(规范 3);
 //! 切换主题时由设置页调用 [`set_theme`] 立即重刷 Visuals。
 
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use eframe::egui;
 use egui::{Color32, CornerRadius, FontData, FontDefinitions, Margin, Stroke, Vec2, Visuals};
@@ -148,11 +148,7 @@ pub fn is_dark() -> bool {
 
 /// 当前主题字符串(持久化用:"dark" / "light")
 pub fn theme_str() -> &'static str {
-    if is_dark() {
-        "dark"
-    } else {
-        "light"
-    }
+    if is_dark() { "dark" } else { "light" }
 }
 
 /// 切换主题并立即应用到 ctx(设置页调用)
@@ -181,14 +177,19 @@ fn install_fonts(ctx: &egui::Context) {
         .expect("NetOwl 需要 Windows 自带字体 C:/Windows/Fonts/consola.ttf(Consolas)");
 
     let mut fonts = FontDefinitions::default();
-    fonts.font_data.insert("msyh".to_owned(), Arc::new(FontData::from_owned(msyh)));
+    fonts
+        .font_data
+        .insert("msyh".to_owned(), Arc::new(FontData::from_owned(msyh)));
     // 追加到 proportional 末尾:拉丁字形仍由内置 Inter 渲染,中文回退到雅黑
     fonts
         .families
         .get_mut(&egui::FontFamily::Proportional)
         .expect("default proportional family")
         .push("msyh".to_owned());
-    fonts.font_data.insert("consolas".to_owned(), Arc::new(FontData::from_owned(consola)));
+    fonts.font_data.insert(
+        "consolas".to_owned(),
+        Arc::new(FontData::from_owned(consola)),
+    );
     fonts
         .families
         .get_mut(&egui::FontFamily::Monospace)
@@ -200,7 +201,11 @@ fn install_fonts(ctx: &egui::Context) {
 /// 深浅主题定制:背景层级、控件交互态、圆角与间距
 fn apply_visuals(ctx: &egui::Context) {
     let p = c();
-    let mut v = if is_dark() { Visuals::dark() } else { Visuals::light() };
+    let mut v = if is_dark() {
+        Visuals::dark()
+    } else {
+        Visuals::light()
+    };
     v.panel_fill = p.bg_panel;
     v.window_fill = p.bg_base;
     v.extreme_bg_color = p.bg_base;
@@ -222,12 +227,19 @@ fn apply_visuals(ctx: &egui::Context) {
     let (hovered_bg, open_bg) = if is_dark() {
         (Color32::from_rgb(40, 45, 57), Color32::from_rgb(36, 41, 53))
     } else {
-        (Color32::from_rgb(222, 228, 236), Color32::from_rgb(232, 236, 242))
+        (
+            Color32::from_rgb(222, 228, 236),
+            Color32::from_rgb(232, 236, 242),
+        )
     };
     v.widgets.noninteractive = widget(v.widgets.noninteractive, p.bg_card, p.text, RADIUS_SM);
     v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, p.stroke);
-    v.widgets.inactive =
-        widget(v.widgets.inactive, Color32::TRANSPARENT, p.text_dim, RADIUS_MD);
+    v.widgets.inactive = widget(
+        v.widgets.inactive,
+        Color32::TRANSPARENT,
+        p.text_dim,
+        RADIUS_MD,
+    );
     v.widgets.hovered = widget(v.widgets.hovered, hovered_bg, p.text, RADIUS_MD);
     v.widgets.active = widget(v.widgets.active, p.accent_soft, p.accent, RADIUS_MD);
     v.widgets.open = widget(v.widgets.open, open_bg, p.text, RADIUS_MD);

@@ -52,7 +52,9 @@ pub struct Tracker {
 
 impl Tracker {
     pub fn new() -> Self {
-        Tracker { index: HashMap::new() }
+        Tracker {
+            index: HashMap::new(),
+        }
     }
 
     /// 对比当前活跃快照,返回本轮完结的连接
@@ -126,7 +128,11 @@ impl Writer {
             .name("history-writer".into())
             .spawn(move || run(rx, r))
             .expect("启动历史写线程");
-        Writer { tx: Some(tx), handle: Some(handle), retention }
+        Writer {
+            tx: Some(tx),
+            handle: Some(handle),
+            retention,
+        }
     }
 
     /// 同步自动清理天数(config 变更时调用)
@@ -243,7 +249,10 @@ fn cleanup(conn: &Db, retention: &AtomicU32, last_cleanup: &mut Instant) {
     }
     *last_cleanup = Instant::now();
     let before = unix_now().saturating_sub(days as u64 * 86400);
-    match conn.execute("DELETE FROM conn_events WHERE last_seen < ?1", [before as i64]) {
+    match conn.execute(
+        "DELETE FROM conn_events WHERE last_seen < ?1",
+        [before as i64],
+    ) {
         Ok(n) if n > 0 => {
             eprintln!("[History] 自动清理 {days} 天前历史 {n} 行");
             reclaim_space(conn);
@@ -259,7 +268,10 @@ fn purge_before(conn: &Db, days: u32) {
         conn.execute("DELETE FROM conn_events", [])
     } else {
         let before = unix_now().saturating_sub(days as u64 * 86400);
-        conn.execute("DELETE FROM conn_events WHERE last_seen < ?1", [before as i64])
+        conn.execute(
+            "DELETE FROM conn_events WHERE last_seen < ?1",
+            [before as i64],
+        )
     };
     match result {
         Ok(n) => {

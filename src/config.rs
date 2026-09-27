@@ -125,10 +125,8 @@ impl Config {
                         "[Config] 配置文件解析失败: {e},将备份为 {}.bak 并使用默认配置",
                         paths::CONFIG_FILE
                     );
-                    let _ = std::fs::rename(
-                        paths::CONFIG_FILE,
-                        format!("{}.bak", paths::CONFIG_FILE),
-                    );
+                    let _ =
+                        std::fs::rename(paths::CONFIG_FILE, format!("{}.bak", paths::CONFIG_FILE));
                 }
             }
         }
@@ -154,10 +152,14 @@ impl Config {
             return false;
         }
         let w = &mut self.window;
-        if (w.x, w.y, w.width, w.height, w.maximized)
-            != (x, y, width, height, maximized)
-        {
-            *w = WindowConfig { x, y, width, height, maximized };
+        if (w.x, w.y, w.width, w.height, w.maximized) != (x, y, width, height, maximized) {
+            *w = WindowConfig {
+                x,
+                y,
+                width,
+                height,
+                maximized,
+            };
             true
         } else {
             false

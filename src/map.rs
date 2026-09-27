@@ -6,10 +6,11 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 
 use eframe::egui;
-use egui::{
-    Align2, Color32, CornerRadius, FontId, Pos2, Rect, Sense, Shape, Stroke, StrokeKind, TextureHandle, Vec2,
-};
 use egui::epaint::QuadraticBezierShape;
+use egui::{
+    Align2, Color32, CornerRadius, FontId, Pos2, Rect, Sense, Shape, Stroke, StrokeKind,
+    TextureHandle, Vec2,
+};
 
 use crate::basemap::{self, Projection, View};
 use crate::geoip;
@@ -110,7 +111,11 @@ pub fn draw(
         let inbound = c.inbound_dominant();
         let (start, end) = if inbound { (end, local) } else { (local, end) };
         let ctrl = arc_ctrl(start, end);
-        let color = if inbound { theme::c().inbound } else { theme::c().outbound };
+        let color = if inbound {
+            theme::c().inbound
+        } else {
+            theme::c().outbound
+        };
         let hovered = hover_pos.is_some_and(|h| wrap_dist(h, end, cycle_px) < 20.0);
         let stroke = if hovered {
             Stroke::new(2.0, color.gamma_multiply(0.9))
@@ -155,19 +160,36 @@ pub fn draw(
         if hovered {
             hovered_place = Some(*place);
         }
-        let pulse_alpha = 0.35 + 0.3 * (0.5 + 0.5 * (t * 2.0 + hash_phase(*bytes) * std::f32::consts::TAU).sin());
+        let pulse_alpha =
+            0.35 + 0.3 * (0.5 + 0.5 * (t * 2.0 + hash_phase(*bytes) * std::f32::consts::TAU).sin());
         let (k0, k1) = proj.visible_cycles(pos.x, rect);
         for k in k0..=k1 {
             let pos = pos + Vec2::new(k as f32 * cycle_px, 0.0);
-            painter.circle_stroke(pos, r + 5.0, Stroke::new(1.5, theme::c().map_node.gamma_multiply(pulse_alpha)));
-            painter.circle_filled(pos, r, if hovered { theme::c().accent } else { theme::c().map_node });
+            painter.circle_stroke(
+                pos,
+                r + 5.0,
+                Stroke::new(1.5, theme::c().map_node.gamma_multiply(pulse_alpha)),
+            );
+            painter.circle_filled(
+                pos,
+                r,
+                if hovered {
+                    theme::c().accent
+                } else {
+                    theme::c().map_node
+                },
+            );
             painter.circle_stroke(pos, r, Stroke::new(1.0, theme::c().text));
             painter.text(
                 pos + Vec2::new(0.0, r + 13.0),
                 Align2::CENTER_CENTER,
                 geoip::place_label(*place, i18n),
                 FontId::proportional(11.0),
-                if hovered { theme::c().text } else { theme::c().text_dim },
+                if hovered {
+                    theme::c().text
+                } else {
+                    theme::c().text_dim
+                },
             );
         }
     }
@@ -176,7 +198,11 @@ pub fn draw(
     let (k0, k1) = proj.visible_cycles(local.x, rect);
     for k in k0..=k1 {
         let pos = local + Vec2::new(k as f32 * cycle_px, 0.0);
-        painter.circle_stroke(pos, 10.0, Stroke::new(1.5, theme::c().accent.gamma_multiply(0.5)));
+        painter.circle_stroke(
+            pos,
+            10.0,
+            Stroke::new(1.5, theme::c().accent.gamma_multiply(0.5)),
+        );
         painter.circle_filled(pos, 6.0, theme::c().accent);
         painter.text(
             pos + Vec2::new(0.0, -16.0),
@@ -274,7 +300,10 @@ fn info_card(
     const HEAD_H: f32 = 42.0;
     const MAX_ROWS: usize = 6;
 
-    let rows: Vec<&Connection> = conns.iter().filter(|conn| conn.city == Some(place)).collect();
+    let rows: Vec<&Connection> = conns
+        .iter()
+        .filter(|conn| conn.city == Some(place))
+        .collect();
     let shown = rows.len().min(MAX_ROWS);
     let extra = rows.len() - shown;
     let total: u64 = rows.iter().map(|conn| conn.total_bytes()).sum();
@@ -284,8 +313,17 @@ fn info_card(
         Vec2::new(WIDTH, height),
     );
 
-    painter.rect_filled(card, CornerRadius::same(theme::RADIUS_LG), theme::c().bg_float);
-    painter.rect_stroke(card, CornerRadius::same(theme::RADIUS_LG), Stroke::new(1.0, theme::c().stroke), StrokeKind::Inside);
+    painter.rect_filled(
+        card,
+        CornerRadius::same(theme::RADIUS_LG),
+        theme::c().bg_float,
+    );
+    painter.rect_stroke(
+        card,
+        CornerRadius::same(theme::RADIUS_LG),
+        Stroke::new(1.0, theme::c().stroke),
+        StrokeKind::Inside,
+    );
 
     painter.text(
         Pos2::new(card.left() + 14.0, card.top() + 12.0),
@@ -325,13 +363,29 @@ fn info_card(
             text_x += 18.0;
         }
         let process = format!("{} ({})", conn.process, conn.pid);
-        painter.text(Pos2::new(text_x, y + 8.0), Align2::LEFT_CENTER, process, FontId::proportional(12.0), theme::c().text);
+        painter.text(
+            Pos2::new(text_x, y + 8.0),
+            Align2::LEFT_CENTER,
+            process,
+            FontId::proportional(12.0),
+            theme::c().text,
+        );
         // rDNS 域名优先(卡片行宽有限,超长截断),无 PTR 回退地址:端口
         let remote = match rdns.lookup(conn.remote_ip) {
-            Some(host) => format!("{} {}", rdns::display(host, conn.remote_port, 24), conn.proto.as_str()),
+            Some(host) => format!(
+                "{} {}",
+                rdns::display(host, conn.remote_port, 24),
+                conn.proto.as_str()
+            ),
             None => format!("{} {}", conn.remote_display(), conn.proto.as_str()),
         };
-        painter.text(Pos2::new(card.right() - 14.0, y + 8.0), Align2::RIGHT_CENTER, remote, FontId::monospace(11.0), theme::c().text_dim);
+        painter.text(
+            Pos2::new(card.right() - 14.0, y + 8.0),
+            Align2::RIGHT_CENTER,
+            remote,
+            FontId::monospace(11.0),
+            theme::c().text_dim,
+        );
         y += LINE_H;
     }
     if extra > 0 {

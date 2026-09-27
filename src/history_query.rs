@@ -10,7 +10,7 @@ use windows::Win32::System::Time::{
     FileTimeToSystemTime, SystemTimeToFileTime, SystemTimeToTzSpecificLocalTime,
 };
 
-use crate::history::{db_size, unix_now, Db, Writer};
+use crate::history::{Db, Writer, db_size, unix_now};
 use crate::model::Protocol;
 
 /// 历史库超容提醒阈值(1 GiB)
@@ -57,7 +57,11 @@ impl Filter {
             Box::new(self.process.clone()),
             Box::new(self.remote.map(|(lo, _)| lo as i64)),
             Box::new(self.remote.map(|(_, hi)| hi as i64)),
-            Box::new(self.proto.map(|p| p.as_str().to_owned()).unwrap_or_default()),
+            Box::new(
+                self.proto
+                    .map(|p| p.as_str().to_owned())
+                    .unwrap_or_default(),
+            ),
             Box::new(self.hide_local as i64),
             Box::new(self.hide_lan as i64),
         ]
@@ -203,7 +207,8 @@ pub fn fmt_local(unix: u64) -> String {
         let mut utc = SYSTEMTIME::default();
         FileTimeToSystemTime(&ft, &mut utc).expect("[History] 时间换算失败");
         let mut local = SYSTEMTIME::default();
-        SystemTimeToTzSpecificLocalTime(None, &utc, &mut local).expect("[History] 本地时间换算失败");
+        SystemTimeToTzSpecificLocalTime(None, &utc, &mut local)
+            .expect("[History] 本地时间换算失败");
         format!(
             "{:02}-{:02} {:02}:{:02}:{:02}",
             local.wMonth, local.wDay, local.wHour, local.wMinute, local.wSecond

@@ -3,7 +3,7 @@
 //! 托盘在 eframe 主线程创建(见 AGENTS.md 平台规范),事件经
 //! set_event_handler 转发到 mpsc 通道,并 request_repaint 唤醒隐藏状态下的主循环。
 
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, channel};
 
 use eframe::egui;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
@@ -29,7 +29,8 @@ pub fn create(ctx: egui::Context) -> (Tray, Receiver<String>) {
     let quit = MenuItem::with_id(CMD_QUIT, "退出", true, None);
     menu.append(&show).expect("追加托盘菜单项失败");
     menu.append(&hide).expect("追加托盘菜单项失败");
-    menu.append(&PredefinedMenuItem::separator()).expect("追加托盘分隔符失败");
+    menu.append(&PredefinedMenuItem::separator())
+        .expect("追加托盘分隔符失败");
     menu.append(&quit).expect("追加托盘菜单项失败");
 
     let (rgba, width, height) = crate::icon::tray_icon_rgba();

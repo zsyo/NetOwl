@@ -37,8 +37,11 @@ fn main() -> eframe::Result {
     paths::init_data_root();
 
     let mut i18n = i18n::I18n::new();
-    let available: Vec<String> =
-        i18n.available_langs.iter().map(|info| info.code.clone()).collect();
+    let available: Vec<String> = i18n
+        .available_langs
+        .iter()
+        .map(|info| info.code.clone())
+        .collect();
     let cfg = config::Config::load(&i18n.current_lang, &available);
     // 配置文件中保存的语言优先于系统语言(load 内已校验有效性)
     i18n.set_language(cfg.general.language.clone());

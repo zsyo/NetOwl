@@ -277,7 +277,11 @@ impl NetOwlApp {
     /// 总速率采样:窗口隐藏(托盘)时放宽采样间隔降低功耗
     fn poll_traffic(&mut self, ctx: &egui::Context) {
         let visible = ctx.input(|i| i.viewport().visible()) != Some(false);
-        let interval = if visible { TRAFFIC_INTERVAL_ACTIVE } else { TRAFFIC_INTERVAL_HIDDEN };
+        let interval = if visible {
+            TRAFFIC_INTERVAL_ACTIVE
+        } else {
+            TRAFFIC_INTERVAL_HIDDEN
+        };
         self.rates = self.traffic.poll(interval);
     }
 
@@ -391,7 +395,12 @@ impl eframe::App for NetOwlApp {
             .frame(
                 egui::Frame::new()
                     .fill(theme::c().bg_panel)
-                    .inner_margin(egui::Margin { left: 14, right: 14, top: 18, bottom: 14 }),
+                    .inner_margin(egui::Margin {
+                        left: 14,
+                        right: 14,
+                        top: 18,
+                        bottom: 14,
+                    }),
             )
             .show(ui, |ui| {
                 ui::nav_ui(ui, page, ctx.conns, ctx.i18n, ctx.rates, collector_kind)

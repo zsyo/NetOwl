@@ -4,18 +4,16 @@
 use std::hash::{Hash, Hasher};
 use std::net::Ipv4Addr;
 
-use windows::core::PWSTR;
 use windows::Win32::Foundation::{CloseHandle, ERROR_INSUFFICIENT_BUFFER, ERROR_SUCCESS};
 use windows::Win32::NetworkManagement::IpHelper::{
     GetExtendedTcpTable, GetExtendedUdpTable, MIB_TCP_STATE_LAST_ACK, MIB_TCP_STATE_SYN_SENT,
-    MIB_TCPTABLE_OWNER_PID, MIB_UDPTABLE_OWNER_PID, TCP_TABLE_OWNER_PID_ALL,
-    UDP_TABLE_OWNER_PID,
+    MIB_TCPTABLE_OWNER_PID, MIB_UDPTABLE_OWNER_PID, TCP_TABLE_OWNER_PID_ALL, UDP_TABLE_OWNER_PID,
 };
 use windows::Win32::Networking::WinSock::AF_INET;
 use windows::Win32::System::Threading::{
-    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
-    PROCESS_QUERY_LIMITED_INFORMATION,
+    OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
+use windows::core::PWSTR;
 
 use crate::model::Protocol;
 
@@ -59,9 +57,8 @@ pub fn query_tcp() -> Result<Vec<ConnKey>, String> {
     })?;
     let table = unsafe { &*(buf.as_ptr() as *const MIB_TCPTABLE_OWNER_PID) };
     // ANY_SIZE 惯用法:行数组紧跟 dwNumEntries,实际行数由 dwNumEntries 给出
-    let rows = unsafe {
-        std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize)
-    };
+    let rows =
+        unsafe { std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize) };
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
         if row.dwState < STATE_ACTIVE_MIN || row.dwState > STATE_ACTIVE_MAX {
@@ -85,9 +82,8 @@ pub fn query_udp() -> Result<Vec<ConnKey>, String> {
         GetExtendedUdpTable(p, size, false, AF_INET.0 as u32, UDP_TABLE_OWNER_PID, 0)
     })?;
     let table = unsafe { &*(buf.as_ptr() as *const MIB_UDPTABLE_OWNER_PID) };
-    let rows = unsafe {
-        std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize)
-    };
+    let rows =
+        unsafe { std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize) };
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
         out.push(ConnKey {
@@ -123,7 +119,9 @@ pub fn query_process_path(pid: u32) -> Option<String> {
 
 /// 两段式表查询(首次调用取所需缓冲大小,不足时按返回值重试);
 /// `fill` 返回 WIN32_ERROR 码
-fn query_table(fill: impl Fn(Option<*mut std::ffi::c_void>, *mut u32) -> u32) -> Result<Vec<u8>, String> {
+fn query_table(
+    fill: impl Fn(Option<*mut std::ffi::c_void>, *mut u32) -> u32,
+) -> Result<Vec<u8>, String> {
     const SUCCESS: u32 = ERROR_SUCCESS.0;
     const INSUFFICIENT: u32 = ERROR_INSUFFICIENT_BUFFER.0;
     let mut size = 0u32;

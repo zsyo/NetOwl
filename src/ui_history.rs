@@ -4,10 +4,7 @@
 use std::collections::HashMap;
 
 use eframe::egui;
-use egui::{
-    CornerRadius, Frame, Label, Margin, RichText, Stroke,
-    containers::menu::MenuButton,
-};
+use egui::{CornerRadius, Frame, Label, Margin, RichText, Stroke, containers::menu::MenuButton};
 use rusqlite::Connection as Db;
 
 use crate::config::Config;
@@ -15,7 +12,7 @@ use crate::geoip;
 use crate::history;
 use crate::history_query::{self, Rows, ViewMode};
 use crate::i18n::I18n;
-use crate::model::{fmt_bytes, Place, Protocol};
+use crate::model::{Place, Protocol, fmt_bytes};
 use crate::theme;
 
 /// 历史页;返回是否直接改动了配置(勾选不再提醒/清空还原提醒)
@@ -63,10 +60,8 @@ fn remind_card(
         .inner_margin(Margin::same(12))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                let text = i18n.t_with_args(
-                    "history-remind-text",
-                    &[("size", fmt_bytes(state.db_size))],
-                );
+                let text =
+                    i18n.t_with_args("history-remind-text", &[("size", fmt_bytes(state.db_size))]);
                 ui.label(RichText::new(text).size(13.0).color(theme::c().text));
                 if ui
                     .checkbox(&mut false, i18n.t("history-remind-dismiss"))
@@ -105,11 +100,13 @@ fn toolbar(
         };
         for mode in [ViewMode::Detail, ViewMode::Aggregate] {
             let selected = state.view == mode;
-            let label = RichText::new(view_label(i18n, mode)).size(13.0).color(if selected {
-                theme::c().accent
-            } else {
-                theme::c().text
-            });
+            let label = RichText::new(view_label(i18n, mode))
+                .size(13.0)
+                .color(if selected {
+                    theme::c().accent
+                } else {
+                    theme::c().text
+                });
             if ui.selectable_label(selected, label).clicked() {
                 switch = Some(mode);
             }
@@ -170,7 +167,10 @@ fn toolbar(
             .show_ui(ui, |ui| {
                 for p in [None, Some(Protocol::Tcp), Some(Protocol::Udp)] {
                     if ui
-                        .selectable_label(state.proto == p, RichText::new(proto_name(i18n, p)).size(13.0))
+                        .selectable_label(
+                            state.proto == p,
+                            RichText::new(proto_name(i18n, p)).size(13.0),
+                        )
                         .clicked()
                     {
                         state.proto = p;
@@ -219,7 +219,10 @@ fn toolbar(
                     egui::Layout::top_down(egui::Align::LEFT).with_cross_justify(true),
                     |ui| {
                         for (days, text) in purge_choices(i18n) {
-                            if ui.selectable_label(false, RichText::new(text).size(13.0)).clicked() {
+                            if ui
+                                .selectable_label(false, RichText::new(text).size(13.0))
+                                .clicked()
+                            {
                                 state.request_purge(writer, days);
                                 config.general.history_remind = true;
                                 *config_changed = true;
@@ -238,8 +241,14 @@ fn toolbar(
 fn purge_choices(i18n: &I18n) -> Vec<(u32, String)> {
     [
         (0, i18n.t("history-purge-all")),
-        (3, i18n.t_with_args("history-purge-days", &[("n", "3".to_owned())])),
-        (7, i18n.t_with_args("history-purge-days", &[("n", "7".to_owned())])),
+        (
+            3,
+            i18n.t_with_args("history-purge-days", &[("n", "3".to_owned())]),
+        ),
+        (
+            7,
+            i18n.t_with_args("history-purge-days", &[("n", "7".to_owned())]),
+        ),
         (30, i18n.t("history-purge-month")),
     ]
     .into_iter()
@@ -275,24 +284,45 @@ fn rows_table(
                         .striped(true)
                         .show(ui, |ui| {
                             for key in [
-                                "history-col-process", "col-proto", "col-remote",
-                                "col-location", "history-col-first", "history-col-duration",
+                                "history-col-process",
+                                "col-proto",
+                                "col-remote",
+                                "col-location",
+                                "history-col-first",
+                                "history-col-duration",
                             ] {
                                 header(ui, i18n.t(key));
                             }
                             ui.end_row();
                             for r in rows {
-                                proc_cell(ui, &r.process, Some(r.pid), r.proc_path.as_deref(), icon_tex, i18n);
+                                proc_cell(
+                                    ui,
+                                    &r.process,
+                                    Some(r.pid),
+                                    r.proc_path.as_deref(),
+                                    icon_tex,
+                                    i18n,
+                                );
                                 ui.label(theme::dim_text(r.proto.as_str(), 13.0));
                                 ui.add(
-                                    Label::new(RichText::new(format!("{}:{}", r.remote_ip, r.remote_port)).size(13.0).color(theme::c().text))
-                                        .wrap_mode(egui::TextWrapMode::Extend),
+                                    Label::new(
+                                        RichText::new(format!("{}:{}", r.remote_ip, r.remote_port))
+                                            .size(13.0)
+                                            .color(theme::c().text),
+                                    )
+                                    .wrap_mode(egui::TextWrapMode::Extend),
                                 );
                                 location_cell(ui, i18n, r.remote_ip);
-                                ui.label(theme::dim_text(&history_query::fmt_local(r.first_seen), 13.0));
-                                ui.label(theme::dim_text(&history_query::fmt_duration(
-                                    r.last_seen.saturating_sub(r.first_seen),
-                                ), 13.0));
+                                ui.label(theme::dim_text(
+                                    &history_query::fmt_local(r.first_seen),
+                                    13.0,
+                                ));
+                                ui.label(theme::dim_text(
+                                    &history_query::fmt_duration(
+                                        r.last_seen.saturating_sub(r.first_seen),
+                                    ),
+                                    13.0,
+                                ));
                                 ui.end_row();
                             }
                         });
@@ -313,8 +343,12 @@ fn rows_table(
                         .striped(true)
                         .show(ui, |ui| {
                             for key in [
-                                "history-col-process", "col-proto", "col-remote",
-                                "col-location", "history-col-count", "history-col-total",
+                                "history-col-process",
+                                "col-proto",
+                                "col-remote",
+                                "col-location",
+                                "history-col-count",
+                                "history-col-total",
                                 "history-col-last",
                             ] {
                                 header(ui, i18n.t(key));
@@ -324,13 +358,27 @@ fn rows_table(
                                 proc_cell(ui, &r.process, None, None, icon_tex, i18n);
                                 ui.label(theme::dim_text(r.proto.as_str(), 13.0));
                                 ui.add(
-                                    Label::new(RichText::new(r.remote_ip.to_string()).size(13.0).color(theme::c().text))
-                                        .wrap_mode(egui::TextWrapMode::Extend),
+                                    Label::new(
+                                        RichText::new(r.remote_ip.to_string())
+                                            .size(13.0)
+                                            .color(theme::c().text),
+                                    )
+                                    .wrap_mode(egui::TextWrapMode::Extend),
                                 );
                                 location_cell(ui, i18n, r.remote_ip);
-                                ui.label(RichText::new(r.count.to_string()).size(13.0).color(theme::c().text));
-                                ui.label(theme::dim_text(&history_query::fmt_duration(r.total_secs), 13.0));
-                                ui.label(theme::dim_text(&history_query::fmt_local(r.last_active), 13.0));
+                                ui.label(
+                                    RichText::new(r.count.to_string())
+                                        .size(13.0)
+                                        .color(theme::c().text),
+                                );
+                                ui.label(theme::dim_text(
+                                    &history_query::fmt_duration(r.total_secs),
+                                    13.0,
+                                ));
+                                ui.label(theme::dim_text(
+                                    &history_query::fmt_local(r.last_active),
+                                    13.0,
+                                ));
                                 ui.end_row();
                             }
                         });
@@ -341,7 +389,12 @@ fn rows_table(
 }
 
 fn header(ui: &mut egui::Ui, text: String) {
-    ui.label(RichText::new(text).size(12.0).strong().color(theme::c().text_dim));
+    ui.label(
+        RichText::new(text)
+            .size(12.0)
+            .strong()
+            .color(theme::c().text_dim),
+    );
 }
 
 fn empty_hint(ui: &mut egui::Ui, i18n: &I18n) {
@@ -353,7 +406,10 @@ fn truncated_hint(ui: &mut egui::Ui, len: usize, i18n: &I18n) {
     if len >= history_query::QUERY_LIMIT {
         ui.add_space(8.0);
         ui.label(theme::dim_text(
-            &i18n.t_with_args("history-truncated", &[("n", history_query::QUERY_LIMIT.to_string())]),
+            &i18n.t_with_args(
+                "history-truncated",
+                &[("n", history_query::QUERY_LIMIT.to_string())],
+            ),
             12.0,
         ));
     }
@@ -369,9 +425,7 @@ fn proc_cell(
     i18n: &I18n,
 ) {
     ui.horizontal(|ui| {
-        let tex = path
-            .and_then(|p| icon_tex.get(p))
-            .and_then(|t| t.as_ref());
+        let tex = path.and_then(|p| icon_tex.get(p)).and_then(|t| t.as_ref());
         match tex {
             Some(t) => {
                 ui.add(egui::Image::new(t).fit_to_exact_size(egui::vec2(16.0, 16.0)));
