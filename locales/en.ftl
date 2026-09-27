@@ -60,6 +60,9 @@ proc-sign-invalid = Signature invalid
 proc-sign-unknown = Signature unknown
 proc-path-unknown = Path unavailable
 
+filter-hide-local = Hide local
+filter-hide-lan = Hide LAN
+
 settings-history-days = Auto-clean history
 settings-history-days-unit = days
 settings-history-days-hint = Delete history older than this many days; 0 disables auto-clean

@@ -38,6 +38,12 @@ pub struct GeneralConfig {
     /// 历史库超容提醒(false = 已勾选不再提醒;手动清空时还原为 true)
     #[serde(default = "default_true")]
     pub history_remind: bool,
+    /// 连接页与历史页隐藏回环远端(127.0.0.0/8)
+    #[serde(default = "default_true")]
+    pub hide_local: bool,
+    /// 连接页与历史页隐藏私网远端(RFC1918)
+    #[serde(default = "default_true")]
+    pub hide_lan: bool,
 }
 
 impl Default for GeneralConfig {
@@ -48,6 +54,8 @@ impl Default for GeneralConfig {
             collector: default_collector(),
             history_days: 0,
             history_remind: true,
+            hide_local: true,
+            hide_lan: true,
         }
     }
 }

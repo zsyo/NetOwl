@@ -149,10 +149,7 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
             map::draw(ui, ctx.conns, ctx.i18n, ctx.map_view, ctx.rdns, ctx.icon_tex, ctx.local_pos);
             false
         }
-        Page::Connections => {
-            connections_ui(ui, ctx.conns, ctx.i18n, ctx.rdns, ctx.icon_tex);
-            false
-        }
+        Page::Connections => connections_ui(ui, ctx.conns, ctx.i18n, ctx.rdns, ctx.icon_tex, ctx.config),
         Page::History => ui_history::show(
             ui,
             ctx.history,
@@ -174,21 +171,40 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
     }
 }
 
-/// 连接列表页
+/// 连接列表页;返回是否直接改动了配置(隐藏本地/局域网开关)
 fn connections_ui(
     ui: &mut egui::Ui,
     conns: &[Connection],
     i18n: &I18n,
     rdns: &rdns::Rdns,
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
-) {
+    config: &mut Config,
+) -> bool {
     ui.heading(theme::accent_text(&i18n.t("conns-title"), 20.0));
     ui.label(theme::dim_text(&i18n.t("conns-subtitle"), 13.0));
-    ui.add_space(10.0);
+    ui.add_space(6.0);
 
-    if conns.is_empty() {
+    // 本地/局域网远端噪音过滤(config 持久化,连接页与历史页共享)
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        if ui.checkbox(&mut config.general.hide_local, i18n.t("filter-hide-local")).changed() {
+            changed = true;
+        }
+        if ui.checkbox(&mut config.general.hide_lan, i18n.t("filter-hide-lan")).changed() {
+            changed = true;
+        }
+    });
+    ui.add_space(4.0);
+
+    // 空态判定与过滤同口径:全部连接都被隐藏时同样提示无连接
+    let visible = |c: &Connection| {
+        !(config.general.hide_local && c.remote_ip.is_loopback())
+            && !(config.general.hide_lan && c.remote_ip.is_private())
+    };
+    let shown: Vec<&Connection> = conns.iter().filter(|c| visible(c)).collect();
+    if shown.is_empty() {
         ui.label(theme::dim_text(&i18n.t("conns-empty"), 14.0));
-        return;
+        return changed;
     }
 
     egui::ScrollArea::vertical()
@@ -204,7 +220,7 @@ fn connections_ui(
                     }
                     ui.end_row();
 
-                    for conn in conns {
+                    for conn in shown {
                         let process = if conn.process.is_empty() {
                             format!("{} (PID {})", i18n.t("conn-proc-unknown"), conn.pid)
                         } else {
@@ -284,6 +300,7 @@ fn connections_ui(
                     }
                 });
         });
+    changed
 }
 
 /// 进程列第二行文本:签名状态 + 映像路径(超长取尾部保留文件名)

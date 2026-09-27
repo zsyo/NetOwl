@@ -28,26 +28,38 @@ pub struct Filter {
     /// 远端 IP 网段范围 [min, max](None = 不过滤)
     pub remote: Option<(u32, u32)>,
     pub proto: Option<Protocol>,
+    /// 隐藏回环远端(127.0.0.0/8)
+    pub hide_local: bool,
+    /// 隐藏私网远端(RFC1918:10/8、172.16/12、192.168/16)
+    pub hide_lan: bool,
 }
 
 impl Filter {
-    /// WHERE 条件公共段(时间窗 + 三项筛选,参数绑定)
+    /// WHERE 条件公共段(时间窗 + 筛选项,参数绑定)。
+    /// 私网判定用位运算:10/8 = 前 8 位 10;172.16/12 = 前 12 位 0xAC1;
+    /// 192.168/16 = 前 16 位 0xC0A8
     fn where_clause() -> &'static str {
         "WHERE last_seen >= ?1
              AND (?2 = '' OR process LIKE '%' || ?2 || '%')
              AND (?3 IS NULL OR (remote_ip >= ?3 AND remote_ip <= ?4))
-             AND (?5 = '' OR proto = ?5)"
+             AND (?5 = '' OR proto = ?5)
+             AND (?6 = 0 OR NOT ((remote_ip >> 24) = 127))
+             AND (?7 = 0 OR NOT ((remote_ip >> 24) = 10
+                      OR (remote_ip >> 20) = 2753
+                      OR (remote_ip >> 16) = 49320))"
     }
 
     /// 与 where_clause 参数位一一对应(全部 owned);
     /// proto 为 None 时绑空串(SQL 侧以 ?5 = '' 判定不过滤,NULL 比较恒假)
-    fn bind(&self) -> [Box<dyn rusqlite::ToSql>; 5] {
+    fn bind(&self) -> [Box<dyn rusqlite::ToSql>; 7] {
         [
             Box::new(self.start as i64),
             Box::new(self.process.clone()),
             Box::new(self.remote.map(|(lo, _)| lo as i64)),
             Box::new(self.remote.map(|(_, hi)| hi as i64)),
             Box::new(self.proto.map(|p| p.as_str().to_owned()).unwrap_or_default()),
+            Box::new(self.hide_local as i64),
+            Box::new(self.hide_lan as i64),
         ]
     }
 }
@@ -279,8 +291,9 @@ impl PageState {
         self.purge_pending = Some(Instant::now());
     }
 
-    /// 按需重新加载:dirty(进入页面/筛选变化)或清空完成后
-    pub fn refresh_if_needed(&mut self, db: &Db) {
+    /// 按需重新加载:dirty(进入页面/筛选变化)或清空完成后;
+    /// 本地/局域网过滤取自 config(两页共享,唯一来源)
+    pub fn refresh_if_needed(&mut self, db: &Db, hide_local: bool, hide_lan: bool) {
         if let Some(at) = self.purge_pending
             && at.elapsed() >= Duration::from_millis(300)
         {
@@ -295,6 +308,8 @@ impl PageState {
             process: self.process.trim().to_owned(),
             remote: parse_ip_prefix(&self.remote),
             proto: self.proto,
+            hide_local,
+            hide_lan,
         };
         self.rows = match self.view {
             ViewMode::Detail => Rows::Detail(query_detail(db, &filter).unwrap_or_default()),

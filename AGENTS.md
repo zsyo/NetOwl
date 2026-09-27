@@ -42,8 +42,9 @@
   托盘退出 flush 并 join;自动清理小时级节流,天数 0 = 不清理;归属地不落库)
 - src/history_query.rs - 历史查询与页面状态(明细/聚合 SQL 全参数绑定,
   LIMIT 500;远端前缀解析为网段 BETWEEN;proto None 绑空串而非 NULL——
-  SQL 侧 ?5 = '' 判定,NULL 比较恒假会过滤全部行;本月起点/时间格式化走
-  Win32 SystemTime;PageState 含视图/筛选/结果/清空)
+  SQL 侧 ?5 = '' 判定,NULL 比较恒假会过滤全部行;本地/私网过滤在 SQL 内
+  位运算判定;本月起点/时间格式化走 Win32 SystemTime;PageState 含视图/
+  筛选/结果/清空)
 - src/ui_history.rs - 历史页(双视图切换、档位筛选、库大小显示、超 1 GiB
   提醒卡[勾选不再提醒=一票否决持久化,手动清空还原]、清空 N 天前工具;
   位置列实时反查 geoip)

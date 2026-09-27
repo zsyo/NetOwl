@@ -25,7 +25,7 @@ pub fn show(
     writer: &history::Writer,
     config: &mut Config,
 ) -> bool {
-    state.refresh_if_needed(db);
+    state.refresh_if_needed(db, config.general.hide_local, config.general.hide_lan);
     let mut config_changed = false;
 
     ui.heading(theme::accent_text(&i18n.t("history-title"), 20.0));
@@ -175,6 +175,22 @@ fn toolbar(
             state.dirty = true;
         }
 
+        // 本地/局域网远端噪音过滤(config 持久化,连接页与历史页共享)
+        if ui
+            .checkbox(&mut config.general.hide_local, i18n.t("filter-hide-local"))
+            .changed()
+        {
+            state.dirty = true;
+            *config_changed = true;
+        }
+        if ui
+            .checkbox(&mut config.general.hide_lan, i18n.t("filter-hide-lan"))
+            .changed()
+        {
+            state.dirty = true;
+            *config_changed = true;
+        }
+
         // 库大小与手动清空(右对齐)
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let size = i18n.t_with_args("history-db-size", &[("size", fmt_bytes(state.db_size))]);
@@ -200,8 +216,8 @@ fn toolbar(
             );
         });
     });
-    // 筛选文本失焦即刷新(逐帧查询代价已由 dirty 门控)
-    state.refresh_if_needed(db);
+    // 筛选文本失焦与开关变更即刷新(逐帧查询代价已由 dirty 门控)
+    state.refresh_if_needed(db, config.general.hide_local, config.general.hide_lan);
 }
 
 fn proto_name(i18n: &I18n, proto: Option<Protocol>) -> String {
