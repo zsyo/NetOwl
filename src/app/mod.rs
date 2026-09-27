@@ -379,11 +379,16 @@ impl NetOwlApp {
         }
     }
 
-    /// 应用询问决策:永久选项落库,仅本次选项写入内存临时规则
+    /// 应用询问决策:永久选项落库;拒绝·仅本次写入内存临时规则;
+    /// 允许·仅本次不产生规则(询问的连接未命中任何规则,默认即放行,
+    /// 身份已去重不会重复询问)
     fn apply_decision(&mut self, d: Decision) {
         let Some(item) = self.asker.take() else {
             return;
         };
+        if d.allow && d.scope == Scope::Once {
+            return;
+        }
         let action = if d.allow {
             crate::rules::Action::Allow
         } else {

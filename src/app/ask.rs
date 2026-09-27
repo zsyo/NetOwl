@@ -4,8 +4,9 @@
 //! 触发粒度 = 进程 + 目标 IP(端口/协议不参与去重,同目标多端口只问一次);
 //! 回环/局域网/保留段目标、系统进程、UDP 无远端行不询问(静默放行),
 //! 待询问队列超上限时同样静默放行。询问等待期间该身份被临时阻断
-//! (最高 weight 的 pending 过滤器,安全默认);决策结果转为临时规则
-//! (仅本次,内存)或持久规则(永久,落库),WFP 拦截与列表标注随之生效。
+//! (最高 weight 的 pending 过滤器,安全默认);允许·仅本次直接放行
+//! 不产生规则,拒绝·仅本次转为会话内临时规则(内存),永久选项落库,
+//! WFP 拦截与列表标注随之生效。
 
 use std::collections::{HashSet, VecDeque};
 use std::hash::{Hash, Hasher};
@@ -27,7 +28,8 @@ const SYSTEM_PID: u32 = 4;
 /// 决策的作用范围
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Scope {
-    /// 仅本次:会话内临时精确规则(IP+端口+协议)
+    /// 仅本次:拒绝时为会话内临时精确规则(IP+端口+协议);
+    /// 允许时直接放行,不产生规则
     Once,
     /// 永久·仅此目标:进程 + 目标 IP(任意端口)
     Target,
@@ -83,17 +85,23 @@ impl AskItem {
     }
 
     /// 决策结果转规则;process 填映像名(规则语义:映像名或路径结尾)。
-    /// 范围决定持久规则粒度:Target = 进程+目标IP(不限端口),
-    /// Process = 仅进程;Once 保持当前连接的精确身份
+    /// 范围决定持久规则粒度与名称:Target = 进程+目标IP(不限端口,
+    /// 名称只带目标主机),Process = 仅进程(名称即程序名);
+    /// Once 保持当前连接的精确身份(名称带 IP+端口)
     pub fn to_rule(&self, action: Action) -> Rule {
         let (remote_kind, remote_value, port) = match self.scope {
             Scope::Once => (RemoteKind::Ip, self.remote_ip.to_string(), self.remote_port),
             Scope::Target => (RemoteKind::Ip, self.remote_ip.to_string(), 0),
             Scope::Process => (RemoteKind::Any, String::new(), 0),
         };
+        let name = match self.scope {
+            Scope::Once => format!("{} -> {}", self.process, self.remote_display()),
+            Scope::Target => format!("{} -> {}", self.process, self.remote_host()),
+            Scope::Process => self.process.clone(),
+        };
         Rule {
             id: 0,
-            name: format!("{} -> {}", self.process, self.remote_display()),
+            name,
             enabled: true,
             priority: 0,
             action,
@@ -103,6 +111,14 @@ impl AskItem {
             remote_kind,
             remote_value,
             port,
+        }
+    }
+
+    /// 远端主机显示名(域名优先,不带端口)
+    fn remote_host(&self) -> String {
+        match &self.domain {
+            Some(d) => d.clone(),
+            None => self.remote_ip.to_string(),
         }
     }
 }
