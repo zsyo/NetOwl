@@ -229,10 +229,14 @@
 
 ### 功能点与 git 提交
 - 每完成一个单独的功能点,创建一个 git commit 提交
-- commit 前置条件(两者都必须满足):
+- commit 前置条件(三者都必须满足):
+  - `cargo fmt` 已执行,项目代码符合 rustfmt 标准格式(每次提交都保持
+    格式化到位,避免后续触发 fmt 时产生大量与功能无关的重排)
   - `cargo build` 正常编译通过
   - `cargo clippy` 无任何警告
-- commit message 用中文简述功能点(首行一句话),禁止 emoji
+- commit message 首行 = 提交分类 + 中文简述,如 "feat: xxx" / "fix: xxx" /
+  "chore: xxx"(feat 新功能、fix 修复、chore 构建/工具/杂务,其他场景按需
+  使用 refactor/docs/style/test);禁止 emoji
 - 提交内容仅包含该功能点相关文件;临时验证产物(截图、日志等)不入库,
   收尾删除
 
