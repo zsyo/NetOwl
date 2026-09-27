@@ -24,7 +24,6 @@ const QUEUE_LIMIT: usize = 10;
 const PENDING_WEIGHT: u8 = 15;
 /// 系统进程(PID 4)持有内核级 socket,不询问
 const SYSTEM_PID: u32 = 4;
-
 /// 决策的作用范围
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Scope {
@@ -58,8 +57,6 @@ pub struct AskItem {
     pub deadline: Instant,
     /// 弹窗内当前选择的生效范围(跨帧持久;决策时读取)
     pub scope: Scope,
-    /// 弹窗窗口高度(逻辑点;按内容运行时自适应,跨帧记忆)
-    pub win_height: f32,
 }
 
 impl AskItem {
@@ -174,9 +171,10 @@ impl Asker {
             if !self.asked.insert(key) {
                 continue;
             }
-            // 静默放行:系统进程、未知进程(无法生成有意义的进程条件)与
-            // 不可询问的目标(回环/局域网/保留段等)
-            if c.pid == SYSTEM_PID
+            // 静默放行:自身(NetOwl 不询问/拦截自己)、系统进程、未知进程
+            // (无法生成有意义的进程条件)与不可询问的目标(回环/局域网/保留段等)
+            if c.pid == std::process::id()
+                || c.pid == SYSTEM_PID
                 || c.pid == 0
                 || c.process.is_empty()
                 || (c.proto == Protocol::Udp && c.remote_ip.is_unspecified())
@@ -201,7 +199,6 @@ impl Asker {
                 domain: rdns.lookup(c.remote_ip).map(str::to_owned),
                 deadline: Instant::now() + ASK_TIMEOUT,
                 scope: Scope::Once,
-                win_height: 300.0,
             });
         }
     }
