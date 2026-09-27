@@ -6,7 +6,7 @@ use std::net::Ipv4Addr;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::collector::{Collector, CollectorKind};
-use crate::model::{Connection, Place, Protocol};
+use crate::model::{Connection, Place, Protocol, Signing};
 use crate::world::CITIES;
 
 /// xorshift64* 伪随机数:骨架期避免引入 rand 依赖(AGENTS.md 规范 8)
@@ -110,6 +110,9 @@ impl MockCollector {
             id,
             pid: (1000 + self.rng.range(90000)) as u32,
             process: process.to_owned(),
+            // 模拟数据不携带真实映像路径与签名
+            proc_path: None,
+            signed: Signing::Unknown,
             proto: if self.rng.chance(85) { Protocol::Tcp } else { Protocol::Udp },
             remote_ip: ip,
             remote_port: port,

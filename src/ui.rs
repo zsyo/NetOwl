@@ -10,7 +10,7 @@ use crate::config::Config;
 use crate::geoip;
 use crate::i18n::I18n;
 use crate::map;
-use crate::model::{Connection, fmt_bytes};
+use crate::model::{Connection, Signing, fmt_bytes};
 use crate::rdns;
 use crate::theme;
 
@@ -171,7 +171,17 @@ fn connections_ui(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n, rdns: &r
                         } else {
                             conn.process.clone()
                         };
-                        ui.label(RichText::new(process).size(13.0).color(theme::c().text));
+                        // 进程列两行:映像名 + 弱化的签名状态与路径
+                        ui.vertical(|ui| {
+                            ui.add(
+                                Label::new(RichText::new(process).size(13.0).color(theme::c().text))
+                                    .wrap_mode(egui::TextWrapMode::Extend),
+                            );
+                            ui.add(
+                                Label::new(theme::dim_text(&proc_detail(conn, i18n), 11.0))
+                                    .wrap_mode(egui::TextWrapMode::Extend),
+                            );
+                        });
                         ui.label(theme::dim_text(conn.proto.as_str(), 13.0));
                         // rDNS 域名优先,域名下方弱化显示裸 IP;无 PTR 回退地址:端口。
                         // 单行延伸(Extend)禁用自动折行,列宽由最宽内容撑开
@@ -216,6 +226,30 @@ fn connections_ui(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n, rdns: &r
                     }
                 });
         });
+}
+
+/// 进程列第二行文本:签名状态 + 映像路径(超长取尾部保留文件名)
+fn proc_detail(conn: &Connection, i18n: &I18n) -> String {
+    let sign = match conn.signed {
+        Signing::Signed => i18n.t("proc-signed"),
+        Signing::Unsigned => i18n.t("proc-unsigned"),
+        Signing::Invalid => i18n.t("proc-sign-invalid"),
+        Signing::Unknown => i18n.t("proc-sign-unknown"),
+    };
+    match &conn.proc_path {
+        Some(path) => format!("{sign} · {}", tail_path(path, 52)),
+        None => format!("{sign} · {}", i18n.t("proc-path-unknown")),
+    }
+}
+
+/// 路径超长时截取尾部("…" 前缀),保住文件名部分
+fn tail_path(path: &str, max: usize) -> String {
+    let chars: Vec<char> = path.chars().collect();
+    if chars.len() <= max {
+        return path.to_owned();
+    }
+    let tail: String = chars[chars.len() - (max - 1)..].iter().collect();
+    format!("…{tail}")
 }
 
 /// 设置页:语言切换(词条即时生效)、主题、数据源

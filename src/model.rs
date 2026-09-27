@@ -36,6 +36,10 @@ pub struct Connection {
     pub id: u64,
     pub pid: u32,
     pub process: String,
+    /// 进程映像完整路径;受保护/系统进程等无法读取时为 None
+    pub proc_path: Option<String>,
+    /// 进程映像签名状态(异步查询,回填前为 Unknown)
+    pub signed: Signing,
     pub proto: Protocol,
     pub remote_ip: Ipv4Addr,
     pub remote_port: u16,
@@ -44,6 +48,19 @@ pub struct Connection {
     pub bytes_in: u64,
     pub bytes_out: u64,
     pub first_seen: Instant,
+}
+
+/// 进程映像的 Authenticode 签名状态(WinVerifyTrust 校验)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Signing {
+    /// 签名有效
+    Signed,
+    /// 未签名
+    Unsigned,
+    /// 有签名但校验未通过(文件被篡改/证书失效等)
+    Invalid,
+    /// 无法确定:系统进程、文件不可访问或查询尚未完成
+    Unknown,
 }
 
 impl Connection {

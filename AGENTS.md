@@ -36,12 +36,15 @@
   接口——WFP 轻量过滤/QoS 过滤接口会镜像底层物理网卡计数,不过滤速率成倍
   虚高**;窗口可见 1s 采样、隐藏 5s,表查询失败沿用旧速率)
 - src/collector/ - 连接采集(mod.rs:Collector trait 与 real/mock 工厂 +
-  CollectorKind;mock.rs:模拟数据供演示/测试;windows_table.rs:真实采集,
-  GetExtendedTcpTable/GetExtendedUdpTable owner-PID 快照(1s 节流,TCP 仅
-  SYN_SENT..LAST_ACK 活动状态),OpenProcess+QueryFullProcessImageNameW 反查
-  进程名并按 PID 缓存(行消失即剔除,PID 4 特判 System);连接身份为四元组
-  +PID,hash 派生稳定 id;表快照无字节语义,下载/上传列为 0,字节/速率待
-  ETW;均为只读 API,无需管理员权限)
+  CollectorKind;mock.rs:模拟数据供演示/测试;query.rs:Win32 查询原语,
+  GetExtendedTcpTable/GetExtendedUdpTable owner-PID 快照(TCP 仅活动状态,
+  两段式缓冲重试)与 OpenProcess+QueryFullProcessImageNameW 全路径反查;
+  windows_table.rs:真实采集器,1s 节流,TCP 过滤 SYN_SENT..LAST_ACK,
+  连接身份四元组+PID hash 派生稳定 id,进程元数据(名/路径/签名)按 PID
+  缓存、行消失即剔除(PID 4 特判 System);signature.rs:WinVerifyTrust
+  Authenticode 校验(UI_NONE+REVOKE_NONE 不弹窗不联网,须在工作线程跑),
+  每轮限流派发(在途 4/每轮 2 个)结果回填,回填前 Unknown;表快照无字节
+  语义,下载/上传列为 0,字节/速率待 ETW;均为只读 API,无需管理员权限)
 - src/i18n/ - 多语言模块(mod.rs:locales 扫描/加载/语言列表;translate.rs:查找/插值/回退/告警)
 - locales/ - fluent 词条文件(zh-cn.ftl / en.ftl;目录缺失时使用编译期内嵌兜底)
 - src/theme.rs - 主题(深/浅两套 Palette 调色板 + AtomicUsize 主题索引,

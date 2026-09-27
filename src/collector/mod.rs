@@ -3,6 +3,8 @@
 //! 设置页可切换数据源,ETW 短命连接捕获后续接入。
 
 mod mock;
+mod query;
+mod signature;
 mod windows_table;
 
 pub use mock::MockCollector;

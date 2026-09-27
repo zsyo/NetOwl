@@ -53,6 +53,12 @@ conns-empty = 暂无活跃连接
 conn-loc-unknown = 未知归属
 conn-proc-unknown = 未知进程
 
+proc-signed = 已签名
+proc-unsigned = 未签名
+proc-sign-invalid = 签名未通过
+proc-sign-unknown = 签名未知
+proc-path-unknown = 无法读取路径
+
 rules-title = 规则
 rules-placeholder = 规则引擎将在后续里程碑接入:允许/拒绝策略、进程与网段匹配、持久化。
 

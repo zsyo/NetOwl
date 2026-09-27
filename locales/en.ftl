@@ -53,6 +53,12 @@ conns-empty = No active connections
 conn-loc-unknown = Unknown
 conn-proc-unknown = Unknown process
 
+proc-signed = Signed
+proc-unsigned = Unsigned
+proc-sign-invalid = Signature invalid
+proc-sign-unknown = Signature unknown
+proc-path-unknown = Path unavailable
+
 rules-title = Rules
 rules-placeholder = The rule engine arrives in a later milestone: allow/deny policies, process and network matching, persistence.
 
