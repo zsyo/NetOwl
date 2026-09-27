@@ -40,6 +40,8 @@ pub struct Palette {
     pub map_coast: Color32,
     /// 地图国界线描边
     pub map_border: Color32,
+    /// 地图主要河流线
+    pub map_river: Color32,
     /// 地图经纬网格
     pub map_grid: Color32,
     /// 地图节点默认填充
@@ -78,6 +80,8 @@ const DARK: Palette = Palette {
     map_land: Color32::from_rgb(30, 58, 48),
     map_coast: Color32::from_rgb(70, 120, 95),
     map_border: Color32::from_rgb(52, 92, 74),
+    // 河流:偏亮水蓝,在深绿陆地上呈水系脉络,暗于海名标签避免抢视觉
+    map_river: Color32::from_rgb(58, 104, 134),
     map_grid: Color32::from_rgb(18, 32, 42),
     map_node: Color32::from_rgb(118, 152, 138),
     map_label_country: Color32::from_rgb(150, 190, 168),
@@ -107,6 +111,8 @@ const LIGHT: Palette = Palette {
     map_land: Color32::from_rgb(215, 229, 196),
     map_coast: Color32::from_rgb(150, 178, 138),
     map_border: Color32::from_rgb(255, 255, 255),
+    // 河流:浅色陆地上取偏深水蓝,与海洋同族但更饱和
+    map_river: Color32::from_rgb(120, 158, 190),
     map_grid: Color32::from_rgb(140, 172, 200),
     map_node: Color32::from_rgb(96, 116, 150),
     map_label_country: Color32::from_rgb(96, 110, 88),

@@ -1,5 +1,5 @@
-//! 地图底图:视图/投影、经纬网格、陆地填充、洞环、海岸线、国界与
-//! 国家/海洋名称标签。
+//! 地图底图:视图/投影、经纬网格、陆地填充、洞环、海岸线、国界、
+//! 主要河流与国家/海洋名称标签。
 //!
 //! 每帧按视口即时构建几何(无缓存):环级包围盒剔除 + 三角形/线段
 //! 视口剔除,保证任意缩放级别下每帧只处理可见部分。名称标签按缩放
@@ -20,6 +20,8 @@ const DETAIL_ZOOM: f32 = 3.0;
 const COAST_WIDTH: f32 = 1.2;
 /// 国界线宽(屏幕像素)
 const BORDER_WIDTH: f32 = 0.8;
+/// 河流线宽(屏幕像素)
+const RIVER_WIDTH: f32 = 1.1;
 /// 全局适配视图的纬度窗口高度(不显示南极)
 const FIT_LAT_SPAN: f32 = 142.0;
 
@@ -151,6 +153,9 @@ pub fn draw(painter: &egui::Painter, rect: Rect, proj: &Projection, labels_zh: b
         // 中国层:陆地填充 + 海岸/国界,整体覆盖世界层之上
         draw_level(painter, rect, &p, &data.china[idx]);
 
+        // 河流独立于两层之后绘制:中国层陆地填充会盖住层内线条
+        draw_rivers(painter, rect, &p, &data.rivers[idx]);
+
         draw_south_sea_line(painter, rect, &p, &data.south_sea_line);
         draw_labels(painter, rect, &p, &data.labels, labels_zh);
     }
@@ -255,16 +260,48 @@ fn draw_line_set(
     for &[a, b] in segs {
         let (la, ta) = level.verts[a as usize];
         let (lb, tb) = level.verts[b as usize];
-        // 段包围盒粗剔除(端点均在同一外侧才跳过)
-        let (min_lon, max_lon) = (la.min(lb), la.max(lb));
-        let (min_lat, max_lat) = (ta.min(tb), ta.max(tb));
-        let tl = proj.project(min_lon, max_lat);
-        let br = proj.project(max_lon, min_lat);
-        if br.x < rect.left() || tl.x > rect.right() || br.y < rect.top() || tl.y > rect.bottom() {
-            continue;
-        }
-        push_segment(mesh, proj.project(la, ta), proj.project(lb, tb), half, color);
+        push_culled_segment(mesh, rect, proj, (la, ta), (lb, tb), half, color);
     }
+}
+
+/// 段级粗剔除(端点均在同一外侧才跳过)后压入固定屏幕线宽 quad
+fn push_culled_segment(
+    mesh: &mut Mesh,
+    rect: Rect,
+    proj: &Projection,
+    a: (f32, f32),
+    b: (f32, f32),
+    half: f32,
+    color: Color32,
+) {
+    let (la, ta) = a;
+    let (lb, tb) = b;
+    let (min_lon, max_lon) = (la.min(lb), la.max(lb));
+    let (min_lat, max_lat) = (ta.min(tb), ta.max(tb));
+    let tl = proj.project(min_lon, max_lat);
+    let br = proj.project(max_lon, min_lat);
+    if br.x < rect.left() || tl.x > rect.right() || br.y < rect.top() || tl.y > rect.bottom() {
+        return;
+    }
+    push_segment(mesh, proj.project(la, ta), proj.project(lb, tb), half, color);
+}
+
+/// 主要河流:固定屏幕线宽折线(数据已按档抽稀),逐段视口剔除;
+/// 绘制于世界/中国层之上,不受中国层陆地填充覆盖
+fn draw_rivers(
+    painter: &egui::Painter,
+    rect: Rect,
+    proj: &Projection,
+    lines: &[Vec<(f32, f32)>],
+) {
+    let mut mesh = Mesh::default();
+    let half = RIVER_WIDTH * 0.5;
+    for line in lines {
+        for pair in line.windows(2) {
+            push_culled_segment(&mut mesh, rect, proj, pair[0], pair[1], half, theme::c().map_river);
+        }
+    }
+    painter.add(Shape::Mesh(Arc::new(mesh)));
 }
 
 /// 名称标签:按缩放分级显隐(<1.6x 只显示 rank0,>3.5x 全部),

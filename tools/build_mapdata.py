@@ -2,11 +2,13 @@
 """构建 assets/mapdata.bin:NetOwl 流量地图底图的紧凑矢量数据。
 
 数据源:
-  世界国界/海洋/湖泊:Natural Earth admin_0_countries / geography_marine_polys
-  / lakes / lakes_historic(公有领域,Public Domain)
+  世界国界/海洋/湖泊/河流:Natural Earth admin_0_countries / geography_marine_polys
+  / lakes / lakes_historic / rivers_lake_centerlines(公有领域,Public Domain)
     https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/
     注:NE admin_0 50m 档不含咸海(GeoJSON 4.x 之后主体数据稳定);
     大湖由湖泊层补,咸海用历史层整体轮廓(残存南北水域太细)。
+    河流取 10m 档 rivers_lake_centerlines 的 River 类线(排除湖内
+    中心线),按 scalerank 过滤全球主要河流(长江、黄河等在列)。
   中国行政区划(省界、港澳台、藏南、南海诸岛、十段线):
     阿里云 DataV GeoAtlas areas_v3 静态 GeoJSON(无 key,离线下载;
     数据基于天地图,GCJ-02 坐标系,与 NE 邻国顶点有 <0.02 度的正常偏移)。
@@ -24,7 +26,9 @@
   ne_50m_admin_0_countries.geojson
   ne_50m_geography_marine_polys.geojson
   ne_50m_lakes.geojson
+  ne_10m_lakes.geojson
   ne_50m_lakes_historic.geojson
+  ne_10m_rivers_lake_centerlines.geojson
   100000_full.json
 在仓库根目录运行(python 3.8+):
   python tools/build_mapdata.py
@@ -46,8 +50,17 @@
   6. 邻国界顶点温和吸合:NE 邻国与中国边界相邻处(<=0.2 度)的小细缝
      对齐到中国边界顶点,消除两层边界"相邻不重合"(尼泊尔/中亚段);
      超出半径一律不动,远离边界的邻国顶点不受影响;
-  7. 湖泊层:面积 >= 0.2 平方度的大湖(咸海、五大湖、贝加尔等)作为
-     洞环并入世界层;咸海取历史层整体轮廓(南北残存水域过细);
+  7. 湖泊层:洞环并入,两档不同集——110m 档取 50m 源面积 >= 0.2 平方度
+     的大湖(咸海、五大湖、贝加尔等);50m 档取 10m 源面积 >= 0.05
+     平方度(补入鄱阳湖、洞庭湖、纳木错、色林错、巢湖等)并按固定
+     容差 DP 预抽稀,不参与世界层预算二分(避免挤压国家环容差);
+     境内湖洞按 pip 判定归入中国层(渲染时位于中国层陆地填充之上,
+     否则境内湖泊全部被盖住),境外湖洞留世界层;咸海一律取历史层
+     整体轮廓(南北残存水域过细);
+  7b. 河流:10m 档 rivers 的 River 类线(排除 Lake Centerline,避免
+     线画进湖面),按 scalerank 过滤全球主要河流,110m 档 scalerank<=3、
+     50m 档 <=4,分别 DP 预抽稀;独立折线节存储与渲染(世界/中国层
+     之上,不受中国层陆地填充覆盖),不参与环三角化与共享边分类;
   8. 标签段:国家(NE,中国除外)+ 手动补"中华人民共和国";省级 34 个
      (kind=2, 中文名取 DataV name,英文名查表;rank=2 高倍缩放显示,
      与国家 rank=0 形成层次);海洋(NE)。港澳台省名正常显示,
@@ -56,7 +69,7 @@
   9. 整体位于南纬 58 度以下的几何不参与(与底图一致不显示南极)。
 
 二进制格式(小端):
-  magic "NWLD" u8 version=4 u8 level_count=2
+  magic "NWLD" u8 version=5 u8 level_count=2
   每档 LOD 依次为:世界层 level、中国层 level;各 level:
     varint vert_count
     verts: zigzag varint (lon*1000, lat*1000) 增量序列(首点相对 0,0)
@@ -66,6 +79,9 @@
   十段线段:
     varint seg_count
     每段: zigzag varint lon0*1000, lat0*1000, lon1*1000, lat1*1000
+  河流折线(两档,依次为全局档、精细档):
+    varint line_count
+    每条: varint pt_count + zigzag varint (lon*1000, lat*1000) 增量序列
   标签段:
     varint label_count
     每 label: varint zh_len + utf8 bytes, varint en_len + utf8 bytes,
@@ -83,7 +99,9 @@ SRC_110M = "tools/cache/ne_110m_admin_0_countries.geojson"
 SRC_50M = "tools/cache/ne_50m_admin_0_countries.geojson"
 SRC_MARINE = "tools/cache/ne_50m_geography_marine_polys.geojson"
 SRC_LAKES = "tools/cache/ne_50m_lakes.geojson"
+SRC_LAKES_10M = "tools/cache/ne_10m_lakes.geojson"
 SRC_LAKES_HISTORIC = "tools/cache/ne_50m_lakes_historic.geojson"
+SRC_RIVERS = "tools/cache/ne_10m_rivers_lake_centerlines.geojson"
 SRC_CN = "tools/cache/100000_full.json"
 OUT_PATH = "assets/mapdata.bin"
 
@@ -93,9 +111,18 @@ BUDGET_50M = 46000
 QUANT = 1000  # 经纬度量化精度 0.001 度
 # 南纬 58 度以下不参与(底图窗口 [-58, 84] 不显示南极)
 SOUTH_CUTOFF = -58 * QUANT
-# 湖泊层面积下限(平方度):咸海南北半场、五大湖、贝加尔等大湖入层。
-# NE admin_0 的 50m 档不含咸海洞,地理要素(内陆湖)由本层补齐
+# 湖泊层面积下限(平方度):110m 档取 50m 源咸海南北半场、五大湖、
+# 贝加尔等大湖;50m 档(10m 源)降至此值的一半以下补入中国主要湖泊
 LAKE_MIN_AREA = 0.2
+LAKE_MIN_AREA_DETAIL = 0.05
+# 50m 档湖环固定容差 DP 预抽稀(度):0.006 度在最大缩放时约 0.2px
+LAKE_SIMPLIFY_EPS = 0.006
+# 河流 scalerank 上限与固定容差 DP 预抽稀(度):
+# 110m 档只保留全球主干大河,50m 档放宽一档
+RIVER_SCALERANK_GLOBAL = 3
+RIVER_SCALERANK_DETAIL = 4
+RIVER_SIMPLIFY_EPS_GLOBAL = 0.02
+RIVER_SIMPLIFY_EPS_DETAIL = 0.005
 # NE 邻国界顶点向中国边界顶点吸合的半径(量化单位,0.2 度):
 # 分层渲染藏南已由中国层覆盖,这里只消"两国边界相邻不重合"的细缝
 NEAR_SNAP_TOL = 200
@@ -116,8 +143,10 @@ CN_NEIGHBORS = {"IND", "PAK", "AFG", "TJK", "KGZ", "KAZ",
 # 中国国家标签:NE 中国被剔除后手动补(国土几何质心附近)
 CN_COUNTRY_LABEL = ("中华人民共和国", "China", 104.1, 37.6, 0, 0)
 # DataV 中国层顶点预算(分层渲染,与世界层分开控制 ear clipping 启动耗时)
-CN_BUDGET_110M = 12000
-CN_BUDGET_50M = 22000
+# 中国层预算含境内湖泊洞环(110m 档约 170 点、50m 档约 1350 点),
+# 上调幅度按境内湖实际用量,保持省环容差与引入前一致
+CN_BUDGET_110M = 12200
+CN_BUDGET_50M = 23400
 
 # 省级英文名(DataV name 仅中文,英文侧按 adcode 查表)
 PROVINCE_EN = {
@@ -267,7 +296,7 @@ def load_cn_rings(path, quant):
     return rings
 
 
-def load_lake_rings(path, quant, drop_names=()):
+def load_lake_rings(path, quant, drop_names=(), min_area=LAKE_MIN_AREA):
     """NE 湖泊层:大湖(咸海、五大湖、贝加尔等)作为洞环并入世界层。
     NE admin_0 50m 档不含咸海,地理要素由本层补齐。
 
@@ -275,6 +304,7 @@ def load_lake_rings(path, quant, drop_names=()):
     Hole 渲染为海色;poly 内的环(idx>0)是湖中岛,按陆地渲染。
 
     drop_names: 剔除指定湖名(咸海残存水域由历史层整体轮廓替代)。
+    min_area: 面积下限(平方度),110m 档与 50m 档取不同集合。
     """
     rings = []
     with open(path, encoding="utf-8") as f:
@@ -296,9 +326,80 @@ def load_lake_rings(path, quant, drop_names=()):
                 if len(pts) < 3 or max(la for _, la in pts) < SOUTH_CUTOFF:
                     continue
                 area, _, _ = polygon_area_centroid(pts)
-                if area >= LAKE_MIN_AREA:
+                if area >= min_area:
                     rings.append((0 if idx > 0 else 1, pts))
     return rings
+
+
+def load_river_lines(path, quant, max_scalerank, eps):
+    """NE 河流中心线:仅 River 类(Lake Centerline 是湖内示流线,画进
+    湖面会与洞环重叠,排除),scalerank 过滤全球主要河流。
+
+    返回量化折线列表(每条折线为独立河流段,DP 预抽稀后仍 >= 2 点);
+    折线不参与环三角化与共享边分类,渲染为固定屏幕线宽的线段序列。
+    """
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    lines = []
+    for feature in data["features"]:
+        props = feature["properties"]
+        if props.get("featurecla") != "River":
+            continue
+        if (props.get("scalerank") or 99) > max_scalerank:
+            continue
+        geom = feature["geometry"]
+        if geom is None:
+            continue
+        parts = geom["coordinates"] if geom["type"] == "MultiLineString" else [geom["coordinates"]]
+        for raw in parts:
+            pts = []
+            for lon, lat in raw:
+                q = (int(round(lon * quant)), int(round(lat * quant)))
+                if not pts or q != pts[-1]:
+                    pts.append(q)
+            if len(pts) < 2:
+                continue
+            pts = simplify_ring(pts, eps)
+            if len(pts) >= 2:
+                lines.append(pts)
+    return lines
+
+
+def split_lakes_in_china(rings, cn_rings):
+    """按湖泊位置把洞环分为境内/境外两组:境内湖洞必须归中国层,
+    否则会被中国层陆地填充覆盖(贝加尔等境外湖留世界层)。
+
+    判定:环任一顶点落在中国省级任一环内(pip,bbox 预筛)即境内,
+    跨界湖(如兴凯湖)整体归中国层——洞环本就是独立海色三角,
+    境外部分直接盖在世界层陆地上,显示正确。
+    """
+    index = []
+    for _, pts in cn_rings:
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        index.append(((min(xs), min(ys), max(xs), max(ys)), pts))
+
+    def in_china(pt):
+        for (minx, miny, maxx, maxy), ring in index:
+            if minx <= pt[0] <= maxx and miny <= pt[1] <= maxy and pip(pt, ring):
+                return True
+        return False
+
+    inside, outside = [], []
+    for ring in rings:
+        target = inside if any(in_china(p) for p in ring[1]) else outside
+        target.append(ring)
+    return inside, outside
+
+
+def simplify_rings(rings, eps):
+    """对一组环做固定容差 DP 抽稀,退化(不足 3 点)的环丢弃"""
+    out = []
+    for kind, pts in rings:
+        simplified = simplify_ring(pts, eps)
+        if len(simplified) >= 3:
+            out.append((kind, simplified))
+    return out
 
 
 def snap_near_neighbors(ne_rings, cn_rings):
@@ -457,25 +558,32 @@ def build_level(path, quant, budget=None, cn_rings=None, lake_rings=None):
     """世界层:NE GeoJSON(中国及港澳台已剔除)。budget=None 为原始顶点。
 
     cn_rings 提供中国层边界顶点时,邻国界顶点做温和吸合;
-    lake_rings 为已加载的大湖洞环,直接并入世界层。
+    lake_rings 为已抽稀的大湖洞环,拼接在预算抽稀结果之后,
+    不参与二分(避免湖泊增量挤压国家环的抽稀容差)。
     """
     ne_rings = load_rings(path, quant)
     if cn_rings is not None:
         ne_rings = snap_near_neighbors(ne_rings, cn_rings)
     rings = [(kind, pts) for _, kind, pts in ne_rings]
-    if lake_rings:
-        rings = rings + lake_rings
     if budget is None:
         out = rings
     else:
         out = bisect_simplify(rings, budget)
+    if lake_rings:
+        out = out + lake_rings
     total = sum(len(pts) for _, pts in out)
     print(f"world level: verts={total} rings={len(out)}", file=sys.stderr)
     return out
 
 
-def build_cn_level(rings, budget=None):
-    """中国层:DataV 省级几何(已加载的 rings),独立抽稀,渲染时覆盖世界层。"""
+def build_cn_level(rings, budget=None, lake_rings=None):
+    """中国层:DataV 省级几何(已加载的 rings),独立抽稀,渲染时覆盖世界层。
+
+    lake_rings 为境内湖泊洞环,参与共享边检测与预算二分;渲染时
+    湖洞位于中国层陆地填充之上,境内湖泊得以显示。
+    """
+    if lake_rings:
+        rings = rings + lake_rings
     if budget is not None:
         rings = bisect_simplify(rings, budget)
     total = sum(len(pts) for _, pts in rings)
@@ -755,6 +863,18 @@ def encode_south_sea_line(out, segs):
         encode_varint(out, zigzag(y1))
 
 
+def encode_rivers(out, lines):
+    """河流折线:每条为量化点增量序列(渲染时展开为相邻点对线段)"""
+    encode_varint(out, len(lines))
+    for pts in lines:
+        encode_varint(out, len(pts))
+        px = py = 0
+        for x, y in pts:
+            encode_varint(out, zigzag(x - px))
+            encode_varint(out, zigzag(y - py))
+            px, py = x, y
+
+
 def encode_labels(out, labels):
     encode_varint(out, len(labels))
     for zh, en, lon, lat, kind, rank in labels:
@@ -773,22 +893,36 @@ def encode_labels(out, labels):
 def main():
     print("building world 110m level ...", file=sys.stderr)
     cn_rings = load_cn_rings(SRC_CN, QUANT)
-    # 大湖洞环:当前湖泊层 + 历史层(咸海用历史整体轮廓,剔除南北残存水域)
-    lake_rings = (load_lake_rings(SRC_LAKES, QUANT, drop_names=("North Aral Sea", "South Aral Sea"))
-                  + load_lake_rings(SRC_LAKES_HISTORIC, QUANT))
-    print(f"lakes: {len(lake_rings)} rings", file=sys.stderr)
-    world0 = build_level(SRC_110M, QUANT, cn_rings=cn_rings, lake_rings=lake_rings)
+    # 大湖洞环两档不同集:110m 档用 50m 源大湖(全局视图);
+    # 50m 档用 10m 源(补入洞庭湖等)降阈值并 DP 预抽稀,不参与预算二分。
+    # 咸海一律取历史层整体轮廓,剔除两源中的南北残存水域
+    aral_drop = ("North Aral Sea", "South Aral Sea")
+
+    def load_lakes(src, min_area):
+        return (load_lake_rings(src, QUANT, drop_names=aral_drop, min_area=min_area)
+                + load_lake_rings(SRC_LAKES_HISTORIC, QUANT))
+
+    lake_rings = load_lakes(SRC_LAKES, LAKE_MIN_AREA)
+    lake_rings_detail = simplify_rings(load_lakes(SRC_LAKES_10M, LAKE_MIN_AREA_DETAIL),
+                                       LAKE_SIMPLIFY_EPS)
+    # 境内湖洞归中国层(渲染时位于中国层陆地填充之上),境外留世界层
+    lakes_global_in, lakes_global_out = split_lakes_in_china(lake_rings, cn_rings)
+    lakes_detail_in, lakes_detail_out = split_lakes_in_china(lake_rings_detail, cn_rings)
+    print(f"lakes: global {len(lakes_global_out)}+{len(lakes_global_in)} rings, "
+          f"detail {len(lakes_detail_out)}+{len(lakes_detail_in)} rings", file=sys.stderr)
+    world0 = build_level(SRC_110M, QUANT, cn_rings=cn_rings, lake_rings=lakes_global_out)
     print("building world 50m level (DP binary search) ...", file=sys.stderr)
-    world1 = build_level(SRC_50M, QUANT, budget=BUDGET_50M, cn_rings=cn_rings, lake_rings=lake_rings)
+    world1 = build_level(SRC_50M, QUANT, budget=BUDGET_50M, cn_rings=cn_rings,
+                         lake_rings=lakes_detail_out)
     print("building china 110m level ...", file=sys.stderr)
-    china0 = build_cn_level(cn_rings, budget=CN_BUDGET_110M)
+    china0 = build_cn_level(cn_rings, budget=CN_BUDGET_110M, lake_rings=lakes_global_in)
     print("building china 50m level (DP binary search) ...", file=sys.stderr)
-    china1 = build_cn_level(cn_rings, budget=CN_BUDGET_50M)
+    china1 = build_cn_level(cn_rings, budget=CN_BUDGET_50M, lake_rings=lakes_detail_in)
 
     out = bytearray()
     out.extend(b"NWLD")
-    # version 4:分层渲染,每档 LOD 世界层在前、中国层在后(中国层覆盖)
-    out.extend(bytes([4, 2]))
+    # version 5:分层渲染 + 河流折线节;每档 LOD 世界层在前、中国层在后
+    out.extend(bytes([5, 2]))
     encode_level(out, world0)
     encode_level(out, china0)
     encode_level(out, world1)
@@ -797,6 +931,15 @@ def main():
     jds = build_south_sea_line(SRC_CN, QUANT)
     print(f"south sea line: {len(jds)} segs", file=sys.stderr)
     encode_south_sea_line(out, jds)
+
+    rivers_global = load_river_lines(SRC_RIVERS, QUANT,
+                                     RIVER_SCALERANK_GLOBAL, RIVER_SIMPLIFY_EPS_GLOBAL)
+    rivers_detail = load_river_lines(SRC_RIVERS, QUANT,
+                                     RIVER_SCALERANK_DETAIL, RIVER_SIMPLIFY_EPS_DETAIL)
+    print(f"rivers: global {len(rivers_global)} lines ({sum(len(p) for p in rivers_global)} pts), "
+          f"detail {len(rivers_detail)} lines ({sum(len(p) for p in rivers_detail)} pts)", file=sys.stderr)
+    encode_rivers(out, rivers_global)
+    encode_rivers(out, rivers_detail)
 
     labels = build_labels(SRC_50M, SRC_MARINE, QUANT, SRC_CN)
     from collections import Counter

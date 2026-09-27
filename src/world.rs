@@ -116,6 +116,9 @@ pub struct MapData {
     pub labels: Vec<MapLabel>,
     /// 南海断续国界十段线(经纬度线段,世界数据独立一节)
     pub south_sea_line: Vec<[f32; 4]>,
+    /// 主要河流折线两档(全局档/精细档);独立于世界/中国层,
+    /// 渲染在其上(中国层陆地填充会覆盖层内线条)
+    pub rivers: [Vec<Vec<(f32, f32)>>; 2],
 }
 
 /// 底图数据(内嵌二进制,首次访问时解码并做几何预处理)
@@ -173,8 +176,8 @@ fn build(bin: &[u8]) -> MapData {
     let mut r = Reader::new(bin);
     assert!(r.byte() == b'N' && r.byte() == b'W' && r.byte() == b'L' && r.byte() == b'D',
         "mapdata.bin: bad magic");
-    // version 4:分层渲染,二进制每档 LOD 依次为世界层、中国层
-    assert!(r.byte() == 4, "mapdata.bin: unsupported version");
+    // version 5:分层渲染 + 河流折线;每档 LOD 依次为世界层、中国层
+    assert!(r.byte() == 5, "mapdata.bin: unsupported version");
     assert!(r.byte() == 2, "mapdata.bin: expected 2 levels");
     // 编码顺序:world0, china0, world1, china1
     let w0 = decode_level(&mut r);
@@ -184,8 +187,9 @@ fn build(bin: &[u8]) -> MapData {
     let world = [w0, w1];
     let china = [c0, c1];
     let south_sea_line = decode_south_sea_line(&mut r);
+    let rivers = [decode_rivers(&mut r), decode_rivers(&mut r)];
     let labels = decode_labels(&mut r);
-    MapData { world, china, labels, south_sea_line }
+    MapData { world, china, labels, south_sea_line, rivers }
 }
 
 /// 南海断续国界十段线:每段 (lon0, lat0, lon1, lat1),量化 0.001 度还原
@@ -202,6 +206,24 @@ fn decode_south_sea_line(r: &mut Reader) -> Vec<[f32; 4]> {
         segs.push(seg);
     }
     segs
+}
+
+/// 河流折线:量化坐标增量解码,渲染时展开为相邻点对线段
+fn decode_rivers(r: &mut Reader) -> Vec<Vec<(f32, f32)>> {
+    let n = r.varint() as usize;
+    let mut lines = Vec::with_capacity(n);
+    for _ in 0..n {
+        let len = r.varint() as usize;
+        let mut pts = Vec::with_capacity(len);
+        let (mut x, mut y) = (0i32, 0i32);
+        for _ in 0..len {
+            x += r.zigzag();
+            y += r.zigzag();
+            pts.push((x as f32 / 1000.0, y as f32 / 1000.0));
+        }
+        lines.push(pts);
+    }
+    lines
 }
 
 fn decode_string(r: &mut Reader) -> String {

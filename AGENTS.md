@@ -28,16 +28,20 @@
 - src/tray.rs - 托盘与菜单(tray-icon + muda)
 - src/ui.rs - 主窗口布局与页面(导航栏、连接列表、设置与占位页)
 - src/map.rs - 流量地图画布(painter 自绘:连线动画、节点聚合、悬停信息卡、
-  视图交互:滚轮锚点缩放/拖拽/双击复位,视图状态存 NetOwlApp)
+  视图交互:滚轮锚点缩放/拖拽/双击复位,视图状态存 NetOwlApp;
+  经度方向无缝循环:中心经度归一化 [-180,180),节点/连线按可见
+  副本平移绘制,悬停按模周期距离,连线取最短方向走短弧)
 - src/basemap.rs - 地图底图(视图/投影、经纬网格、陆地与洞环填充、
-  海岸线/国界 quad 线段、南海十段线、国家/海洋/省级名称标签;
-  每帧视口剔除即时渲染,无缓存无状态;标签按缩放分级显隐,
-  英文国家名大写逐字符字距,省名弱化色)
+  海岸线/国界 quad 线段、主要河流折线、南海十段线、国家/海洋/省级
+  名称标签;经度按 360 度周期对世界副本循环绘制;每帧视口剔除即时
+  渲染,无缓存无状态;标签按缩放分级显隐,英文国家名大写逐字符
+  字距,省名弱化色)
 - src/triangulate.rs - 简单多边形耳剪三角化(输入量化整数坐标,精确几何判定;
   f32 坐标会破坏共线性导致耳被误判,勿改回浮点)
 - src/world.rs - 城市坐标表与矢量底图解码(Natural Earth 世界 +
   DataV 中国混合,两档 LOD:110m 全局 / 50m 放大,zoom>=3 切换;
-  海岸线/国界按邻国共享边分类;labels 三种 kind + 十段线段节)
+  海岸线/国界按邻国共享边分类;labels 三种 kind + 十段线段节 +
+  河流折线节两档)
 - tools/build_mapdata.py - 底图数据生成脚本(混合数据源 ->
   assets/mapdata.bin;原始 GeoJSON 放 tools/cache/,该目录不入库)
 
@@ -129,26 +133,35 @@
   接入 UI 时码点必须对照字体 cmap 或官方码点表验证,
   注释写真实 glyph 名(注释即契约)
 - 底图数据 assets/mapdata.bin 由 tools/build_mapdata.py 生成后入库,
-  混合数据源:v3 格式(magic "NWLD" + version=3)
+  混合数据源:v5 格式(magic "NWLD" + version=5)
   - 世界国界/海洋:Natural Earth admin_0_countries + geography_marine_polys
     (公有领域);中国(CHN/HKG/MAC/TWN)NE feature 几何与标签剔除
   - 中国行政区划:阿里云 DataV GeoAtlas areas_v3/bound/100000_full.json
     (免 key 静态 GeoJSON,基于天地图,GCJ-02),含 34 省级 geometry、
-    100000_JD 十段线;分层渲染(v4:世界层在前、中国层在后),NE 中越界
+    100000_JD 十段线;分层渲染(世界层在前、中国层在后),NE 中越界
     的邻国国界由中国层覆盖;邻国界顶点向中国边界温和吸合(<=0.2 度)
     消细缝,远离边界者不动
+  - 湖泊:110m 档取 ne_50m_lakes 面积 >=0.2 平方度大湖;50m 档取
+    ne_10m_lakes 面积 >=0.05 平方度(补入鄱阳湖、洞庭湖、纳木错、
+    色林错、巢湖等)并固定容差 DP 预抽稀,不参与世界层预算二分;
+    境内湖洞按 pip 判定归入中国层(否则被中国层陆地填充盖住,
+    境内湖泊不可见),境外湖(贝加尔、五大湖等)留世界层;咸海一律
+    取历史层整体轮廓
+  - 河流:ne_10m_rivers_lake_centerlines 仅 River 类(排除 Lake
+    Centerline 避免画进湖面),scalerank<=3(全局档)/<=4(精细档)
+    过滤全球主要河流,固定容差 DP 预抽稀;独立折线节存储与渲染
+    (世界/中国层之上),不参与环三角化与共享边分类
   量化 0.001 度 + varint delta,几何两档;50m 档经共享边感知的
   Douglas-Peucker 抽稀(相邻国家共享段顶点序列一致且 DP 方向对称,
   边界无缝);南极洲几何与标签剔除,底图窗口纬度 [-58, 84];
   港澳台为省级行政区正常显示省名(kind=2,样式弱于国家名),台湾
-  NAME_ZH 问题随 NE 中国数据剔除从根本上消除;大湖(咸海取历史层
-  整体轮廓、五大湖、贝加尔等)以洞环并入世界层;重生成需下载
+  NAME_ZH 问题随 NE 中国数据剔除从根本上消除;重生成需下载
   ne_110m/50m_admin_0_countries、ne_50m_geography_marine_polys、
-  ne_50m_lakes、ne_50m_lakes_historic 与 100000_full.json 到
-  tools/cache/
+  ne_50m_lakes、ne_10m_lakes、ne_50m_lakes_historic、
+  ne_10m_rivers_lake_centerlines 与 100000_full.json 到 tools/cache/
 - 地名标签(国家 238 + 海洋 111 + 省 34,共 383 条)内嵌于 mapdata.bin
   标签段,不走 fluent 词条(数量庞大);南海十段线独立线段节;
-  城市(含港澳台市)仍走 city-<key> 词条
+  河流折线两档独立节;城市(含港澳台市)仍走 city-<key> 词条
 
 ### 10. 持久化
 - 数据根 = exe 同级目录(Windows 便携式),启动时切换工作目录;
