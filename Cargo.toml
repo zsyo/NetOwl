@@ -17,19 +17,23 @@ rusqlite = { version = "0.40.2", features = ["bundled"] }
 # Windows API(真实连接采集:TCP/UDP 表快照、进程名查询;总速率采样:
 # GetIfTable2/MIB_IF_ROW2 需 Ndis feature;签名校验 WinVerifyTrust 需
 # WinTrust 与 Cryptography feature[WINTRUST_DATA 结构门控];进程图标提取
-# 需 Shell/Gdi/WindowsAndMessaging feature);
+# 需 Shell/Gdi/WindowsAndMessaging feature;WFP 拦截引擎需
+# WindowsFilteringPlatform 与 Security[TOKEN_ELEVATION/条件结构门控]);
 # 版本与依赖树中 tray-icon 的 windows 0.62 保持一致,避免双份 windows crate
 windows = { version = "0.62.2", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
     "Win32_NetworkManagement_IpHelper",
     "Win32_NetworkManagement_Ndis",
+    "Win32_NetworkManagement_WindowsFilteringPlatform",
     "Win32_Networking_WinSock",
+    "Win32_Security",
     "Win32_Security_Cryptography",
     "Win32_Security_WinTrust",
     "Win32_System_Threading",
     "Win32_System_SystemInformation",
     "Win32_System_Time",
+    "Win32_System_Rpc",
     "Win32_System_Time",
     "Win32_Storage_FileSystem",
     "Win32_UI_Shell",

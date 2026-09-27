@@ -102,6 +102,11 @@ history-truncated = 已达单次查询上限 {$n} 条,请缩小时间范围或�
 
 rules-title = 规则
 rules-subtitle = 规则按优先级自上而下评估,首个命中的启用规则决定动作,未命中默认放行
+wfp-status-active = 拦截引擎已生效,当前 {$n} 条过滤器
+wfp-status-noadmin = 未以管理员身份运行:规则仅标注连接,不实际拦截;以管理员运行后自动生效
+wfp-status-failed = 拦截引擎启动失败:{$err}
+wfp-status-off = 拦截引擎未就绪
+wfp-active-hint = 进程规则在目标进程出现连接后自动生效;域名规则仅标注不拦截
 rules-new = 新建规则
 rules-col-enabled = 启用
 rules-col-name = 名称

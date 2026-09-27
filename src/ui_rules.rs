@@ -9,6 +9,7 @@ use crate::i18n::I18n;
 use crate::model::Protocol;
 use crate::rules::{self, Action, Direction, RemoteKind, Rule, RuleSet};
 use crate::theme;
+use crate::wfp;
 
 /// 工具栏行内控件最小交互高度(与历史页同因:统一行高垂直居中)
 const TOOLBAR_ROW_H: f32 = 26.0;
@@ -94,10 +95,19 @@ impl Draft {
 }
 
 /// 规则页主入口
-pub fn show(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n, db: &Db, rules: &mut RuleSet) {
+pub fn show(
+    ui: &mut egui::Ui,
+    state: &mut PageState,
+    i18n: &I18n,
+    db: &Db,
+    rules: &mut RuleSet,
+    wfp_status: &wfp::Status,
+) {
     ui.heading(theme::accent_text(&i18n.t("rules-title"), 20.0));
     ui.label(theme::dim_text(&i18n.t("rules-subtitle"), 13.0));
-    ui.add_space(10.0);
+    ui.add_space(4.0);
+    wfp_status_line(ui, i18n, wfp_status);
+    ui.add_space(6.0);
 
     ui.style_mut().spacing.interact_size.y = TOOLBAR_ROW_H;
     ui.horizontal(|ui| {
@@ -112,6 +122,33 @@ pub fn show(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n, db: &Db, rule
 
     rules_table(ui, state, i18n, db, rules);
     edit_window(ui, state, i18n, db, rules);
+}
+
+/// 拦截引擎状态行:未提权/失败时用警示色提示(只读标注模式)
+fn wfp_status_line(ui: &mut egui::Ui, i18n: &I18n, status: &wfp::Status) {
+    match status {
+        wfp::Status::Active(n) => {
+            let text = i18n.t_with_args("wfp-status-active", &[("n", n.to_string())]);
+            ui.label(theme::dim_text(
+                &format!("{};{}", text, i18n.t("wfp-active-hint")),
+                12.0,
+            ));
+        }
+        wfp::Status::NoAdmin => {
+            ui.label(
+                RichText::new(i18n.t("wfp-status-noadmin"))
+                    .size(12.0)
+                    .color(theme::c().danger),
+            );
+        }
+        wfp::Status::Failed(e) => {
+            let text = i18n.t_with_args("wfp-status-failed", &[("err", e.clone())]);
+            ui.label(RichText::new(text).size(12.0).color(theme::c().danger));
+        }
+        wfp::Status::Off => {
+            ui.label(theme::dim_text(&i18n.t("wfp-status-off"), 12.0));
+        }
+    }
 }
 
 fn header(ui: &mut egui::Ui, text: String) {

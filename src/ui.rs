@@ -20,6 +20,7 @@ use crate::rules;
 use crate::theme;
 use crate::ui_history;
 use crate::ui_rules;
+use crate::wfp;
 
 /// 主窗口页面
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -155,6 +156,8 @@ pub struct UiCtx<'a> {
     pub rules: &'a mut rules::RuleSet,
     /// 规则页状态
     pub rules_page: &'a mut ui_rules::PageState,
+    /// 拦截引擎状态(WFP 管理线程回报)
+    pub wfp_status: wfp::Status,
     /// 历史写线程句柄(手动清空)
     pub writer: &'a history::Writer,
     pub local_pos: (f32, f32),
@@ -194,7 +197,14 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
             ctx.config,
         ),
         Page::Rules => {
-            ui_rules::show(ui, ctx.rules_page, ctx.i18n, ctx.history_db, ctx.rules);
+            ui_rules::show(
+                ui,
+                ctx.rules_page,
+                ctx.i18n,
+                ctx.history_db,
+                ctx.rules,
+                &ctx.wfp_status,
+            );
             false
         }
         Page::Settings => settings_ui(ui, ctx.config, ctx.i18n),

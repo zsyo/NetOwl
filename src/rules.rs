@@ -5,6 +5,7 @@
 //! 任何规则时默认放行。表快照无方向语义,方向按远端端口近似判定,
 //! ETW 事件源落地后以真实方向替换。
 
+use std::collections::HashMap;
 use std::net::Ipv4Addr;
 
 use rusqlite::Connection as Db;
@@ -211,6 +212,10 @@ fn match_domain(value: &str, host: &str) -> bool {
 /// 内存规则集(priority 升序、同值按 id),变更同步落库
 pub struct RuleSet {
     pub rules: Vec<Rule>,
+    /// 进程规则的路径粘滞缓存(规则 id -> 已命中过的完整路径):
+    /// 连接被阻断后快照可能抓不到进程行,已展开路径保持,避免
+    /// 拦截窗口抖动;规则删除/改进程条件时清理
+    sticky_paths: HashMap<i64, std::collections::BTreeSet<String>>,
 }
 
 impl RuleSet {
@@ -245,7 +250,10 @@ impl RuleSet {
         if let Err(e) = result {
             eprintln!("[Rules] 规则加载失败: {e}");
         }
-        RuleSet { rules }
+        RuleSet {
+            rules,
+            sticky_paths: HashMap::new(),
+        }
     }
 
     /// 求值:按优先级首个命中的启用规则;无命中返回 None(默认放行)
@@ -279,7 +287,8 @@ impl RuleSet {
         Ok(())
     }
 
-    /// 覆盖更新规则并落库(含启停;重排走 move_rule)
+    /// 覆盖更新规则并落库(含启停;重排走 move_rule)。
+    /// 进程条件变化时丢弃该规则的路径粘滞缓存
     pub fn update(&mut self, db: &Db, rule: &Rule) -> rusqlite::Result<()> {
         db.execute(
             "UPDATE rules SET name=?1, enabled=?2, priority=?3, action=?4, direction=?5,
@@ -299,6 +308,14 @@ impl RuleSet {
                 rule.id,
             ],
         )?;
+        let old_process = self
+            .rules
+            .iter()
+            .find(|r| r.id == rule.id)
+            .map(|r| r.process.clone());
+        if old_process.as_deref() != Some(rule.process.as_str()) {
+            self.sticky_paths.remove(&rule.id);
+        }
         if let Some(slot) = self.rules.iter_mut().find(|r| r.id == rule.id) {
             *slot = rule.clone();
         }
@@ -309,6 +326,7 @@ impl RuleSet {
     pub fn delete(&mut self, db: &Db, id: i64) -> rusqlite::Result<()> {
         db.execute("DELETE FROM rules WHERE id = ?1", [id])?;
         self.rules.retain(|r| r.id != id);
+        self.sticky_paths.remove(&id);
         Ok(())
     }
 
@@ -346,6 +364,83 @@ impl RuleSet {
             params![a.priority, a.id],
         )?;
         Ok(())
+    }
+}
+
+/// WFP 的 TCP/UDP 协议号(IPPROTO)
+const PROTO_TCP: u8 = 6;
+const PROTO_UDP: u8 = 17;
+/// 过滤器 weight 上限(FWP_UINT8 有效范围 0..=15)
+const MAX_WEIGHT: usize = 15;
+
+impl RuleSet {
+    /// 把启用规则翻译为 WFP 过滤器目标集合(语义见 wfp::Spec;域名规则
+    /// 不参与翻译)。与求值引擎一致:优先级高者 weight 大。进程规则按
+    /// 映像名展开为命中过的完整路径集合(粘滞缓存,见字段注释)
+    pub fn wfp_specs(&mut self, conns: &[Connection]) -> Vec<crate::wfp::Spec> {
+        let mut applicable: Vec<&Rule> = self
+            .rules
+            .iter()
+            .filter(|r| r.enabled && r.remote_kind != RemoteKind::Domain)
+            .collect();
+        applicable.sort_by_key(|r| (r.priority, r.id));
+
+        let mut specs = Vec::new();
+        for (rank, r) in applicable.iter().enumerate() {
+            let weight = (MAX_WEIGHT - rank.min(MAX_WEIGHT)) as u8;
+            let remote = match r.remote_kind {
+                RemoteKind::Any => None,
+                RemoteKind::Ip => match parse_net(&r.remote_value) {
+                    Some(v) => Some(v),
+                    None => continue,
+                },
+                RemoteKind::Domain => unreachable!("filtered above"),
+            };
+            let paths: Vec<Option<String>> = if r.process.is_empty() {
+                self.sticky_paths.remove(&r.id);
+                vec![None]
+            } else {
+                {
+                    let needle = format!("\\{}", r.process.trim().to_lowercase());
+                    let exact = r.process.trim().to_lowercase();
+                    let known = self.sticky_paths.entry(r.id).or_default();
+                    for p in conns.iter().filter_map(|c| c.proc_path.as_ref()) {
+                        let lp = p.to_lowercase();
+                        if lp.ends_with(&needle) || lp == exact {
+                            known.insert(p.clone());
+                        }
+                    }
+                }
+                self.sticky_paths
+                    .get(&r.id)
+                    .map(|s| s.iter().cloned().map(Some).collect())
+                    .unwrap_or_default()
+            };
+            let proto = r.proto.map(|p| match p {
+                Protocol::Tcp => PROTO_TCP,
+                Protocol::Udp => PROTO_UDP,
+            });
+            let port = (r.port != 0).then_some(r.port);
+            let layers: &[crate::wfp::Layer] = match r.direction {
+                Direction::Any => &[crate::wfp::Layer::Out, crate::wfp::Layer::In],
+                Direction::Out => &[crate::wfp::Layer::Out],
+                Direction::In => &[crate::wfp::Layer::In],
+            };
+            for path in &paths {
+                for &layer in layers {
+                    specs.push(crate::wfp::Spec {
+                        layer,
+                        weight,
+                        block: r.action == Action::Block,
+                        app_path: path.clone(),
+                        remote,
+                        proto,
+                        port,
+                    });
+                }
+            }
+        }
+        specs
     }
 }
 

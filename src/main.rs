@@ -25,6 +25,7 @@ mod triangulate;
 mod ui;
 mod ui_history;
 mod ui_rules;
+mod wfp;
 mod world;
 
 use std::sync::Arc;

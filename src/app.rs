@@ -5,6 +5,7 @@
 //! 与 ui(绘制)。托盘命令、几何捕获与配置写盘节流放在 logic。
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 
@@ -26,6 +27,7 @@ use crate::traffic;
 use crate::tray::{self, Tray};
 use crate::ui::{self, Page};
 use crate::ui_rules;
+use crate::wfp;
 use crate::world;
 
 /// 重绘节奏:地图页动画 30fps,静态页面低频
@@ -42,6 +44,8 @@ const LOCAL_IP_PROBE_INTERVAL: Duration = Duration::from_secs(10 * 60);
 /// 总速率采样间隔:窗口可见时 1s,隐藏(托盘)时放宽到 5s 降低功耗
 const TRAFFIC_INTERVAL_ACTIVE: Duration = Duration::from_secs(1);
 const TRAFFIC_INTERVAL_HIDDEN: Duration = Duration::from_secs(5);
+/// WFP 过滤器目标集合同步间隔(与采集同频:进程路径出现/消失的生效延迟上限)
+const WFP_SYNC_INTERVAL: Duration = Duration::from_secs(1);
 
 /// 待恢复的窗口几何(物理像素)
 type WindowRect = (i32, i32, i32, i32, bool);
@@ -71,6 +75,9 @@ pub struct NetOwlApp {
     /// 规则集(内存 + SQLite 同步,规则页编辑与连接页求值共用)
     rules: rules::RuleSet,
     rules_page: ui_rules::PageState,
+    /// WFP 拦截引擎(启用规则翻译为过滤器,管理线程持有动态会话)
+    wfp: wfp::Manager,
+    wfp_sync_at: Instant,
     /// 本机公网 IP 探测(公共接口并发,最先成功者胜出)
     local_probe: local_ip::Probe,
     /// 本机公网 IP 的归属定位键;探测失败/未收录时为 None(地图用默认点位)
@@ -116,6 +123,8 @@ impl NetOwlApp {
             history_db,
             rules,
             rules_page: ui_rules::PageState::new(),
+            wfp: wfp::Manager::spawn(),
+            wfp_sync_at: Instant::now(),
             local_probe: local_ip::Probe::new(),
             local_place: None,
             local_probe_at: Instant::now(),
@@ -327,6 +336,21 @@ impl NetOwlApp {
         self.writer.send(events);
     }
 
+    /// WFP 过滤器同步:与采集同频重建目标集合(进程路径粘滞展开,
+    /// 见 RuleSet::wfp_specs);mock 数据源下清空过滤器,拦截只针对真实连接
+    fn poll_wfp(&mut self) {
+        if self.wfp_sync_at.elapsed() < WFP_SYNC_INTERVAL {
+            return;
+        }
+        self.wfp_sync_at = Instant::now();
+        let specs = if self.collector.kind() == CollectorKind::Real {
+            self.rules.wfp_specs(&self.conns)
+        } else {
+            Vec::new()
+        };
+        self.wfp.sync(Arc::new(specs));
+    }
+
     fn mark_config_dirty(&mut self) {
         self.config_dirty = true;
         self.config_dirty_since = Instant::now();
@@ -344,6 +368,7 @@ impl eframe::App for NetOwlApp {
         self.poll_icons(ctx);
         self.writer.set_retention(self.config.general.history_days);
         self.poll_history();
+        self.poll_wfp();
 
         // 进入设置页时重扫 locales,加载运行期间新增的词条文件;
         // 进入历史页时标记重新加载(结果与库大小)
@@ -395,6 +420,7 @@ impl eframe::App for NetOwlApp {
             history_db: &self.history_db,
             rules: &mut self.rules,
             rules_page: &mut self.rules_page,
+            wfp_status: self.wfp.status(),
             writer: &self.writer,
             local_pos,
         };

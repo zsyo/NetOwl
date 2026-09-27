@@ -102,6 +102,11 @@ history-truncated = Query limit of {$n} rows reached; narrow the time range or a
 
 rules-title = Rules
 rules-subtitle = Rules are evaluated top-down by priority; the first enabled match decides the action, unmatched connections are allowed
+wfp-status-active = Enforcement active: {$n} WFP filters
+wfp-status-noadmin = Not running as administrator: rules only annotate connections and do not block; restart as admin to enforce
+wfp-status-failed = Enforcement engine failed to start: {$err}
+wfp-status-off = Enforcement engine not ready
+wfp-active-hint = Process rules take effect once the target process shows up; domain rules annotate only
 rules-new = New Rule
 rules-col-enabled = On
 rules-col-name = Name
