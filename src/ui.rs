@@ -7,6 +7,7 @@ use egui::{Button, Color32, CornerRadius, Frame, Margin, RichText, Stroke};
 use crate::basemap;
 use crate::collector::CollectorKind;
 use crate::config::Config;
+use crate::geoip;
 use crate::i18n::I18n;
 use crate::map;
 use crate::model::{Connection, fmt_bytes};
@@ -150,7 +151,7 @@ fn connections_ui(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n) {
                                 .color(theme::c().text),
                         );
                         let location = match conn.city {
-                            Some(key) => i18n.t(&format!("city-{key}")),
+                            Some(place) => geoip::place_label(place, i18n),
                             None => i18n.t("conn-loc-unknown"),
                         };
                         ui.label(theme::dim_text(&location, 13.0));

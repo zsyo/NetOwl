@@ -10,10 +10,11 @@ use egui::{
 use egui::epaint::QuadraticBezierShape;
 
 use crate::basemap::{self, Projection, View};
+use crate::geoip;
 use crate::i18n::I18n;
-use crate::model::{Connection, fmt_bytes};
+use crate::model::{Connection, Place, fmt_bytes};
 use crate::theme;
-use crate::world::{LOCAL, city};
+use crate::world::LOCAL;
 
 /// 视图动画趋近系数(30fps 下约 0.12s 收敛)
 const ANIM_K: f32 = 0.22;
@@ -56,8 +57,8 @@ fn hash_phase(seed: u64) -> f32 {
     ((seed as f32 * 0.618_034) % 1.0).abs()
 }
 
-/// 城市节点聚合:连接数与累计流量
-type Agg = BTreeMap<&'static str, (usize, u64)>;
+/// 归属节点聚合:连接数与累计流量
+type Agg = BTreeMap<Place, (usize, u64)>;
 
 pub fn draw(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n, view: &mut View) {
     ui.horizontal(|ui| {
@@ -89,15 +90,15 @@ pub fn draw(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n, view: &mut Vie
     let cycle_px = proj.cycle_px();
 
     for c in conns {
-        // 归属未知(真实采集且缺 GeoIP 数据)的连接不上图,连接列表仍完整可见;
-        // 城市端取最短方向等效经度(跨太平洋走短弧),主几何按可见世界副本
+        // 归属未知(内网/保留段/未收录)的连接不上图,连接列表仍完整可见;
+        // 节点端取最短方向等效经度(跨太平洋走短弧),主几何按可见世界副本
         // 平移铺开,屏幕边缘两侧由相邻副本自然接续
-        let Some(key) = c.city else { continue };
-        let geo = city(key);
-        let end_lon = LOCAL.lon + wrap_delta(geo.lon - LOCAL.lon);
-        let city_pos = proj.project(end_lon, geo.lat);
+        let Some(place) = c.city else { continue };
+        let (place_lon, place_lat) = geoip::place_pos(place);
+        let end_lon = LOCAL.lon + wrap_delta(place_lon - LOCAL.lon);
+        let end = proj.project(end_lon, place_lat);
         let inbound = c.inbound_dominant();
-        let (start, end) = if inbound { (city_pos, local) } else { (local, city_pos) };
+        let (start, end) = if inbound { (end, local) } else { (local, end) };
         let ctrl = arc_ctrl(start, end);
         let color = if inbound { theme::c().inbound } else { theme::c().outbound };
         let hovered = hover_pos.is_some_and(|h| wrap_dist(h, end, cycle_px) < 20.0);
@@ -133,16 +134,16 @@ pub fn draw(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n, view: &mut Vie
         }
     }
 
-    // 城市节点:半径随连接数增长,外圈脉冲;命中悬停的城市记下来。
+    // 归属节点:半径随连接数增长,外圈脉冲;命中悬停的节点记下来。
     // 节点与标签对每个可见 wrap 副本各画一份
-    let mut hovered_key = None;
-    for (key, (count, bytes)) in &agg {
-        let c = city(key);
-        let pos = proj.project(c.lon, c.lat);
+    let mut hovered_place = None;
+    for (place, (count, bytes)) in &agg {
+        let (lon, lat) = geoip::place_pos(*place);
+        let pos = proj.project(lon, lat);
         let r = 4.0 + 2.2 * (*count as f32).sqrt();
         let hovered = hover_pos.is_some_and(|h| wrap_dist(h, pos, cycle_px) < r + 8.0);
         if hovered {
-            hovered_key = Some(*key);
+            hovered_place = Some(*place);
         }
         let pulse_alpha = 0.35 + 0.3 * (0.5 + 0.5 * (t * 2.0 + hash_phase(*bytes) * std::f32::consts::TAU).sin());
         let (k0, k1) = proj.visible_cycles(pos.x, rect);
@@ -154,7 +155,7 @@ pub fn draw(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n, view: &mut Vie
             painter.text(
                 pos + Vec2::new(0.0, r + 13.0),
                 Align2::CENTER_CENTER,
-                i18n.t(&format!("city-{key}")),
+                geoip::place_label(*place, i18n),
                 FontId::proportional(11.0),
                 if hovered { theme::c().text } else { theme::c().text_dim },
             );
@@ -176,8 +177,8 @@ pub fn draw(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n, view: &mut Vie
         );
     }
 
-    if let Some(key) = hovered_key {
-        info_card(&painter, rect, key, conns, i18n);
+    if let Some(place) = hovered_place {
+        info_card(&painter, rect, place, conns, i18n);
     }
 }
 
@@ -240,19 +241,19 @@ fn clamp_center(v: f32, half: f32, limit: f32) -> f32 {
 fn aggregate(conns: &[Connection]) -> Agg {
     let mut agg: Agg = BTreeMap::new();
     for c in conns {
-        let Some(key) = c.city else { continue };
-        let entry = agg.entry(key).or_insert((0, 0));
+        let Some(place) = c.city else { continue };
+        let entry = agg.entry(place).or_insert((0, 0));
         entry.0 += 1;
         entry.1 += c.total_bytes();
     }
     agg
 }
 
-/// 悬停城市的信息卡:城市名、总流量、最多 6 条连接明细
+/// 悬停归属节点的信息卡:节点名、总流量、最多 6 条连接明细
 fn info_card(
     painter: &egui::Painter,
     canvas: Rect,
-    key: &'static str,
+    place: Place,
     conns: &[Connection],
     i18n: &I18n,
 ) {
@@ -261,7 +262,7 @@ fn info_card(
     const HEAD_H: f32 = 42.0;
     const MAX_ROWS: usize = 6;
 
-    let rows: Vec<&Connection> = conns.iter().filter(|conn| conn.city == Some(key)).collect();
+    let rows: Vec<&Connection> = conns.iter().filter(|conn| conn.city == Some(place)).collect();
     let shown = rows.len().min(MAX_ROWS);
     let extra = rows.len() - shown;
     let total: u64 = rows.iter().map(|conn| conn.total_bytes()).sum();
@@ -277,7 +278,7 @@ fn info_card(
     painter.text(
         Pos2::new(card.left() + 14.0, card.top() + 12.0),
         Align2::LEFT_TOP,
-        i18n.t(&format!("city-{key}")),
+        geoip::place_label(place, i18n),
         FontId::proportional(16.0),
         theme::c().text,
     );

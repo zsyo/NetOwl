@@ -6,7 +6,7 @@ use std::net::Ipv4Addr;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::collector::{Collector, CollectorKind};
-use crate::model::{Connection, Protocol};
+use crate::model::{Connection, Place, Protocol};
 use crate::world::CITIES;
 
 /// xorshift64* 伪随机数:骨架期避免引入 rand 依赖(AGENTS.md 规范 8)
@@ -113,7 +113,7 @@ impl MockCollector {
             proto: if self.rng.chance(85) { Protocol::Tcp } else { Protocol::Udp },
             remote_ip: ip,
             remote_port: port,
-            city: Some(city.key),
+            city: Some(Place::City(city.key)),
             bytes_in: self.rng.range(2 << 20),
             bytes_out: self.rng.range(2 << 18),
             first_seen: Instant::now(),

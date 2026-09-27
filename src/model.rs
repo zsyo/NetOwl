@@ -19,9 +19,18 @@ impl Protocol {
     }
 }
 
+/// 连接归属地:地图节点与列表位置列的定位键
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Place {
+    /// 静态演示城市([`crate::world::CITIES`] 键,模拟数据)
+    City(&'static str),
+    /// GeoIP 归属位置([`crate::geoip`] 位置表索引;中国到省级,其余到国家)
+    Geo(u32),
+}
+
 /// 一条网络连接(进程 -> 远端)。
-/// 地理归属由 `city` 键索引到 [`crate::world`];归属未知(真实采集且缺
-/// GeoIP 数据)时为 None,地图跳过该连接,连接列表位置列显示占位。
+/// 地理归属由 `city` 键索引;归属未知(内网/保留段/未收录)时为 None,
+/// 地图跳过该连接,连接列表位置列显示占位。
 #[derive(Clone, Debug)]
 pub struct Connection {
     pub id: u64,
@@ -30,8 +39,8 @@ pub struct Connection {
     pub proto: Protocol,
     pub remote_ip: Ipv4Addr,
     pub remote_port: u16,
-    /// [`crate::world::CITIES`] 中的城市键;None 表示归属未知
-    pub city: Option<&'static str>,
+    /// 归属地定位键;None 表示归属未知
+    pub city: Option<Place>,
     pub bytes_in: u64,
     pub bytes_out: u64,
     pub first_seen: Instant,

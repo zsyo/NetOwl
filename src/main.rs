@@ -7,6 +7,7 @@ mod basemap;
 mod collector;
 mod config;
 mod db;
+mod geoip;
 mod i18n;
 mod icon;
 mod map;

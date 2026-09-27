@@ -25,7 +25,7 @@ use windows::Win32::System::Threading::{
 };
 
 use crate::collector::{Collector, CollectorKind};
-use crate::model::{Connection, Protocol};
+use crate::model::{Connection, Place, Protocol};
 
 /// 表快照间隔:连接增减的可见延迟上限(与任务管理器刷新节奏相当)
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
@@ -108,6 +108,7 @@ impl TableCollector {
             let proto = key.proto;
             let remote_ip = Ipv4Addr::from(u32::from_be(key.remote_addr));
             let remote_port = key.remote_port;
+            let city = crate::geoip::locate(remote_ip).map(Place::Geo);
             let first_seen = old.get(&key).map_or(now, |c| c.first_seen);
             new_live.insert(key, Connection {
                 id,
@@ -116,7 +117,7 @@ impl TableCollector {
                 proto,
                 remote_ip,
                 remote_port,
-                city: None,
+                city,
                 bytes_in: 0,
                 bytes_out: 0,
                 first_seen,

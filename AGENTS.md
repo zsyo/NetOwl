@@ -17,8 +17,13 @@
 ## 项目结构
 - src/main.rs - 应用入口(NativeOptions、窗口图标、run_native)
 - src/app.rs - NetOwlApp:状态编排(托盘事件、采集 tick、页面切换、关闭到托盘、退出)
-- src/model.rs - Connection/Protocol 等数据结构(city 为 Option:真实采集
-  且缺 GeoIP 时归属未知,地图不绘制,列表显示占位;UDP 表行远端以 *:* 展示)
+- src/model.rs - Connection/Protocol/Place 等数据结构(city 为 Option<Place>:
+  内网/保留段/未收录 IP 归属未知,地图不绘制,列表显示占位;UDP 表行远端
+  以 *:* 展示)
+- src/geoip.rs - GeoIP 归属定位(assets/geoip.bin 编译期内嵌,首用解析一次;
+  IPv4 区间表 LEB128 delta 编码二分查询;中国含港澳台到省级、其余按 ISO 码
+  到国家;place_pos/place_label 为地图与列表的统一归属坐标/显示名入口,
+  显示名双语内嵌不走词条)
 - src/collector/ - 连接采集(mod.rs:Collector trait 与 real/mock 工厂 +
   CollectorKind;mock.rs:模拟数据供演示/测试;windows_table.rs:真实采集,
   GetExtendedTcpTable/GetExtendedUdpTable owner-PID 快照(1s 节流,TCP 仅
@@ -50,7 +55,12 @@
   海岸线/国界按邻国共享边分类;labels 三种 kind + 十段线段节 +
   河流折线节两档)
 - tools/build_mapdata.py - 底图数据生成脚本(混合数据源 ->
-  assets/mapdata.bin;原始 GeoJSON 放 tools/cache/,该目录不入库)
+    assets/mapdata.bin;原始 GeoJSON 放 tools/cache/,该目录不入库)
+- tools/build_geoip.py - GeoIP 归属数据生成脚本(tools/cache/ip2region_v4.xdb
+  [Apache-2.0,持续更新] + DataV 100000_full.json + NE 50m admin_0 ->
+  assets/geoip.bin,NWGI v1 格式;区间 55 万 -> 合并 17.7 万/734KB;
+  ip2region 台湾/港澳段数据源已正确标"中国|台湾省|香港特别行政区",
+  34 省英文名为脚本内手写映射;重生成需下载 ip2region_v4.xdb 到 tools/cache/)
 
 ## 架构规范(egui 即时模式)
 - 数据与绘制分离:collector 产出模型状态,ui/map 只读绘制,绘制逻辑不修改数据
