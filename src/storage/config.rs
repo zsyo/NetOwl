@@ -47,6 +47,10 @@ pub struct GeneralConfig {
     /// 新连接询问弹窗(默认关闭):开启后未命中规则的公网新连接弹窗询问
     #[serde(default)]
     pub ask_connections: bool,
+    /// 托盘图标常驻任务栏(NotifyIconSettings IsPromoted,免折叠进隐藏区);
+    /// 写入失败(项未注册等)保持系统默认行为
+    #[serde(default)]
+    pub tray_pinned: bool,
 }
 
 impl Default for GeneralConfig {
@@ -60,6 +64,7 @@ impl Default for GeneralConfig {
             hide_local: true,
             hide_lan: true,
             ask_connections: false,
+            tray_pinned: false,
         }
     }
 }

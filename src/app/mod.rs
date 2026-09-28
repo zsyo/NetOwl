@@ -56,6 +56,9 @@ const TRAFFIC_INTERVAL_HIDDEN: Duration = Duration::from_secs(5);
 const WFP_SYNC_INTERVAL: Duration = Duration::from_secs(1);
 /// ETW 流量事件合并间隔(与表快照采集同频)
 const ETW_POLL_INTERVAL: Duration = Duration::from_secs(1);
+/// 托盘常驻写入重试间隔:托盘设置项由 Explorer 在图标注册时创建,
+/// 启动数秒内可能尚不存在
+const TRAY_PIN_RETRY_INTERVAL: Duration = Duration::from_secs(60);
 
 /// 待恢复的窗口几何(物理像素)
 type WindowRect = (i32, i32, i32, i32, bool);
@@ -119,6 +122,10 @@ pub struct NetOwlApp {
     restore_started: Instant,
     config_dirty: bool,
     config_dirty_since: Instant,
+    /// 已写入注册表的托盘常驻状态(None = 尚未成功达成目标态)
+    tray_pinned_applied: Option<bool>,
+    /// 托盘常驻下次重试时刻(写入失败后定时重试)
+    tray_pin_retry_at: Instant,
     /// 托盘句柄保活,drop 时移除托盘图标
     _tray: Tray,
 }
@@ -181,6 +188,8 @@ impl NetOwlApp {
             restore_started: Instant::now(),
             config_dirty: false,
             config_dirty_since: Instant::now(),
+            tray_pinned_applied: None,
+            tray_pin_retry_at: Instant::now(),
             _tray,
         }
     }
@@ -211,6 +220,20 @@ impl NetOwlApp {
                 }
                 _ => {}
             }
+        }
+    }
+
+    /// 托盘图标常驻:配置开关变化时写注册表 IsPromoted;失败(托盘项未注册、
+    /// 系统不支持)静默保持系统默认行为并定时重试,直到达成目标态
+    fn sync_tray_pinned(&mut self) {
+        let want = self.config.general.tray_pinned;
+        if self.tray_pinned_applied == Some(want) || Instant::now() < self.tray_pin_retry_at {
+            return;
+        }
+        if tray::set_pinned(want) {
+            self.tray_pinned_applied = Some(want);
+        } else {
+            self.tray_pin_retry_at = Instant::now() + TRAY_PIN_RETRY_INTERVAL;
         }
     }
 
@@ -578,6 +601,7 @@ fn short_lived_event(f: &etw::FlowAgg) -> history::ClosedConn {
 impl eframe::App for NetOwlApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.handle_tray_commands(ctx);
+        self.sync_tray_pinned();
         self.ensure_collector();
         self.poll_local_ip();
         self.poll_traffic(ctx);

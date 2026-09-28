@@ -78,6 +78,10 @@ settings-ask = New connection prompts
 settings-ask-on = Ask for new connections that match no rule
 settings-ask-hint = Public targets only; local and LAN connections never prompt. "Always" options are saved to the Rules page
 
+settings-tray-pin = Pin tray icon
+settings-tray-pin-on = Keep the tray icon on the taskbar instead of the hidden overflow
+settings-tray-pin-hint = Writes the system tray setting; takes effect next session, falls back to system default on failure
+
 history-title = Connection History
 history-subtitle = Records of completed connections (written on close)
 history-view-detail = Detail

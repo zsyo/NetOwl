@@ -691,5 +691,21 @@ fn settings_ui(ui: &mut egui::Ui, config: &mut Config, i18n: &mut I18n) -> bool 
     );
     ui.add_space(6.0);
     ui.label(theme::dim_text(&i18n.t("settings-ask-hint"), 12.0));
-    days.changed() || ask.changed()
+    ui.add_space(16.0);
+
+    // 托盘图标常驻(注册表 IsPromoted,写入失败静默保持系统默认;新会话生效)
+    ui.label(
+        RichText::new(i18n.t("settings-tray-pin"))
+            .size(14.0)
+            .strong()
+            .color(theme::c().text),
+    );
+    ui.add_space(4.0);
+    let tray = ui.checkbox(
+        &mut config.general.tray_pinned,
+        i18n.t("settings-tray-pin-on"),
+    );
+    ui.add_space(6.0);
+    ui.label(theme::dim_text(&i18n.t("settings-tray-pin-hint"), 12.0));
+    days.changed() || ask.changed() || tray.changed()
 }

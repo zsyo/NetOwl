@@ -78,6 +78,10 @@ settings-ask = 新连接询问
 settings-ask-on = 为未命中规则的新连接弹窗询问
 settings-ask-hint = 仅询问公网目标,本地与局域网连接不弹;永久选项写入规则页,可随时修改
 
+settings-tray-pin = 托盘图标常驻
+settings-tray-pin-on = 将托盘图标固定在任务栏,不折叠进隐藏区域
+settings-tray-pin-hint = 写入系统托盘设置,新会话生效;失败时保持系统默认行为
+
 ask-title = 新连接
 ask-question = {$process} 要连接到
 ask-timeout-hint = {$n} 秒后自动拒绝
