@@ -101,19 +101,19 @@ pub fn show(ctx: &egui::Context, item: &mut AskItem, i18n: &I18n) -> Option<Deci
                             .strong()
                             .color(theme::c().text),
                     );
+                    // 有域名时裸 IP 并入协议/端口行(不另起一行):
+                    // 域名与纯 IP 两种弹窗行数一致,窗口高度得以固定
+                    let mut meta = format!(
+                        "{} {} · {} {}",
+                        i18n.t("col-proto"),
+                        item.proto.as_str(),
+                        i18n.t("col-port"),
+                        item.remote_port
+                    );
                     if item.domain.is_some() {
-                        ui.label(theme::dim_text(&item.remote_ip.to_string(), 12.0));
+                        meta.push_str(&format!(" · {}", item.remote_ip));
                     }
-                    ui.label(theme::dim_text(
-                        &format!(
-                            "{} {} · {} {}",
-                            i18n.t("col-proto"),
-                            item.proto.as_str(),
-                            i18n.t("col-port"),
-                            item.remote_port
-                        ),
-                        12.0,
-                    ));
+                    ui.label(theme::dim_text(&meta, 12.0));
                     ui.add_space(8.0);
 
                     // 倒计时:超时自动执行默认动作(拒绝·仅本次);
