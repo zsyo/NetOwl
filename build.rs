@@ -53,5 +53,6 @@ fn main() {
     res.set("FileDescription", "NetOwl 网络连接监控");
     res.set("OriginalFilename", "netowl.exe");
     res.set_manifest(MANIFEST);
-    res.compile().expect("编译 Windows exe 资源(图标/manifest)失败");
+    res.compile()
+        .expect("编译 Windows exe 资源(图标/manifest)失败");
 }
