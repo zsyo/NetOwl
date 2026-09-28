@@ -1,7 +1,8 @@
-//! 流量地图画布:egui painter 自绘(底图渲染见 basemap,此处负责
-//! 贝塞尔连线、流动粒子、节点聚合与悬停信息卡)。
+//! 流量地图画布:egui painter 自绘(底图渲染见 basemap,悬停信息卡见
+//! card,此处负责贝塞尔连线、流动粒子与节点聚合)。
 
 pub mod basemap;
+mod card;
 pub mod triangulate;
 pub mod world;
 
@@ -13,14 +14,11 @@ use std::hash::{Hash, Hasher};
 
 use eframe::egui;
 use egui::epaint::QuadraticBezierShape;
-use egui::{
-    Align2, Color32, CornerRadius, FontId, Pos2, Rect, Sense, Shape, Stroke, StrokeKind,
-    TextureHandle, Vec2,
-};
+use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Shape, Stroke, TextureHandle, Vec2};
 
 use self::basemap::{Projection, View};
 use crate::i18n::I18n;
-use crate::model::{Connection, Place, fmt_bytes};
+use crate::model::{Connection, Place};
 use crate::net::geoip;
 use crate::net::rdns;
 use crate::ui::theme;
@@ -230,7 +228,7 @@ pub fn draw(
     }
 
     if let Some(place) = hovered_place {
-        info_card(&painter, rect, place, conns, i18n, rdns, icon_tex);
+        card::info_card(&painter, rect, place, conns, i18n, rdns, icon_tex);
     }
 }
 
@@ -299,120 +297,6 @@ fn aggregate(conns: &[Connection]) -> Agg {
         entry.1 += c.total_bytes();
     }
     agg
-}
-
-/// 悬停归属节点的信息卡:节点名、总流量、最多 6 条连接明细
-fn info_card(
-    painter: &egui::Painter,
-    canvas: Rect,
-    place: Place,
-    conns: &[Connection],
-    i18n: &I18n,
-    rdns: &rdns::Rdns,
-    icon_tex: &HashMap<String, Option<TextureHandle>>,
-) {
-    const WIDTH: f32 = 310.0;
-    const LINE_H: f32 = 17.0;
-    const HEAD_H: f32 = 42.0;
-    const MAX_ROWS: usize = 6;
-
-    let rows: Vec<&Connection> = conns
-        .iter()
-        .filter(|conn| conn.city == Some(place))
-        .collect();
-    let shown = rows.len().min(MAX_ROWS);
-    let extra = rows.len() - shown;
-    let total: u64 = rows.iter().map(|conn| conn.total_bytes()).sum();
-    let height = HEAD_H + shown as f32 * LINE_H + if extra > 0 { LINE_H } else { 0.0 } + 8.0;
-    let card = Rect::from_min_size(
-        Pos2::new(canvas.left() + 14.0, canvas.top() + 14.0),
-        Vec2::new(WIDTH, height),
-    );
-
-    painter.rect_filled(
-        card,
-        CornerRadius::same(theme::RADIUS_LG),
-        theme::c().bg_float,
-    );
-    painter.rect_stroke(
-        card,
-        CornerRadius::same(theme::RADIUS_LG),
-        Stroke::new(1.0, theme::c().stroke),
-        StrokeKind::Inside,
-    );
-
-    painter.text(
-        Pos2::new(card.left() + 14.0, card.top() + 12.0),
-        Align2::LEFT_TOP,
-        geoip::place_label(place, i18n),
-        FontId::proportional(16.0),
-        theme::c().text,
-    );
-    painter.text(
-        Pos2::new(card.right() - 14.0, card.top() + 14.0),
-        Align2::RIGHT_TOP,
-        fmt_bytes(total),
-        FontId::proportional(12.0),
-        theme::c().text_dim,
-    );
-
-    let mut y = card.top() + HEAD_H - 4.0;
-    for conn in rows.iter().take(MAX_ROWS) {
-        // 进程图标(14px);无图标时文本左缘保持一致,信息卡行不留空位
-        let mut text_x = card.left() + 14.0;
-        if let Some(tex) = conn
-            .proc_path
-            .as_deref()
-            .and_then(|p| icon_tex.get(p))
-            .and_then(|t| t.as_ref())
-        {
-            let icon_rect = Rect::from_min_size(
-                Pos2::new(text_x, y + LINE_H / 2.0 - 7.0),
-                Vec2::new(14.0, 14.0),
-            );
-            painter.image(
-                tex.id(),
-                icon_rect,
-                Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
-                Color32::WHITE,
-            );
-            text_x += 18.0;
-        }
-        let process = format!("{} ({})", conn.process, conn.pid);
-        painter.text(
-            Pos2::new(text_x, y + 8.0),
-            Align2::LEFT_CENTER,
-            process,
-            FontId::proportional(12.0),
-            theme::c().text,
-        );
-        // rDNS 域名优先(卡片行宽有限,超长截断),无 PTR 回退地址:端口
-        let remote = match rdns.lookup(conn.remote_ip) {
-            Some(host) => format!(
-                "{} {}",
-                rdns::display(host, conn.remote_port, 24),
-                conn.proto.as_str()
-            ),
-            None => format!("{} {}", conn.remote_display(), conn.proto.as_str()),
-        };
-        painter.text(
-            Pos2::new(card.right() - 14.0, y + 8.0),
-            Align2::RIGHT_CENTER,
-            remote,
-            FontId::monospace(11.0),
-            theme::c().text_dim,
-        );
-        y += LINE_H;
-    }
-    if extra > 0 {
-        painter.text(
-            Pos2::new(card.right() - 14.0, y + 8.0),
-            Align2::RIGHT_CENTER,
-            i18n.t_with_args("map-info-more", &[("n", extra.to_string())]),
-            FontId::proportional(11.0),
-            theme::c().text_dim,
-        );
-    }
 }
 
 fn legend(ui: &mut egui::Ui, color: Color32, label: &str) {
