@@ -27,6 +27,8 @@ pub struct Palette {
     pub outbound: Color32,
     /// 监控运行状态点
     pub status_ok: Color32,
+    /// 中间警示态(介于正常与异常之间,如倒计时余量不足)
+    pub status_warn: Color32,
     /// 阻断语义色(规则命中阻断/错误提示)
     pub danger: Color32,
     // 背景层级
@@ -76,6 +78,7 @@ const DARK: Palette = Palette {
     inbound: Color32::from_rgb(126, 224, 163),
     outbound: Color32::from_rgb(92, 207, 230),
     status_ok: Color32::from_rgb(88, 214, 141),
+    status_warn: Color32::from_rgb(232, 192, 92),
     danger: Color32::from_rgb(236, 106, 106),
     bg_base: Color32::from_rgb(16, 18, 24),
     bg_panel: Color32::from_rgb(22, 25, 33),
@@ -108,6 +111,7 @@ const LIGHT: Palette = Palette {
     inbound: Color32::from_rgb(30, 148, 94),
     outbound: Color32::from_rgb(20, 134, 168),
     status_ok: Color32::from_rgb(34, 160, 100),
+    status_warn: Color32::from_rgb(197, 144, 34),
     danger: Color32::from_rgb(198, 60, 60),
     bg_base: Color32::from_rgb(243, 245, 248),
     bg_panel: Color32::from_rgb(233, 237, 242),

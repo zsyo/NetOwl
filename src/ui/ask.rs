@@ -117,15 +117,25 @@ pub fn show(ctx: &egui::Context, item: &mut AskItem, i18n: &I18n) -> Option<Deci
                     ui.add_space(8.0);
 
                     // 倒计时:超时自动执行默认动作(拒绝·仅本次);
-                    // 剩余秒数直接显示在条内,高度需容纳文字避免垂直裁剪
+                    // 剩余秒数直接显示在条内,高度需容纳文字避免垂直裁剪;
+                    // 余量分级配色:>70% 正常绿,>30% 警示黄,更低红色
                     let remaining = item
                         .deadline
                         .checked_duration_since(std::time::Instant::now())
                         .unwrap_or_default();
                     let total = crate::app::ask::ASK_TIMEOUT.as_secs_f32().max(0.001);
+                    let ratio = (remaining.as_secs_f32() / total).clamp(0.0, 1.0);
+                    let bar_color = if ratio > 0.7 {
+                        theme::c().status_ok
+                    } else if ratio > 0.3 {
+                        theme::c().status_warn
+                    } else {
+                        theme::c().danger
+                    };
                     ui.add(
-                        egui::ProgressBar::new(remaining.as_secs_f32() / total)
+                        egui::ProgressBar::new(ratio)
                             .desired_height(18.0)
+                            .fill(bar_color)
                             .text(i18n.t_with_args(
                                 "ask-timeout-hint",
                                 &[("n", remaining.as_secs().to_string())],
