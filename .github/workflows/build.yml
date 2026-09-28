@@ -1,0 +1,33 @@
+name: Build
+
+# 编译验证工作流:仅手动触发(workflow_dispatch),不随推送执行;
+# 不打包不发布,Windows x64 编译 + clippy 零警告作为可发布把关标准
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build windows-x64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          # 自动开启依赖缓存
+          cache: true
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Clippy
+        # 零警告把关:任何 warning 都视为失败
+        run: cargo clippy -- -D warnings
