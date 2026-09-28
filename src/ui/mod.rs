@@ -3,6 +3,7 @@
 
 pub mod ask;
 pub mod history;
+pub mod icons;
 pub mod rules;
 pub mod theme;
 
@@ -48,12 +49,13 @@ pub enum Page {
     Settings,
 }
 
-const NAV_ITEMS: &[(Page, &str)] = &[
-    (Page::Map, "nav-map"),
-    (Page::Connections, "nav-connections"),
-    (Page::History, "nav-history"),
-    (Page::Rules, "nav-rules"),
-    (Page::Settings, "nav-settings"),
+/// 左侧导航项:(页面, 词条键, 图标码点(ui::icons,glyph 名见常量注释))
+const NAV_ITEMS: &[(Page, &str, &str)] = &[
+    (Page::Map, "nav-map", icons::GLOBE),
+    (Page::Connections, "nav-connections", icons::LIST_UL),
+    (Page::History, "nav-history", icons::CLOCK_HISTORY),
+    (Page::Rules, "nav-rules", icons::SHIELD),
+    (Page::Settings, "nav-settings", icons::GEAR),
 ];
 
 /// 左侧导航栏
@@ -80,13 +82,15 @@ pub fn nav_ui(
     ui.separator();
     ui.add_space(6.0);
 
-    for (target, key) in NAV_ITEMS {
+    for (target, key, icon) in NAV_ITEMS {
         let selected = page == target;
-        let label_text = RichText::new(i18n.t(key)).size(15.0).color(if selected {
-            theme::c().text
-        } else {
-            theme::c().text_dim
-        });
+        let label_text = RichText::new(format!("{icon}  {}", i18n.t(key)))
+            .size(15.0)
+            .color(if selected {
+                theme::c().text
+            } else {
+                theme::c().text_dim
+            });
         let response = ui.add_sized(
             [ui.available_width(), 34.0],
             Button::new(label_text)
@@ -308,9 +312,9 @@ fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                         let active = conn_sort.is_some_and(|(k, _)| Some(k) == sort);
                         if active {
                             let tri = if conn_sort.is_some_and(|(_, asc)| asc) {
-                                '\u{25B2}'
+                                icons::CARET_UP_FILL
                             } else {
-                                '\u{25BC}'
+                                icons::CARET_DOWN_FILL
                             };
                             text = format!("{text} {tri}");
                         }

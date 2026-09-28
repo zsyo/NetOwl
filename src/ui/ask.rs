@@ -13,7 +13,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::app::ask::{AskItem, Decision, Scope};
 use crate::i18n::I18n;
-use crate::ui::theme;
+use crate::ui::{icons, theme};
 
 /// 弹窗尺寸(逻辑点)与右下角边距
 const WIDTH: f32 = 430.0;
@@ -179,7 +179,10 @@ pub fn show(ctx: &egui::Context, item: &mut AskItem, i18n: &I18n) -> Option<Deci
                     // 剩余高度导致按钮垂直悬空在窗口中部)
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
                         let btn = |ui: &mut egui::Ui, key: &str, allow: bool| {
-                            let mut text = RichText::new(i18n.t(key)).size(14.0).strong();
+                            let glyph = if allow { icons::CHECK_LG } else { icons::X_LG };
+                            let mut text = RichText::new(format!("{glyph} {}", i18n.t(key)))
+                                .size(14.0)
+                                .strong();
                             if allow {
                                 text = text.color(egui::Color32::WHITE);
                             }

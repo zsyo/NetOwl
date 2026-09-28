@@ -176,8 +176,9 @@ pub fn install(ctx: &egui::Context, theme: &str) {
     apply_theme_str(theme, ctx);
 }
 
-/// 加载 Windows 自带微软雅黑(中文 fallback)与 Consolas(monospace)。
-/// 字体缺失时按规范显式报错,不做静默降级。
+/// 加载 Windows 自带微软雅黑(中文 fallback)与 Consolas(monospace),
+/// 并把内嵌 Bootstrap Icons 挂到两族 fallback 链尾(码点见 ui::icons)。
+/// 系统字体缺失时按规范显式报错,不做静默降级。
 fn install_fonts(ctx: &egui::Context) {
     let msyh = std::fs::read("C:/Windows/Fonts/msyh.ttc")
         .expect("NetOwl 需要 Windows 自带字体 C:/Windows/Fonts/msyh.ttc(微软雅黑)来渲染界面");
@@ -203,6 +204,21 @@ fn install_fonts(ctx: &egui::Context) {
         .get_mut(&egui::FontFamily::Monospace)
         .expect("default monospace family")
         .insert(0, "consolas".to_owned());
+    // 图标字体:全私用区码点,正常文本不涉及;挂链尾兜底,由
+    // ui::icons 的码点常量按名引用(码点对照 cmap 验证,注释即契约)
+    fonts.font_data.insert(
+        "bootstrap-icons".to_owned(),
+        Arc::new(FontData::from_static(include_bytes!(
+            "../../assets/icons.ttf"
+        ))),
+    );
+    for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+        fonts
+            .families
+            .get_mut(&family)
+            .expect("default family")
+            .push("bootstrap-icons".to_owned());
+    }
     ctx.set_fonts(fonts);
 }
 
