@@ -3,6 +3,17 @@ name = "netowl"
 version = "0.1.0"
 edition = "2024"
 
+[build-dependencies]
+# Windows exe 资源编译(图标/版本信息/manifest,见 build.rs)
+winresource = "0.1"
+
+# 发布优化:LTO + 单 codegen unit 收缩体积;strip 去符号;
+# opt-level 保持默认 3,地图渲染与采集逻辑性能优先
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
 [dependencies]
 # egui/eframe: 即时模式自绘 GUI,painter 可直接绘制流量地图动画(选型理由见 AGENTS.md);
 # glow 后端比默认 wgpu 编译更快、依赖更少,Windows 上足够
