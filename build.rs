@@ -52,7 +52,11 @@ fn main() {
     res.set("FileVersion", version);
     res.set("FileDescription", "NetOwl 网络连接监控");
     res.set("OriginalFilename", "netowl.exe");
-    res.set_manifest(MANIFEST);
+    // UAC/DPI manifest 仅在 release 嵌入:开发构建保持普通权限,
+    // cargo run 与测试不被提权拦截(os error 740);DPI 由 winit 运行时兜底
+    if std::env::var("PROFILE").as_deref() == Ok("release") {
+        res.set_manifest(MANIFEST);
+    }
     res.compile()
         .expect("编译 Windows exe 资源(图标/manifest)失败");
 }
