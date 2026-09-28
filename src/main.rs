@@ -10,17 +10,23 @@ use eframe::egui;
 use netowl::app::NetOwlApp;
 use netowl::i18n;
 use netowl::logging;
-use netowl::platform::{icon, paths};
+use netowl::platform::{icon, paths, single_instance};
 use netowl::storage::config::Config;
 use netowl::storage::db;
 
-/// 应用品牌名(各语言一致,不参与翻译)
-const APP_NAME: &str = "NetOwl";
+/// 应用品牌名(各语言一致,不参与翻译)见 crate 根 APP_NAME
+use netowl::APP_NAME;
 
 fn main() -> eframe::Result {
     // 数据根 = exe 同级;此后 config.toml、data/ 均为相对路径
     paths::init_data_root();
     logging::init();
+
+    // 单实例:已有实例运行时唤出其主窗口并退出本进程
+    let Some(_instance_guard) = single_instance::acquire() else {
+        single_instance::activate_existing(APP_NAME);
+        return Ok(());
+    };
 
     let mut i18n = i18n::I18n::new();
     let available: Vec<String> = i18n

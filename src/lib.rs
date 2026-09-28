@@ -5,6 +5,9 @@
 
 #![allow(clippy::new_without_default)]
 
+/// 应用品牌名(窗口标题、单实例窗口查找、托盘提示均使用;与语言无关不参与翻译)
+pub const APP_NAME: &str = "NetOwl";
+
 pub mod app;
 pub mod collector;
 pub mod i18n;

@@ -27,6 +27,7 @@ use crate::net::geoip;
 use crate::net::local_ip;
 use crate::net::rdns;
 use crate::net::traffic;
+use crate::platform::single_instance;
 use crate::platform::tray::{self, Tray};
 use crate::rules;
 use crate::rules::wfp;
@@ -125,6 +126,8 @@ pub struct NetOwlApp {
     /// 主窗口可见性(自行跟踪):egui 0.36 的 viewport().visible() 恒为 None
     /// 不可依赖;全部可见性变更路径(托盘命令/关闭按钮/单实例唤出)都必须同步此字段
     window_visible: bool,
+    /// 主窗口 HWND(启动时按标题缓存,0 = 未找到);用于感知外部 ShowWindow
+    main_hwnd: isize,
     /// 首帧窗口几何恢复目标;发送命令后转为 restore_active 等待生效
     pending_restore: Option<WindowRect>,
     /// 恢复命令已发送,几何生效前跳过捕获(防止默认位置覆盖配置)
@@ -196,6 +199,7 @@ impl NetOwlApp {
             tray_rx,
             should_exit: false,
             window_visible: true,
+            main_hwnd: single_instance::main_hwnd(crate::APP_NAME),
             pending_restore,
             restore_active: false,
             restore_started: Instant::now(),
@@ -407,6 +411,16 @@ impl NetOwlApp {
     fn is_shown(&self, ctx: &egui::Context) -> bool {
         let minimized = ctx.input(|i| i.viewport().minimized) == Some(true);
         self.window_visible && !minimized
+    }
+
+    /// 校准可见性跟踪:单实例二次启动经系统 API 直接 ShowWindow 唤出主窗口,
+    /// 不经过 app 命令路径,以 IsWindowVisible 为准纠正(隐藏/显示命令自身的
+    /// 发送路径窗口状态一致,校准为无操作)
+    fn calibrate_window_visible(&mut self) {
+        let visible = single_instance::is_window_visible(self.main_hwnd);
+        if visible != self.window_visible {
+            self.window_visible = visible;
+        }
     }
 
     /// 进程图标:活跃连接的映像路径逐个请求采集器,到位即建纹理缓存。
@@ -638,6 +652,7 @@ fn short_lived_event(f: &etw::FlowAgg) -> history::ClosedConn {
 impl eframe::App for NetOwlApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.handle_tray_commands(ctx);
+        self.calibrate_window_visible();
         self.sync_tray_pinned();
         self.ensure_collector();
         self.poll_local_ip();
