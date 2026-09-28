@@ -43,6 +43,7 @@ city-sydney = Sydney
 city-saopaulo = São Paulo
 
 conns-title = Connections
+conn-total-bytes = Total bytes
 conns-subtitle = Currently active network connections
 col-process = Process
 col-proto = Protocol

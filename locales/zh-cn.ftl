@@ -43,6 +43,7 @@ city-sydney = 悉尼
 city-saopaulo = 圣保罗
 
 conns-title = 连接
+conn-total-bytes = 累计字节
 conns-subtitle = 当前活跃的网络连接
 col-process = 进程
 col-proto = 协议

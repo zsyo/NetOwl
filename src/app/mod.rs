@@ -94,6 +94,10 @@ pub struct NetOwlApp {
     /// 曾被表快照合并覆盖的 ETW 流键:完结流命中此集合说明表快照
     /// 跟踪器已记录,不按短命连接重复落盘
     etw_seen: HashSet<etw::FlowKey>,
+    /// 每连接实时速率(键 = conn.id,ETW 字节差值/秒)
+    conn_rates: HashMap<u64, (u64, u64)>,
+    /// 上一轮 ETW 字节快照(速率差值基准,键 = conn.id)
+    conn_prev_bytes: HashMap<u64, (u64, u64)>,
     /// 新连接询问(Little Snitch 式弹窗)
     asker: Asker,
     /// 本机公网 IP 探测(公共接口并发,最先成功者胜出)
@@ -158,6 +162,8 @@ impl NetOwlApp {
             etw,
             etw_poll_at: Instant::now(),
             etw_seen: HashSet::new(),
+            conn_rates: HashMap::new(),
+            conn_prev_bytes: HashMap::new(),
             asker: Asker::new(),
             local_probe: local_ip::Probe::new(),
             local_place: None,
@@ -465,10 +471,12 @@ impl NetOwlApp {
         if self.etw_poll_at.elapsed() < ETW_POLL_INTERVAL {
             return;
         }
+        let dt = self.etw_poll_at.elapsed().as_secs_f32();
         self.etw_poll_at = Instant::now();
         let real = self.collector.kind() == CollectorKind::Real;
 
         let flows = etw.snapshot();
+        let finished = etw.take_finished();
         let by_key: HashMap<(u32, Protocol, u16, Ipv4Addr, u16), &etw::FlowAgg> =
             flows.iter().map(|f| (flow_merge_key(&f.key), f)).collect();
         let mut hits: Vec<etw::FlowKey> = Vec::new();
@@ -486,9 +494,10 @@ impl NetOwlApp {
         }
         self.etw_seen.extend(hits);
         drop(by_key);
+        self.update_conn_rates(dt);
 
         let mut events = Vec::new();
-        for f in etw.take_finished() {
+        for f in finished {
             if !real || self.etw_seen.contains(&f.key) {
                 continue;
             }
@@ -502,6 +511,27 @@ impl NetOwlApp {
         if !events.is_empty() {
             self.writer.send(events);
         }
+    }
+
+    /// 每连接实时速率:相邻两轮 ETW 字节快照差值 / 间隔秒数;
+    /// 快照里消失的连接连带清理(差值基准与速率表同步收缩)
+    fn update_conn_rates(&mut self, dt: f32) {
+        let prev = std::mem::take(&mut self.conn_prev_bytes);
+        let mut cur: HashMap<u64, (u64, u64)> = HashMap::with_capacity(self.conns.len());
+        let mut rates: HashMap<u64, (u64, u64)> = HashMap::with_capacity(self.conns.len());
+        for c in &self.conns {
+            cur.insert(c.id, (c.bytes_in, c.bytes_out));
+            let r = match prev.get(&c.id) {
+                Some((pin, pout)) if dt > 0.0 => (
+                    c.bytes_in.saturating_sub(*pin),
+                    c.bytes_out.saturating_sub(*pout),
+                ),
+                _ => (0, 0),
+            };
+            rates.insert(c.id, r);
+        }
+        self.conn_prev_bytes = cur;
+        self.conn_rates = rates;
     }
 
     fn mark_config_dirty(&mut self) {
@@ -603,6 +633,7 @@ impl eframe::App for NetOwlApp {
             config: &mut self.config,
             rdns: &self.rdns,
             rates: self.rates,
+            conn_rates: &self.conn_rates,
             icon_tex: &self.icon_tex,
             history: &mut self.history,
             history_db: &self.history_db,

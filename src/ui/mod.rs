@@ -168,6 +168,8 @@ pub struct UiCtx<'a> {
     pub rdns: &'a rdns::Rdns,
     /// 总速率(字节/秒):(下行, 上行)
     pub rates: (u64, u64),
+    /// 每连接实时速率(键 = 连接 id;ETW 字节差值/秒,未提权恒 0)
+    pub conn_rates: &'a HashMap<u64, (u64, u64)>,
     /// 进程图标纹理(键 = 映像路径);None 表示已提取且无图标
     pub icon_tex: &'a HashMap<String, Option<egui::TextureHandle>>,
     /// 历史页状态
@@ -200,15 +202,7 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
             );
             false
         }
-        Page::Connections => connections_ui(
-            ui,
-            ctx.conns,
-            ctx.i18n,
-            ctx.rdns,
-            ctx.icon_tex,
-            ctx.config,
-            ctx.rules,
-        ),
+        Page::Connections => connections_ui(ui, ctx),
         Page::History => history::show(
             ui,
             ctx.history,
@@ -235,15 +229,17 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
 
 /// 连接列表页;返回是否直接改动了配置(隐藏本地/局域网开关)。
 /// 末列显示规则求值动作(允许/阻断,规则引擎默认放行)
-fn connections_ui(
-    ui: &mut egui::Ui,
-    conns: &[Connection],
-    i18n: &I18n,
-    rdns: &rdns::Rdns,
-    icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
-    config: &mut Config,
-    rules: &rules_engine::RuleSet,
-) -> bool {
+fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
+    let UiCtx {
+        conns,
+        i18n,
+        rdns,
+        icon_tex,
+        config,
+        rules,
+        conn_rates,
+        ..
+    } = ctx;
     ui.heading(theme::accent_text(&i18n.t("conns-title"), 20.0));
     ui.label(theme::dim_text(&i18n.t("conns-subtitle"), 13.0));
     ui.add_space(6.0);
@@ -378,16 +374,29 @@ fn connections_ui(
                             None => i18n.t("conn-loc-unknown"),
                         };
                         ui.label(theme::dim_text(&location, 13.0));
+                        // 下载/上传列显示实时速率(ETW 字节差值),悬停显示累计字节;
+                        // 未提权时 ETW 未启动,速率恒 0
+                        let (rin, rout) = conn_rates.get(&conn.id).copied().unwrap_or((0, 0));
                         ui.label(
-                            RichText::new(fmt_bytes(conn.bytes_in))
+                            RichText::new(format!("{}/s", fmt_bytes(rin)))
                                 .size(13.0)
                                 .color(theme::c().inbound),
-                        );
+                        )
+                        .on_hover_text(format!(
+                            "{} {}",
+                            i18n.t("conn-total-bytes"),
+                            fmt_bytes(conn.bytes_in)
+                        ));
                         ui.label(
-                            RichText::new(fmt_bytes(conn.bytes_out))
+                            RichText::new(format!("{}/s", fmt_bytes(rout)))
                                 .size(13.0)
                                 .color(theme::c().outbound),
-                        );
+                        )
+                        .on_hover_text(format!(
+                            "{} {}",
+                            i18n.t("conn-total-bytes"),
+                            fmt_bytes(conn.bytes_out)
+                        ));
                         // 规则求值:命中规则的连接标注动作,未命中默认放行不标注
                         match rules.evaluate(&rules_engine::MatchReq::from_conn(
                             conn,
