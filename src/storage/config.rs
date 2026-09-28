@@ -51,6 +51,12 @@ pub struct GeneralConfig {
     /// 写入失败(项未注册等)保持系统默认行为
     #[serde(default)]
     pub tray_pinned: bool,
+    /// 日志级别:off/error/warn/info/debug/trace(设置页可调,立即生效)
+    #[serde(default = "default_log_level")]
+    pub log_level: String,
+    /// 文件日志(exe 同级 logs/latest.log,旧文件按时间戳轮转)
+    #[serde(default)]
+    pub log_to_file: bool,
 }
 
 impl Default for GeneralConfig {
@@ -65,12 +71,18 @@ impl Default for GeneralConfig {
             hide_lan: true,
             ask_connections: false,
             tray_pinned: false,
+            log_level: default_log_level(),
+            log_to_file: false,
         }
     }
 }
 
 fn default_collector() -> String {
     "real".to_owned()
+}
+
+fn default_log_level() -> String {
+    "info".to_owned()
 }
 
 fn default_true() -> bool {
@@ -126,6 +138,11 @@ impl Config {
                     }
                     if cfg.general.collector != "real" && cfg.general.collector != "mock" {
                         cfg.general.collector = "real".to_owned();
+                    }
+                    if crate::logging::LogLevel::parse(&cfg.general.log_level).as_str()
+                        != cfg.general.log_level
+                    {
+                        cfg.general.log_level = "info".to_owned();
                     }
                     return cfg;
                 }

@@ -19,6 +19,7 @@ use eframe::egui;
 use self::ask::{Asker, Decision, Scope, temp_rule_holds};
 use crate::collector::{self, Collector, CollectorKind};
 use crate::i18n::I18n;
+use crate::logging;
 use crate::map::basemap;
 use crate::map::world;
 use crate::model::{Connection, Place, Protocol, Signing};
@@ -107,8 +108,12 @@ pub struct NetOwlApp {
     etw_seen: HashSet<etw::FlowKey>,
     /// 每连接实时速率(键 = conn.id,ETW 字节差值/秒)
     conn_rates: HashMap<u64, (u64, u64)>,
+    /// TEMP-UDPDIAG:UDP 回填诊断日志上次输出时刻(验收后删除)
+    etw_diag_at: Instant,
     /// 连接列表表头排序状态(会话内,不持久化)
     conn_sort: ui::ConnSortState,
+    /// 日志浏览窗口状态(内存层日志展示,参照 wallwarp)
+    log_window: ui::log_window::PageState,
     /// 上一轮 ETW 字节快照(速率差值基准,键 = conn.id)
     conn_prev_bytes: HashMap<u64, (u64, u64)>,
     /// 新连接询问(Little Snitch 式弹窗)
@@ -155,7 +160,10 @@ impl NetOwlApp {
         // ETW 流量事件仅在提权进程内可用;失败只记录,字节列退化为 0
         let etw = if wfp::is_elevated() {
             match etw::Etw::start() {
-                Ok(e) => Some(e),
+                Ok(e) => {
+                    tracing::info!("[ETW] 流量事件采集会话已启动");
+                    Some(e)
+                }
                 Err(e) => {
                     tracing::warn!("[ETW] {e}");
                     None
@@ -187,7 +195,9 @@ impl NetOwlApp {
             conns_refresh_at: Instant::now() - CONNS_REFRESH_INTERVAL,
             etw_seen: HashSet::new(),
             conn_rates: HashMap::new(),
+            etw_diag_at: Instant::now(),
             conn_sort: None,
+            log_window: ui::log_window::PageState::new(),
             conn_prev_bytes: HashMap::new(),
             asker: Asker::new(),
             local_probe: local_ip::Probe::new(),
@@ -232,6 +242,7 @@ impl NetOwlApp {
                     if let Some(e) = self.etw.as_mut() {
                         e.shutdown();
                     }
+                    logging::flush();
                     self.config.save_to_file();
                     self.config_dirty = false;
                     self.should_exit = true;
@@ -566,6 +577,10 @@ impl NetOwlApp {
             .collect();
         let udp_groups = merge_udp_groups(&flows);
         let mut hits: Vec<etw::FlowKey> = Vec::new();
+        // TEMP-UDPDIAG:统计本轮回填命中(验收后删除)
+        let mut udp_rows = 0usize;
+        let mut udp_filled = 0usize;
+        let mut tcp_matched = 0usize;
         if real {
             for c in &mut self.conns {
                 match c.proto {
@@ -577,12 +592,15 @@ impl NetOwlApp {
                         };
                         c.bytes_in = f.down_bytes;
                         c.bytes_out = f.up_bytes;
+                        tcp_matched += 1;
                         hits.push(f.key);
                     }
                     Protocol::Udp => {
+                        udp_rows += 1;
                         let Some(g) = udp_groups.get(&(c.pid, c.local_port)) else {
                             continue;
                         };
+                        udp_filled += 1;
                         if c.remote_ip != g.rep.key.remote_ip
                             || c.remote_port != g.rep.key.remote_port
                         {
@@ -600,6 +618,54 @@ impl NetOwlApp {
         self.etw_seen.extend(hits);
         drop(by_key);
         self.update_conn_rates(dt);
+
+        // TEMP-UDPDIAG:每 5s 输出两侧键样例,定位 UDP 回填断链环节
+        // (flows 无 udp 流 = ETW 未收到 42/43;keys 不相交 = 端口/PID 归一
+        // 不一致;相交而 filled=0 = 合并逻辑问题)
+        if self.etw_diag_at.elapsed() >= Duration::from_secs(5) {
+            self.etw_diag_at = Instant::now();
+            let tcp_n = flows
+                .iter()
+                .filter(|f| f.key.proto == Protocol::Tcp)
+                .count();
+            let udp_n = flows
+                .iter()
+                .filter(|f| f.key.proto == Protocol::Udp)
+                .count();
+            let gkeys: Vec<String> = udp_groups
+                .values()
+                .take(6)
+                .map(|g| {
+                    format!(
+                        "pid={} lport={} rep={}:{}",
+                        g.rep.key.pid,
+                        g.rep.key.local_port,
+                        g.rep.key.remote_ip,
+                        g.rep.key.remote_port
+                    )
+                })
+                .collect();
+            let rkeys: Vec<String> = self
+                .conns
+                .iter()
+                .filter(|c| c.proto == Protocol::Udp)
+                .take(6)
+                .map(|c| {
+                    format!(
+                        "pid={} lport={} r={}",
+                        c.pid,
+                        c.local_port,
+                        c.remote_display()
+                    )
+                })
+                .collect();
+            tracing::debug!(
+                "[EtwDiag] flows tcp={tcp_n} udp={udp_n} groups={} | rows udp={udp_rows} filled={udp_filled} tcp_hits={tcp_matched} | gkeys=[{}] rkeys=[{}]",
+                udp_groups.len(),
+                gkeys.join("; "),
+                rkeys.join("; ")
+            );
+        }
 
         let mut events = Vec::new();
         for f in finished {
@@ -757,6 +823,7 @@ impl eframe::App for NetOwlApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         // 页面与重绘判定先行(page 借用持续到帧末,后续不能碰 self)
         let shown = self.is_shown(ui.ctx());
+        let log_open = self.log_window.open;
         // 字段级拆借用:conns/rdns 只读,config/map_view 需可变(设置页与地图交互)
         let page = &mut self.page;
         let collector_kind = self.collector.kind();
@@ -774,6 +841,7 @@ impl eframe::App for NetOwlApp {
             rates: self.rates,
             conn_rates: &self.conn_rates,
             conn_sort: &mut self.conn_sort,
+            log_window: &mut self.log_window,
             icon_tex: &self.icon_tex,
             history: &mut self.history,
             history_db: &self.history_db,
@@ -812,13 +880,15 @@ impl eframe::App for NetOwlApp {
                 config_changed |= ui::central_ui(ui, page, &mut ctx);
             });
         // 后台(托盘/最小化)统一低频;可见时地图动画 30fps,连接页速率 500ms,
-        // 历史/规则/设置等静态页 1s(页面切换与交互事件即时唤醒)
+        // 历史/规则/设置等静态页 1s(页面切换与交互事件即时唤醒);
+        // 日志窗口打开时 500ms 保证流式观察
         let repaint = if !shown {
             REPAINT_IDLE
         } else {
             match page {
                 Page::Map => REPAINT_ANIMATED,
                 Page::Connections => REPAINT_IDLE,
+                _ if log_open => REPAINT_IDLE,
                 _ => REPAINT_STATIC,
             }
         };
@@ -833,6 +903,8 @@ impl eframe::App for NetOwlApp {
         if let Some(d) = decision {
             self.apply_decision(d);
         }
+        // 日志浏览窗口(独立 viewport;内存层增量拉取,关闭时停止收集)
+        ui::log_window::show(ui.ctx(), &mut self.log_window, &self.i18n);
         if config_changed {
             self.mark_config_dirty();
         }

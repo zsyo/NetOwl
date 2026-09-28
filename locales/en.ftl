@@ -82,6 +82,27 @@ settings-tray-pin = Pin tray icon
 settings-tray-pin-on = Keep the tray icon on the taskbar instead of the hidden overflow
 settings-tray-pin-hint = Writes the system tray setting; takes effect next session, falls back to system default on failure
 
+settings-log = Logging
+settings-log-level = Log level
+settings-log-file-on = Write to log file
+settings-log-view = View logs
+settings-log-hint = Level applies immediately; file logs go to the logs directory next to the exe with rotation; "View logs" opens the log browser
+
+log-level-off = Off
+log-level-error = Error
+log-level-warn = Warning
+log-level-info = Info
+log-level-debug = Debug
+log-level-trace = Trace
+
+log-window-level = Shown level
+log-window-autoscroll = Auto scroll
+log-window-filter = Filter
+log-window-filter-placeholder = Keyword filter (case-insensitive)
+log-window-clear = Clear
+log-window-empty = No logs yet
+log-window-no-match = No matching logs
+
 history-title = Connection History
 history-subtitle = Records of completed connections (written on close)
 history-view-detail = Detail

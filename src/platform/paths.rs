@@ -8,6 +8,8 @@ use std::path::PathBuf;
 pub const CONFIG_FILE: &str = "config.toml";
 /// 数据目录(相对数据根,存放数据库等)
 pub const DATA_DIR: &str = "data";
+/// 日志目录(相对数据根,存放运行日志 latest.log 与轮转归档)
+pub const LOGS_DIR: &str = "logs";
 
 /// 创建数据根并切换工作目录
 pub fn init_data_root() {

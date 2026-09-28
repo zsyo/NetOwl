@@ -82,6 +82,27 @@ settings-tray-pin = 托盘图标常驻
 settings-tray-pin-on = 将托盘图标固定在任务栏,不折叠进隐藏区域
 settings-tray-pin-hint = 写入系统托盘设置,新会话生效;失败时保持系统默认行为
 
+settings-log = 运行日志
+settings-log-level = 日志级别
+settings-log-file-on = 写入日志文件
+settings-log-view = 查看日志
+settings-log-hint = 级别立即生效;文件日志写入 exe 同级 logs 目录,旧文件自动轮转;查看日志打开浏览窗口
+
+log-level-off = 关闭
+log-level-error = 错误
+log-level-warn = 警告
+log-level-info = 信息
+log-level-debug = 调试
+log-level-trace = 跟踪
+
+log-window-level = 显示级别
+log-window-autoscroll = 自动滚动
+log-window-filter = 过滤
+log-window-filter-placeholder = 关键字过滤(大小写不敏感)
+log-window-clear = 清空
+log-window-empty = 暂无日志
+log-window-no-match = 无匹配日志
+
 ask-title = 新连接
 ask-question = {$process} 要连接到
 ask-timeout-hint = {$n} 秒后自动拒绝

@@ -67,6 +67,7 @@ toml = "1.1.6"
 tray-icon = "0.25.1"
 unic-langid = "0.9"
 # 日志(AGENTS.md 日志规范):RUST_LOG 控制应用自身档位,默认 info 且第三方库收敛 warn;
-# env-filter 支持 RUST_LOG=netowl=debug 定向调试
+# env-filter 支持 RUST_LOG=netowl=debug 定向调试;appender 支撑文件日志开关
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"

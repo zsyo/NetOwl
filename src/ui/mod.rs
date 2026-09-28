@@ -4,6 +4,7 @@
 pub mod ask;
 pub mod history;
 pub mod icons;
+pub mod log_window;
 pub mod rules;
 pub mod theme;
 
@@ -14,6 +15,7 @@ use egui::{Button, Color32, CornerRadius, Label, RichText, Stroke};
 
 use crate::collector::CollectorKind;
 use crate::i18n::I18n;
+use crate::logging::LogLevel;
 use crate::map;
 use crate::map::basemap;
 use crate::model::{Connection, Signing, fmt_bytes};
@@ -200,6 +202,8 @@ pub struct UiCtx<'a> {
     pub rules: &'a mut rules_engine::RuleSet,
     /// 规则页状态
     pub rules_page: &'a mut rules::PageState,
+    /// 日志浏览窗口状态
+    pub log_window: &'a mut log_window::PageState,
     /// 拦截引擎状态(WFP 管理线程回报)
     pub wfp_status: wfp::Status,
     /// 历史写线程句柄(手动清空)
@@ -243,7 +247,7 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
             );
             false
         }
-        Page::Settings => settings_ui(ui, ctx.config, ctx.i18n),
+        Page::Settings => settings_ui(ui, ctx.config, ctx.i18n, ctx.log_window),
     }
 }
 
@@ -557,8 +561,14 @@ fn tail_path(path: &str, max: usize) -> String {
     format!("…{tail}")
 }
 
-/// 设置页:语言切换(词条即时生效)、主题、数据源;返回是否直接改动了配置
-fn settings_ui(ui: &mut egui::Ui, config: &mut Config, i18n: &mut I18n) -> bool {
+/// 设置页:语言切换(词条即时生效)、主题、数据源;返回是否直接改动了配置。
+/// 日志区:级别下拉与文件开关立即生效(直接调 logging),窗口入口只置位状态
+fn settings_ui(
+    ui: &mut egui::Ui,
+    config: &mut Config,
+    i18n: &mut I18n,
+    log_window: &mut log_window::PageState,
+) -> bool {
     ui.heading(theme::accent_text(&i18n.t("settings-title"), 20.0));
     ui.add_space(16.0);
     ui.label(
@@ -711,5 +721,55 @@ fn settings_ui(ui: &mut egui::Ui, config: &mut Config, i18n: &mut I18n) -> bool 
     );
     ui.add_space(6.0);
     ui.label(theme::dim_text(&i18n.t("settings-tray-pin-hint"), 12.0));
-    days.changed() || ask.changed() || tray.changed()
+    ui.add_space(16.0);
+
+    // 运行日志:级别下拉立即 reload;文件开关切换建/停写线程;查看入口
+    // 打开日志浏览窗口(内存层收集,诊断用;参照 wallwarp)
+    ui.label(
+        RichText::new(i18n.t("settings-log"))
+            .size(14.0)
+            .strong()
+            .color(theme::c().text),
+    );
+    ui.add_space(4.0);
+    let mut changed_log = false;
+    ui.horizontal(|ui| {
+        ui.label(theme::dim_text(&i18n.t("settings-log-level"), 13.0));
+        let current = LogLevel::parse(&config.general.log_level);
+        egui::ComboBox::from_id_salt("settings-log-level")
+            .width(110.0)
+            .selected_text(i18n.t(log_window::level_key(current)))
+            .show_ui(ui, |ui| {
+                for level in LogLevel::ALL {
+                    if ui
+                        .selectable_label(
+                            current == level,
+                            RichText::new(i18n.t(log_window::level_key(level))).size(13.0),
+                        )
+                        .clicked()
+                    {
+                        config.general.log_level = level.as_str().to_owned();
+                        crate::logging::set_level(level);
+                    }
+                }
+            });
+        ui.add_space(12.0);
+        if ui
+            .checkbox(
+                &mut config.general.log_to_file,
+                i18n.t("settings-log-file-on"),
+            )
+            .changed()
+        {
+            crate::logging::set_file_enabled(config.general.log_to_file);
+            changed_log = true;
+        }
+        ui.add_space(12.0);
+        if ui.button(i18n.t("settings-log-view")).clicked() {
+            log_window::open(log_window);
+        }
+    });
+    ui.add_space(6.0);
+    ui.label(theme::dim_text(&i18n.t("settings-log-hint"), 12.0));
+    days.changed() || ask.changed() || tray.changed() || changed_log
 }

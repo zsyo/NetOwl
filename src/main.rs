@@ -20,7 +20,6 @@ use netowl::APP_NAME;
 fn main() -> eframe::Result {
     // 数据根 = exe 同级;此后 config.toml、data/ 均为相对路径
     paths::init_data_root();
-    logging::init();
 
     // 单实例:已有实例运行时唤出其主窗口并退出本进程
     let Some(_instance_guard) = single_instance::acquire() else {
@@ -34,13 +33,19 @@ fn main() -> eframe::Result {
         .iter()
         .map(|info| info.code.clone())
         .collect();
-    let cfg = Config::load(&i18n.current_lang, &available);
+    let app_config = Config::load(&i18n.current_lang, &available);
     // 配置文件中保存的语言优先于系统语言(load 内已校验有效性)
-    i18n.set_language(cfg.general.language.clone());
+    i18n.set_language(app_config.general.language.clone());
+
+    // 日志初始化:RUST_LOG 优先(调试),否则配置档位;文件日志按开关
+    logging::init(
+        logging::LogLevel::parse(&app_config.general.log_level),
+        app_config.general.log_to_file,
+    );
 
     let _db = db::open();
 
-    let restore_target = cfg.window_position();
+    let restore_target = app_config.window_position();
     let mut viewport = egui::ViewportBuilder::default()
         .with_title(APP_NAME)
         .with_min_inner_size([1280.0, 720.0])
@@ -65,6 +70,6 @@ fn main() -> eframe::Result {
     eframe::run_native(
         APP_NAME,
         options,
-        Box::new(move |cc| Ok(Box::new(NetOwlApp::new(cc, i18n, cfg)))),
+        Box::new(move |cc| Ok(Box::new(NetOwlApp::new(cc, i18n, app_config)))),
     )
 }
