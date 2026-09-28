@@ -10,10 +10,8 @@ use crate::i18n::I18n;
 use crate::logging::{self, LogLevel};
 use crate::ui::theme;
 
-/// 窗口本地缓冲上限(与内存层环形缓冲一致)
-const MAX_LINES: usize = 5000;
-/// 单行渲染高度(show_rows 虚拟化要求行高一致)
-const ROW_HEIGHT: f32 = 19.0;
+/// 窗口本地缓冲上限(消息长行换行渲染,非虚拟化,过大影响帧耗时)
+const MAX_LINES: usize = 1000;
 
 /// 窗口状态(会话内,不持久化;关闭即清空本地缓冲)
 pub struct PageState {
@@ -152,16 +150,14 @@ fn toolbar(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n) {
     });
 }
 
-/// 日志滚动区:关键字过滤(大小写不敏感)+ 等级着色;show_rows 虚拟化,
-/// 仅渲染可见行(本地缓冲上限 5000 行)
+/// 日志滚动区:关键字过滤(大小写不敏感)+ 等级着色;消息体自动换行
+/// (Label 默认 wrap,长行不再截断),时间与级别列等宽字体固定宽度
 fn log_list(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n) {
     let filter = state.filter.trim().to_lowercase();
-    let rows: Vec<usize> = state
+    let rows: Vec<&logging::LogLine> = state
         .lines
         .iter()
-        .enumerate()
-        .filter(|(_, line)| filter.is_empty() || line.message.to_lowercase().contains(&filter))
-        .map(|(i, _)| i)
+        .filter(|line| filter.is_empty() || line.message.to_lowercase().contains(&filter))
         .collect();
 
     if rows.is_empty() {
@@ -179,44 +175,32 @@ fn log_list(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n) {
     egui::ScrollArea::vertical()
         .auto_shrink(false)
         .stick_to_bottom(state.auto_scroll)
-        .show_rows(ui, ROW_HEIGHT, rows.len(), |ui, range| {
-            for i in range {
-                let line = &state.lines[i];
-                let (y, _) = ui.allocate_exact_size(
-                    egui::vec2(ui.available_width(), ROW_HEIGHT),
-                    egui::Sense::hover(),
-                );
-                let painter = ui.painter_at(y);
-                let mut x = y.left() + 4.0;
-                painter.circle_filled(
-                    egui::Pos2::new(x + 4.0, y.center().y),
-                    3.0,
-                    level_color(line.level),
-                );
-                x += 14.0;
-                painter.text(
-                    egui::Pos2::new(x, y.center().y),
-                    egui::Align2::LEFT_CENTER,
-                    &line.time,
-                    egui::FontId::monospace(11.0),
-                    theme::c().text_dim,
-                );
-                x += 128.0;
-                painter.text(
-                    egui::Pos2::new(x, y.center().y),
-                    egui::Align2::LEFT_CENTER,
-                    format!("{:5}", line.level),
-                    egui::FontId::monospace(11.0),
-                    level_color(line.level),
-                );
-                x += 52.0;
-                painter.text(
-                    egui::Pos2::new(x, y.center().y),
-                    egui::Align2::LEFT_CENTER,
-                    &line.message,
-                    egui::FontId::proportional(12.0),
-                    theme::c().text,
-                );
+        .show(ui, |ui| {
+            for line in rows {
+                ui.horizontal(|ui| {
+                    let (rect, _) =
+                        ui.allocate_exact_size(egui::vec2(10.0, 14.0), egui::Sense::hover());
+                    ui.painter()
+                        .circle_filled(rect.center(), 3.0, level_color(line.level));
+                    ui.label(
+                        RichText::new(&line.time)
+                            .monospace()
+                            .size(11.0)
+                            .color(theme::c().text_dim),
+                    );
+                    ui.label(
+                        RichText::new(format!("{:5}", line.level))
+                            .monospace()
+                            .size(11.0)
+                            .color(level_color(line.level)),
+                    );
+                    // 消息体默认 wrap:窄窗口下自动换行,不再要求拉宽窗口
+                    ui.add(egui::Label::new(
+                        RichText::new(&line.message)
+                            .size(12.0)
+                            .color(theme::c().text),
+                    ));
+                });
             }
         });
 }

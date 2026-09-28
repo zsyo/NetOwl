@@ -659,11 +659,66 @@ impl NetOwlApp {
                     )
                 })
                 .collect();
+            // 两侧键交集数:直接判定合并断链在匹配逻辑还是键归一
+            let udp_row_keys: HashSet<(u32, u16)> = self
+                .conns
+                .iter()
+                .filter(|c| c.proto == Protocol::Udp)
+                .map(|c| (c.pid, c.local_port))
+                .collect();
+            let udp_match = udp_groups
+                .keys()
+                .filter(|k| udp_row_keys.contains(*k))
+                .count();
+            let tcp_row_keys: HashSet<(u32, u16, Ipv4Addr, u16)> = self
+                .conns
+                .iter()
+                .filter(|c| c.proto == Protocol::Tcp)
+                .map(|c| (c.pid, c.local_port, c.remote_ip, c.remote_port))
+                .collect();
+            let tcp_flow_keys: HashSet<(u32, u16, Ipv4Addr, u16)> = flows
+                .iter()
+                .filter(|f| f.key.proto == Protocol::Tcp)
+                .map(|f| {
+                    (
+                        f.key.pid,
+                        f.key.local_port,
+                        f.key.remote_ip,
+                        f.key.remote_port,
+                    )
+                })
+                .collect();
+            let tcp_match = tcp_flow_keys.intersection(&tcp_row_keys).count();
+            let tsample: Vec<String> = self
+                .conns
+                .iter()
+                .filter(|c| c.proto == Protocol::Tcp)
+                .take(3)
+                .map(|c| {
+                    format!(
+                        "p{}:{}->{}:{}",
+                        c.pid, c.local_port, c.remote_ip, c.remote_port
+                    )
+                })
+                .collect();
+            let fsample: Vec<String> = flows
+                .iter()
+                .filter(|f| f.key.proto == Protocol::Tcp)
+                .take(3)
+                .map(|f| {
+                    format!(
+                        "p{}:{}->{}:{}",
+                        f.key.pid, f.key.local_port, f.key.remote_ip, f.key.remote_port
+                    )
+                })
+                .collect();
             tracing::debug!(
-                "[EtwDiag] flows tcp={tcp_n} udp={udp_n} groups={} | rows udp={udp_rows} filled={udp_filled} tcp_hits={tcp_matched} | gkeys=[{}] rkeys=[{}]",
+                "[EtwDiag] flows tcp={tcp_n} udp={udp_n} groups={} | rows udp={udp_rows} filled={udp_filled} tcp_hits={tcp_matched} | xmatch tcp={tcp_match} udp={udp_match} | gkeys=[{}] rkeys=[{}] | trow=[{}] tflow=[{}]",
                 udp_groups.len(),
                 gkeys.join("; "),
-                rkeys.join("; ")
+                rkeys.join("; "),
+                tsample.join("; "),
+                fsample.join("; ")
             );
         }
 
