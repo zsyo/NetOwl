@@ -194,12 +194,17 @@ fn log_list(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n) {
                             .size(11.0)
                             .color(level_color(line.level)),
                     );
-                    // 消息体默认 wrap:窄窗口下自动换行,不再要求拉宽窗口
-                    ui.add(egui::Label::new(
-                        RichText::new(&line.message)
-                            .size(12.0)
-                            .color(theme::c().text),
-                    ));
+                    // 消息体显式 Wrap:horizontal 布局的默认 wrap 模式是
+                    // Extend(egui 0.36 Ui::wrap_mode 按布局方向判定),
+                    // 长行会被截断到窗口外
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(&line.message)
+                                .size(12.0)
+                                .color(theme::c().text),
+                        )
+                        .wrap_mode(egui::TextWrapMode::Wrap),
+                    );
                 });
             }
         });

@@ -712,8 +712,9 @@ impl NetOwlApp {
                     )
                 })
                 .collect();
+            // 多行消息:Label 对 \n 恒换行,窄窗口下样例也可读全
             tracing::debug!(
-                "[EtwDiag] flows tcp={tcp_n} udp={udp_n} groups={} | rows udp={udp_rows} filled={udp_filled} tcp_hits={tcp_matched} | xmatch tcp={tcp_match} udp={udp_match} | gkeys=[{}] rkeys=[{}] | trow=[{}] tflow=[{}]",
+                "[EtwDiag] flows tcp={tcp_n} udp={udp_n} groups={} | rows udp={udp_rows} filled={udp_filled} tcp_hits={tcp_matched} | xmatch tcp={tcp_match} udp={udp_match}\n  gkeys=[{}]\n  rkeys=[{}]\n  trow=[{}]\n  tflow=[{}]",
                 udp_groups.len(),
                 gkeys.join("; "),
                 rkeys.join("; "),
