@@ -7,6 +7,9 @@
 pub mod ask;
 
 use std::collections::HashMap;
+use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
+use std::net::Ipv4Addr;
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
@@ -18,7 +21,8 @@ use crate::collector::{self, Collector, CollectorKind};
 use crate::i18n::I18n;
 use crate::map::basemap;
 use crate::map::world;
-use crate::model::{Connection, Place};
+use crate::model::{Connection, Place, Protocol, Signing};
+use crate::net::etw;
 use crate::net::geoip;
 use crate::net::local_ip;
 use crate::net::rdns;
@@ -50,6 +54,8 @@ const TRAFFIC_INTERVAL_ACTIVE: Duration = Duration::from_secs(1);
 const TRAFFIC_INTERVAL_HIDDEN: Duration = Duration::from_secs(5);
 /// WFP 过滤器目标集合同步间隔(与采集同频:进程路径出现/消失的生效延迟上限)
 const WFP_SYNC_INTERVAL: Duration = Duration::from_secs(1);
+/// ETW 流量事件合并间隔(与表快照采集同频)
+const ETW_POLL_INTERVAL: Duration = Duration::from_secs(1);
 
 /// 待恢复的窗口几何(物理像素)
 type WindowRect = (i32, i32, i32, i32, bool);
@@ -82,6 +88,12 @@ pub struct NetOwlApp {
     /// WFP 拦截引擎(启用规则翻译为过滤器,管理线程持有动态会话)
     wfp: wfp::Manager,
     wfp_sync_at: Instant,
+    /// ETW 流量事件采集(提权时启动:连接字节填充与短命连接收割)
+    etw: Option<etw::Etw>,
+    etw_poll_at: Instant,
+    /// 曾被表快照合并覆盖的 ETW 流键:完结流命中此集合说明表快照
+    /// 跟踪器已记录,不按短命连接重复落盘
+    etw_seen: HashSet<etw::FlowKey>,
     /// 新连接询问(Little Snitch 式弹窗)
     asker: Asker,
     /// 本机公网 IP 探测(公共接口并发,最先成功者胜出)
@@ -114,6 +126,18 @@ impl NetOwlApp {
             pending_restore.map(|(x, y, w, h)| (x, y, w, h, config.window.maximized));
         let history_db = crate::storage::db::open();
         let rules = rules::RuleSet::load(&history_db);
+        // ETW 流量事件仅在提权进程内可用;失败只记录,字节列退化为 0
+        let etw = if wfp::is_elevated() {
+            match etw::Etw::start() {
+                Ok(e) => Some(e),
+                Err(e) => {
+                    eprintln!("[ETW] {e}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
         NetOwlApp {
             page: Page::Map,
             last_page: Page::Map,
@@ -131,6 +155,9 @@ impl NetOwlApp {
             rules_page: ui_rules::PageState::new(),
             wfp: wfp::Manager::spawn(),
             wfp_sync_at: Instant::now(),
+            etw,
+            etw_poll_at: Instant::now(),
+            etw_seen: HashSet::new(),
             asker: Asker::new(),
             local_probe: local_ip::Probe::new(),
             local_place: None,
@@ -165,6 +192,9 @@ impl NetOwlApp {
                     let events = self.tracker.flush(history::unix_now());
                     self.writer.send(events);
                     self.writer.shutdown();
+                    if let Some(e) = self.etw.as_mut() {
+                        e.shutdown();
+                    }
                     self.config.save_to_file();
                     self.config_dirty = false;
                     self.should_exit = true;
@@ -423,9 +453,92 @@ impl NetOwlApp {
         }
     }
 
+    /// ETW 流量事件合并(与采集同频):
+    /// 1) 活跃流的收发字节填充到连接快照(键 = PID+协议+本地端口+远端,
+    ///    不含本地 IP —— Connection 未暴露该字段);
+    /// 2) 完结流若从未被表快照覆盖(存活短于采样间隙的短命连接)则
+    ///    生成历史事件落盘;曾被覆盖的由 Tracker 正常处理,跳过。
+    fn poll_etw(&mut self) {
+        let Some(etw) = self.etw.as_ref() else {
+            return;
+        };
+        if self.etw_poll_at.elapsed() < ETW_POLL_INTERVAL {
+            return;
+        }
+        self.etw_poll_at = Instant::now();
+        let real = self.collector.kind() == CollectorKind::Real;
+
+        let flows = etw.snapshot();
+        let by_key: HashMap<(u32, Protocol, u16, Ipv4Addr, u16), &etw::FlowAgg> =
+            flows.iter().map(|f| (flow_merge_key(&f.key), f)).collect();
+        let mut hits: Vec<etw::FlowKey> = Vec::new();
+        if real {
+            for c in &mut self.conns {
+                let Some(f) =
+                    by_key.get(&(c.pid, c.proto, c.local_port, c.remote_ip, c.remote_port))
+                else {
+                    continue;
+                };
+                c.bytes_in = f.down_bytes;
+                c.bytes_out = f.up_bytes;
+                hits.push(f.key);
+            }
+        }
+        self.etw_seen.extend(hits);
+        drop(by_key);
+
+        let mut events = Vec::new();
+        for f in etw.take_finished() {
+            if !real || self.etw_seen.contains(&f.key) {
+                continue;
+            }
+            // 回环短命连接(本机内部通信)高频出现且无监控价值,不入库;
+            // 存活超采样间隙的由表快照 Tracker 按既有口径处理
+            if f.key.local_ip.is_loopback() || f.key.remote_ip.is_loopback() {
+                continue;
+            }
+            events.push(short_lived_event(&f));
+        }
+        if !events.is_empty() {
+            self.writer.send(events);
+        }
+    }
+
     fn mark_config_dirty(&mut self) {
         self.config_dirty = true;
         self.config_dirty_since = Instant::now();
+    }
+}
+
+/// 表快照连接与 ETW 流的合并键(不含本地 IP)
+fn flow_merge_key(k: &etw::FlowKey) -> (u32, Protocol, u16, Ipv4Addr, u16) {
+    (k.pid, k.proto, k.local_port, k.remote_ip, k.remote_port)
+}
+
+/// 短命连接完结事件:进程反查失败(已退出)时进程名留空;
+/// 起止时间由流的首末事件时刻换算 unix 秒
+fn short_lived_event(f: &etw::FlowAgg) -> history::ClosedConn {
+    let (proc_path, process) = match collector::query_process_path(f.key.pid) {
+        Some(path) => {
+            let name = path.rsplit(['\\', '/']).next().unwrap_or(&path).to_owned();
+            (Some(path), name)
+        }
+        None => (None, String::new()),
+    };
+    let now = history::unix_now() as i64;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    f.key.hash(&mut h);
+    history::ClosedConn {
+        event_id: h.finish(),
+        first_seen: (now - f.first.elapsed().as_secs() as i64).max(0) as u64,
+        last_seen: (now - f.last.elapsed().as_secs() as i64).max(0) as u64,
+        pid: f.key.pid,
+        process,
+        proc_path,
+        signed: Signing::Unknown,
+        proto: f.key.proto,
+        remote_ip: f.key.remote_ip,
+        remote_port: f.key.remote_port,
     }
 }
 
@@ -440,6 +553,7 @@ impl eframe::App for NetOwlApp {
         self.poll_icons(ctx);
         self.writer.set_retention(self.config.general.history_days);
         self.poll_history();
+        self.poll_etw();
         self.poll_ask();
         self.poll_temp_rules();
         self.poll_wfp();

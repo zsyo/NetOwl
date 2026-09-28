@@ -10,6 +10,7 @@ mod windows_table;
 
 pub use icon::IconImage;
 pub use mock::MockCollector;
+pub use query::query_process_path;
 pub use windows_table::TableCollector;
 
 use std::sync::Arc;

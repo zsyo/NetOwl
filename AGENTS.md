@@ -42,7 +42,7 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   不弹窗不联网,须在工作线程跑),每轮限流派发(在途 4/每轮 2 个)结果回填,
   回填前 Unknown;icon.rs:SHGetFileInfoW 取 32x32 关联图标 + GetIconInfo/
   GetDIBits 转 RGBA(工作线程执行,失败缓存 None);表快照无字节语义,
-  下载/上传列为 0,字节/速率待 ETW;均为只读 API,无需管理员权限)
+  字节由 app 层从 ETW 流合并填充;均为只读 API,无需管理员权限)
 - src/rules/ - 规则与拦截(mod.rs:规则模型(动作/方向/协议/进程/远端[网段或
   域名]/端口/优先级),求值按 priority 升序首个命中,未命中默认放行;RuleSet
   内存+SQLite 同步(db v4 rules 表);wfp_specs 翻译启用规则为 WFP 过滤器目标
@@ -75,7 +75,15 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   In/OutOctets 采样差值;排除回环/隧道;**必须排除
   InterfaceAndOperStatusFlags.FilterInterface(bit1) 接口——WFP 轻量过滤/QoS
   过滤接口会镜像底层物理网卡计数,不过滤速率成倍虚高**;窗口可见 1s 采样、
-  隐藏 5s,表查询失败沿用旧速率))
+  隐藏 5s,表查询失败沿用旧速率);etw.rs:ETW 流量事件采集(Microsoft-Windows-
+  Kernel-Network 实时会话,命名实例启动清理残留/退出停止,需管理员权限,未提权
+  不启动;手写 windows crate 消费者 StartTraceW→EnableTraceEx2→OpenTraceW 回调→
+  ProcessTrace;payload 前 20 字节同构硬编码解析:PID/size/daddr/saddr/dport/
+  sport,端口网络序、IPv4 BE;事件视角归一本地/远端:发送/发起/接受/关闭
+  saddr 为本机侧、接收 daddr 为本机侧;消费 10/11 TCP 收发、42/43 UDP 收发、
+  12/15/13 连接建立/接受/关闭,18 与 11 双计、IPv6 系列忽略;TCP close 完结,
+  UDP 10s/TCP 60s 空闲兜底,流表 4096 上限;app 层按 PID+协议+本地端口+远端
+  合并填充连接字节,完结流未被表快照覆盖即短命连接落盘历史,回环不入库))
 - src/map/ - 流量地图(mod.rs:画布(painter 自绘:连线动画、节点聚合、悬停
   信息卡、视图交互:滚轮锚点缩放/拖拽/双击复位,视图状态存 NetOwlApp;
   经度方向无缝循环:中心经度归一化 [-180,180),节点/连线按可见副本平移绘制,
