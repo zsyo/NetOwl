@@ -82,6 +82,7 @@ impl RuleSet {
                 remote_kind: parse_remote_kind(&entry.remote_kind),
                 remote_value: entry.remote_value,
                 port: entry.port,
+                local_port: 0,
             };
             if let Err(e) = self.insert(&tx, rule) {
                 self.rules.truncate(base_len);

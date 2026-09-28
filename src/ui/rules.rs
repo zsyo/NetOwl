@@ -118,6 +118,7 @@ impl Draft {
             remote_kind: self.remote_kind,
             remote_value: self.remote_value.trim().to_owned(),
             port: self.port,
+            local_port: 0,
         }
     }
 }
@@ -324,11 +325,22 @@ fn rules_table(
                         if cb.changed() {
                             let _ = rules.set_enabled(db, rule.id, enabled);
                         }
+                        // 会话临时规则(负 id):名称加标注并以弱化色显示
+                        let is_temp = rule.id < 0;
+                        let name_text = if is_temp {
+                            format!("{} ({})", rule.name, i18n.t("rules-temp-badge"))
+                        } else {
+                            rule.name.clone()
+                        };
                         ui.add_sized(
                             [COL_NAME, 18.0],
-                            egui::Label::new(
-                                RichText::new(&rule.name).size(13.0).color(theme::c().text),
-                            )
+                            egui::Label::new(RichText::new(name_text).size(13.0).color(
+                                if is_temp {
+                                    theme::c().text_dim
+                                } else {
+                                    theme::c().text
+                                },
+                            ))
                             .wrap_mode(egui::TextWrapMode::Truncate),
                         );
                         let (action_key, action_color) = match rule.action {

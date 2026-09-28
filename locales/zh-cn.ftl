@@ -140,6 +140,7 @@ rules-save = 保存
 rules-cancel = 取消
 rules-export = 导出
 rules-import = 导入
+rules-temp-badge = 临时
 rules-export-done = 已导出 {$n} 条规则
 rules-import-done = 已导入 {$n} 条规则
 rules-export-failed = 导出失败: {$err}

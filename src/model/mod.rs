@@ -41,6 +41,9 @@ pub struct Connection {
     /// 进程映像签名状态(异步查询,回填前为 Unknown)
     pub signed: Signing,
     pub proto: Protocol,
+    /// 本地端口(连接四元组的一部分;弹窗"仅本次"临时规则用其精确
+    /// 锁定单条连接)
+    pub local_port: u16,
     pub remote_ip: Ipv4Addr,
     pub remote_port: u16,
     /// 归属地定位键;None 表示归属未知

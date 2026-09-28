@@ -139,6 +139,7 @@ rules-save = Save
 rules-cancel = Cancel
 rules-export = Export
 rules-import = Import
+rules-temp-badge = temp
 rules-export-done = Exported {$n} rules
 rules-import-done = Imported {$n} rules
 rules-export-failed = Export failed: {$err}

@@ -107,6 +107,7 @@ impl TableCollector {
             let pid = key.pid;
             let id = key.id();
             let proto = key.proto;
+            let local_port = key.local_port;
             let remote_port = key.remote_port;
             let remote_ip = key.remote_ip();
             let city = crate::net::geoip::locate(remote_ip).map(Place::Geo);
@@ -121,6 +122,7 @@ impl TableCollector {
                     proc_path: meta.path.clone(),
                     signed: meta.signed,
                     proto,
+                    local_port,
                     remote_ip,
                     remote_port,
                     city,

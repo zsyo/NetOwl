@@ -4,9 +4,9 @@
 //! 触发粒度 = 进程 + 目标 IP(端口/协议不参与去重,同目标多端口只问一次);
 //! 回环/局域网/保留段目标、系统进程、UDP 无远端行不询问(静默放行),
 //! 待询问队列超上限时同样静默放行。询问等待期间该身份被临时阻断
-//! (最高 weight 的 pending 过滤器,安全默认);允许·仅本次直接放行
-//! 不产生规则,拒绝·仅本次转为会话内临时规则(内存),永久选项落库,
-//! WFP 拦截与列表标注随之生效。
+//! (最高 weight 的 pending 过滤器,安全默认);仅本次决策只作用于
+//! 当前连接(拒绝时生成含本地端口的临时规则,连接结束即清理),
+//! 永久选项落库,WFP 拦截与列表标注随之生效。
 
 use std::collections::{HashSet, VecDeque};
 use std::hash::{Hash, Hasher};
@@ -28,8 +28,9 @@ const SYSTEM_PID: u32 = 4;
 /// 决策的作用范围
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Scope {
-    /// 仅本次:拒绝时为会话内临时精确规则(IP+端口+协议);
-    /// 允许时直接放行,不产生规则
+    /// 仅本次:拒绝时为会话内临时精确规则(进程+目标+端口+协议+本地
+    /// 端口,锁定当前连接,连接结束即清理);允许时直接放行不产生规则;
+    /// 两者决策后解除身份去重,同目标新连接重新询问
     Once,
     /// 永久·仅此目标:进程 + 目标 IP(任意端口)
     Target,
@@ -51,6 +52,7 @@ pub struct AskItem {
     pub proc_path: Option<String>,
     pub process: String,
     pub pid: u32,
+    pub local_port: u16,
     pub remote_ip: Ipv4Addr,
     pub remote_port: u16,
     pub proto: Protocol,
@@ -87,12 +89,17 @@ impl AskItem {
     /// 决策结果转规则;process 填映像名(规则语义:映像名或路径结尾)。
     /// 范围决定持久规则粒度与名称:Target = 进程+目标IP(不限端口,
     /// 名称只带目标主机),Process = 仅进程(名称即程序名);
-    /// Once 保持当前连接的精确身份(名称带 IP+端口)
+    /// Once 精确锁定当前连接四元组(含本地端口,连接结束即清理)
     pub fn to_rule(&self, action: Action) -> Rule {
-        let (remote_kind, remote_value, port) = match self.scope {
-            Scope::Once => (RemoteKind::Ip, self.remote_ip.to_string(), self.remote_port),
-            Scope::Target => (RemoteKind::Ip, self.remote_ip.to_string(), 0),
-            Scope::Process => (RemoteKind::Any, String::new(), 0),
+        let (remote_kind, remote_value, port, local_port) = match self.scope {
+            Scope::Once => (
+                RemoteKind::Ip,
+                self.remote_ip.to_string(),
+                self.remote_port,
+                self.local_port,
+            ),
+            Scope::Target => (RemoteKind::Ip, self.remote_ip.to_string(), 0, 0),
+            Scope::Process => (RemoteKind::Any, String::new(), 0, 0),
         };
         let name = match self.scope {
             Scope::Once => format!("{} -> {}", self.process, self.remote_display()),
@@ -111,6 +118,7 @@ impl AskItem {
             remote_kind,
             remote_value,
             port,
+            local_port,
         }
     }
 
@@ -179,7 +187,7 @@ impl Asker {
         self.seen = current;
 
         for c in fresh {
-            let key = identity_key(c);
+            let key = identity_key(c.proc_path.as_deref(), &c.process, c.remote_ip);
             if baseline {
                 self.asked.insert(key);
                 continue;
@@ -209,6 +217,7 @@ impl Asker {
                 proc_path: c.proc_path.clone(),
                 process: c.process.clone(),
                 pid: c.pid,
+                local_port: c.local_port,
                 remote_ip: c.remote_ip,
                 remote_port: c.remote_port,
                 proto: c.proto,
@@ -247,13 +256,36 @@ impl Asker {
         self.queue.clear();
         self.active = None;
     }
+
+    /// 决策完成后解除该身份的已询问标记:仅本次决策只作用于当前连接,
+    /// 其结束后同目标新连接重新询问(永久决策靠生成的规则求值命中,
+    /// 无需解除)
+    pub fn unask(&mut self, item: &AskItem) {
+        self.asked.remove(&identity_key(
+            item.proc_path.as_deref(),
+            &item.process,
+            item.remote_ip,
+        ));
+    }
 }
 
 /// 连接身份:(进程路径/名, 目标IP)。端口/协议不参与去重,
 /// 同一目标多端口只询问一次
-fn identity_key(c: &Connection) -> u64 {
+fn identity_key(proc_path: Option<&str>, process: &str, ip: Ipv4Addr) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    c.proc_path.as_ref().unwrap_or(&c.process).hash(&mut h);
-    c.remote_ip.hash(&mut h);
+    proc_path.unwrap_or(process).hash(&mut h);
+    ip.hash(&mut h);
     h.finish()
+}
+
+/// 临时规则是否仍绑定着活跃连接:决策时连接的四元组 + 进程精确匹配
+/// (连接结束/超时消失后规则即视为过期)
+pub fn temp_rule_holds(rule: &Rule, c: &Connection) -> bool {
+    rule.local_port != 0
+        && rule.proto == Some(c.proto)
+        && rule.remote_kind == RemoteKind::Ip
+        && rule.remote_value == c.remote_ip.to_string()
+        && rule.port == c.remote_port
+        && rule.local_port == c.local_port
+        && rule.process == c.process
 }

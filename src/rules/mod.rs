@@ -92,6 +92,9 @@ pub struct Rule {
     pub remote_value: String,
     /// 远端端口(0 = 任意)
     pub port: u16,
+    /// 本地端口(0 = 任意;仅弹窗"仅本次"临时规则使用,精确锁定
+    /// 单条连接,持久规则恒为 0)
+    pub local_port: u16,
 }
 
 impl Rule {
@@ -106,6 +109,9 @@ impl Rule {
             return false;
         }
         if self.port != 0 && self.port != req.remote_port {
+            return false;
+        }
+        if self.local_port != 0 && self.local_port != req.local_port {
             return false;
         }
         if !self.process.is_empty() && !match_process(&self.process, req) {
@@ -137,6 +143,8 @@ pub struct MatchReq<'a> {
     pub proto: Protocol,
     pub remote_ip: u32,
     pub remote_port: u16,
+    /// 本地端口(临时规则的连接级精确匹配用)
+    pub local_port: u16,
     /// rDNS 域名(未解析/无 PTR 为 None)
     pub domain: Option<&'a str>,
     pub direction: Direction,
@@ -150,6 +158,7 @@ impl<'a> MatchReq<'a> {
             proto: conn.proto,
             remote_ip: u32::from(conn.remote_ip),
             remote_port: conn.remote_port,
+            local_port: conn.local_port,
             domain,
             direction: conn_direction(conn),
         }
@@ -245,6 +254,7 @@ impl RuleSet {
                     remote_kind: parse_remote_kind(&row.get::<_, String>(8)?),
                     remote_value: row.get(9)?,
                     port: row.get::<_, i64>(10)? as u16,
+                    local_port: 0,
                 })
             })?;
             for r in rows {
@@ -268,12 +278,17 @@ impl RuleSet {
     }
 
     /// 插入会话内临时规则(不落库;负数 id,优先于全部持久规则)。
-    /// 新连接询问的"仅本次"决策走此入口
+    /// 新连接询问的"仅本次"拒绝决策走此入口
     pub fn insert_temp(&mut self, mut rule: Rule) {
         rule.id = self.next_temp_id;
         self.next_temp_id -= 1;
         rule.priority = self.rules.first().map_or(0, |r| r.priority - 10);
         self.rules.insert(0, rule);
+    }
+
+    /// 删除会话临时规则(仅内存,不涉及库);随其绑定的连接消失调用
+    pub fn delete_temp(&mut self, id: i64) {
+        self.rules.retain(|r| r.id != id);
     }
 
     /// 新建规则并落库,追加为最低优先级

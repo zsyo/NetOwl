@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use eframe::egui;
 
-use self::ask::{Asker, Decision, Scope};
+use self::ask::{Asker, Decision, Scope, temp_rule_holds};
 use crate::collector::{self, Collector, CollectorKind};
 use crate::i18n::I18n;
 use crate::map::basemap;
@@ -380,14 +380,17 @@ impl NetOwlApp {
     }
 
     /// 应用询问决策:永久选项落库;拒绝·仅本次写入内存临时规则;
-    /// 允许·仅本次不产生规则(询问的连接未命中任何规则,默认即放行,
-    /// 身份已去重不会重复询问)
+    /// 允许·仅本次不产生规则(询问的连接未命中任何规则,默认即放行);
+    /// 仅本次决策后解除身份去重标记,同目标新连接重新询问
     fn apply_decision(&mut self, d: Decision) {
         let Some(item) = self.asker.take() else {
             return;
         };
-        if d.allow && d.scope == Scope::Once {
-            return;
+        if d.scope == Scope::Once {
+            self.asker.unask(&item);
+            if d.allow {
+                return;
+            }
         }
         let action = if d.allow {
             crate::rules::Action::Allow
@@ -400,6 +403,23 @@ impl NetOwlApp {
             Scope::Target | Scope::Process => {
                 let _ = self.rules.insert(&self.history_db, rule);
             }
+        }
+    }
+
+    /// 临时规则生命周期:仅绑定决策时的那条连接(含本地端口的四元组
+    /// 精确匹配),快照中不再有匹配连接时删除;同目标重连不会撞上旧
+    /// 决策,而是重新弹窗询问
+    fn poll_temp_rules(&mut self) {
+        let expired: Vec<i64> = self
+            .rules
+            .rules
+            .iter()
+            .filter(|r| r.id < 0)
+            .filter(|r| !self.conns.iter().any(|c| temp_rule_holds(r, c)))
+            .map(|r| r.id)
+            .collect();
+        for id in expired {
+            self.rules.delete_temp(id);
         }
     }
 
@@ -421,6 +441,7 @@ impl eframe::App for NetOwlApp {
         self.writer.set_retention(self.config.general.history_days);
         self.poll_history();
         self.poll_ask();
+        self.poll_temp_rules();
         self.poll_wfp();
 
         // 进入设置页时重扫 locales,加载运行期间新增的词条文件;

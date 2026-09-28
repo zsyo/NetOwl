@@ -25,7 +25,9 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   映像路径,logic 每帧对未缓存路径向采集器请求 IconState,到位经
   ColorImage::from_rgba_unmultiplied 建纹理;ask.rs:新连接询问状态机——
   触发身份=进程+目标IP,静默放行自身/系统/未知进程/回环/局域网/保留段/
-  UDP 无远端/队列超限,决策=动作x范围,超时自动拒绝)
+  UDP 无远端/队列超限,决策=动作x范围,仅本次只作用于当前连接
+  (拒绝=含本地端口的临时规则,连接消失即清理,决策后解除身份去重
+  重连重问;允许=不产生规则),超时自动拒绝)
 - src/model/ - 共享数据模型(mod.rs:Connection/Protocol/Place 等数据结构;
   city 为 Option<Place>:内网/保留段/未收录 IP 归属未知,地图不绘制,列表
   显示占位;UDP 表行远端以 *:* 展示)

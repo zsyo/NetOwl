@@ -139,6 +139,7 @@ impl MockCollector {
                 } else {
                     Protocol::Udp
                 },
+                local_port: (1024 + self.rng.range(60000)) as u16,
                 remote_ip: ip,
                 remote_port: port,
                 city: Some(Place::City(city.key)),
