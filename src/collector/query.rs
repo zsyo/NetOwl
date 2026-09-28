@@ -25,7 +25,7 @@ const STATE_ACTIVE_MAX: u32 = MIB_TCP_STATE_LAST_ACK.0 as u32;
 const QUERY_RETRIES: usize = 3;
 
 /// 连接身份:四元组 + 归属进程;快照间据此识别同一连接。
-/// 地址为网络字节序原始值,端口为主机序;UDP 无远端以 0 填充。
+/// 地址为网络字节序原始值,端口已转主机序;UDP 无远端以 0 填充。
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct ConnKey {
     pub proto: Protocol,
@@ -67,9 +67,12 @@ pub fn query_tcp() -> Result<Vec<ConnKey>, String> {
         out.push(ConnKey {
             proto: Protocol::Tcp,
             local_addr: row.dwLocalAddr,
-            local_port: row.dwLocalPort as u16,
+            // 表结构里的端口是 htons 后的网络序值(低 16 位),须转主机序;
+            // 直接 as u16 会得到字节序反转的端口(如 443 -> 47873),
+            // 导致与 ETW 流的合并键永远对不上
+            local_port: u16::from_be(row.dwLocalPort as u16),
             remote_addr: row.dwRemoteAddr,
-            remote_port: row.dwRemotePort as u16,
+            remote_port: u16::from_be(row.dwRemotePort as u16),
             pid: row.dwOwningPid,
         });
     }
@@ -89,7 +92,7 @@ pub fn query_udp() -> Result<Vec<ConnKey>, String> {
         out.push(ConnKey {
             proto: Protocol::Udp,
             local_addr: row.dwLocalAddr,
-            local_port: row.dwLocalPort as u16,
+            local_port: u16::from_be(row.dwLocalPort as u16),
             remote_addr: 0,
             remote_port: 0,
             pid: row.dwOwningPid,
