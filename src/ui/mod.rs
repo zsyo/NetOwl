@@ -24,6 +24,20 @@ use crate::storage::config::Config;
 use crate::storage::history as history_store;
 use crate::storage::history_query;
 
+/// 连接列表排序键(表头点击切换;None = 表快照原序)
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ConnSort {
+    Process,
+    Location,
+    RateDown,
+    RateUp,
+    TotalDown,
+    TotalUp,
+}
+
+/// 连接列表排序状态:(键, 是否正序);点击已激活表头反转方向
+pub type ConnSortState = Option<(ConnSort, bool)>;
+
 /// 主窗口页面
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Page {
@@ -170,6 +184,8 @@ pub struct UiCtx<'a> {
     pub rates: (u64, u64),
     /// 每连接实时速率(键 = 连接 id;ETW 字节差值/秒,未提权恒 0)
     pub conn_rates: &'a HashMap<u64, (u64, u64)>,
+    /// 连接列表表头排序状态(表头点击切换)
+    pub conn_sort: &'a mut ConnSortState,
     /// 进程图标纹理(键 = 映像路径);None 表示已提取且无图标
     pub icon_tex: &'a HashMap<String, Option<egui::TextureHandle>>,
     /// 历史页状态
@@ -238,8 +254,11 @@ fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         config,
         rules,
         conn_rates,
+        conn_sort,
         ..
     } = ctx;
+    // &mut UiCtx 解构出的引用字段带两层 &mut,借类型注解 coerce 回单层
+    let conn_sort: &mut ConnSortState = conn_sort;
     ui.heading(theme::accent_text(&i18n.t("conns-title"), 20.0));
     ui.label(theme::dim_text(&i18n.t("conns-subtitle"), 13.0));
     ui.add_space(6.0);
@@ -267,7 +286,8 @@ fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         !(config.general.hide_local && c.remote_ip.is_loopback())
             && !(config.general.hide_lan && c.remote_ip.is_private())
     };
-    let shown: Vec<&Connection> = conns.iter().filter(|c| visible(c)).collect();
+    let mut shown: Vec<&Connection> = conns.iter().filter(|c| visible(c)).collect();
+    sort_conns(&mut shown, conn_sort, conn_rates, i18n);
     if shown.is_empty() {
         ui.label(theme::dim_text(&i18n.t("conns-empty"), 14.0));
         return changed;
@@ -277,26 +297,60 @@ fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         .auto_shrink(false)
         .show(ui, |ui| {
             egui::Grid::new("connections_grid")
-                .num_columns(7)
+                .num_columns(9)
                 .spacing([24.0, 9.0])
                 .striped(true)
                 .show(ui, |ui| {
-                    for key in [
-                        "col-process",
-                        "col-proto",
-                        "col-remote",
-                        "col-location",
-                        "col-down",
-                        "col-up",
-                        "col-action",
-                    ] {
-                        ui.label(
-                            RichText::new(i18n.t(key))
-                                .size(12.0)
-                                .strong()
-                                .color(theme::c().text_dim),
-                        );
-                    }
+                    // 表头:可排序列可点击(当前排序列带方向三角),
+                    // 协议/远端/动作为纯展示列
+                    let mut header = |ui: &mut egui::Ui, key: &str, sort: Option<ConnSort>| {
+                        let mut text = i18n.t(key);
+                        let active = conn_sort.is_some_and(|(k, _)| Some(k) == sort);
+                        if active {
+                            let tri = if conn_sort.is_some_and(|(_, asc)| asc) {
+                                '\u{25B2}'
+                            } else {
+                                '\u{25BC}'
+                            };
+                            text = format!("{text} {tri}");
+                        }
+                        let label = RichText::new(text)
+                            .size(12.0)
+                            .strong()
+                            .color(theme::c().text_dim);
+                        let resp = match sort {
+                            Some(s) => {
+                                let r = ui.selectable_label(active, label);
+                                if r.clicked() {
+                                    let current: ConnSortState = *conn_sort;
+                                    let next = match current {
+                                        Some((k, asc)) if k == s => (s, !asc),
+                                        _ => (s, true),
+                                    };
+                                    *conn_sort = Some(next);
+                                }
+                                r
+                            }
+                            None => {
+                                ui.add(egui::Label::new(label));
+                                ui.interact(
+                                    ui.max_rect(),
+                                    egui::Id::new(("conn-header", key)),
+                                    egui::Sense::hover(),
+                                )
+                            }
+                        };
+                        resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+                    };
+                    header(ui, "col-process", Some(ConnSort::Process));
+                    header(ui, "col-proto", None);
+                    header(ui, "col-remote", None);
+                    header(ui, "col-location", Some(ConnSort::Location));
+                    header(ui, "col-down", Some(ConnSort::RateDown));
+                    header(ui, "col-up", Some(ConnSort::RateUp));
+                    header(ui, "col-down-total", Some(ConnSort::TotalDown));
+                    header(ui, "col-up-total", Some(ConnSort::TotalUp));
+                    header(ui, "col-action", None);
                     ui.end_row();
 
                     for conn in shown {
@@ -397,6 +451,17 @@ fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                             i18n.t("conn-total-bytes"),
                             fmt_bytes(conn.bytes_out)
                         ));
+                        // 累计字节列(速率列的悬停信息在此显式展示)
+                        ui.label(
+                            RichText::new(fmt_bytes(conn.bytes_in))
+                                .size(13.0)
+                                .color(theme::c().inbound),
+                        );
+                        ui.label(
+                            RichText::new(fmt_bytes(conn.bytes_out))
+                                .size(13.0)
+                                .color(theme::c().outbound),
+                        );
                         // 规则求值:命中规则的连接标注动作,未命中默认放行不标注
                         match rules.evaluate(&rules_engine::MatchReq::from_conn(
                             conn,
@@ -422,6 +487,46 @@ fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                 });
         });
     changed
+}
+
+/// 按表头排序状态排列连接(None = 表快照原序);文本键大小写不敏感,
+/// 未知归属(无定位)无论方向恒排在有位置连接之后
+fn sort_conns(
+    shown: &mut [&Connection],
+    sort: &ConnSortState,
+    conn_rates: &HashMap<u64, (u64, u64)>,
+    i18n: &I18n,
+) {
+    use std::cmp::Ordering;
+    let Some((key, asc)) = *sort else {
+        return;
+    };
+    let flip = |c: Ordering| if asc { c } else { c.reverse() };
+    let rate = |id: u64, up: bool| match conn_rates.get(&id) {
+        Some(r) => {
+            if up {
+                r.1
+            } else {
+                r.0
+            }
+        }
+        None => 0,
+    };
+    shown.sort_unstable_by(|a, b| match key {
+        ConnSort::Process => flip(a.process.to_lowercase().cmp(&b.process.to_lowercase())),
+        ConnSort::Location => match (a.city, b.city) {
+            (Some(x), Some(y)) => {
+                flip(geoip::place_label(x, i18n).cmp(&geoip::place_label(y, i18n)))
+            }
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (None, None) => Ordering::Equal,
+        },
+        ConnSort::RateDown => flip(rate(a.id, false).cmp(&rate(b.id, false))),
+        ConnSort::RateUp => flip(rate(a.id, true).cmp(&rate(b.id, true))),
+        ConnSort::TotalDown => flip(a.bytes_in.cmp(&b.bytes_in)),
+        ConnSort::TotalUp => flip(a.bytes_out.cmp(&b.bytes_out)),
+    });
 }
 
 /// 进程列第二行文本:签名状态 + 映像路径(超长取尾部保留文件名)

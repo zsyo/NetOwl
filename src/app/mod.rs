@@ -96,6 +96,8 @@ pub struct NetOwlApp {
     etw_seen: HashSet<etw::FlowKey>,
     /// 每连接实时速率(键 = conn.id,ETW 字节差值/秒)
     conn_rates: HashMap<u64, (u64, u64)>,
+    /// 连接列表表头排序状态(会话内,不持久化)
+    conn_sort: ui::ConnSortState,
     /// 上一轮 ETW 字节快照(速率差值基准,键 = conn.id)
     conn_prev_bytes: HashMap<u64, (u64, u64)>,
     /// 新连接询问(Little Snitch 式弹窗)
@@ -163,6 +165,7 @@ impl NetOwlApp {
             etw_poll_at: Instant::now(),
             etw_seen: HashSet::new(),
             conn_rates: HashMap::new(),
+            conn_sort: None,
             conn_prev_bytes: HashMap::new(),
             asker: Asker::new(),
             local_probe: local_ip::Probe::new(),
@@ -634,6 +637,7 @@ impl eframe::App for NetOwlApp {
             rdns: &self.rdns,
             rates: self.rates,
             conn_rates: &self.conn_rates,
+            conn_sort: &mut self.conn_sort,
             icon_tex: &self.icon_tex,
             history: &mut self.history,
             history_db: &self.history_db,
