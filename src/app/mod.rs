@@ -108,6 +108,10 @@ pub struct NetOwlApp {
     etw_seen: HashSet<etw::FlowKey>,
     /// 每连接实时速率(键 = conn.id,ETW 字节差值/秒)
     conn_rates: HashMap<u64, (u64, u64)>,
+    /// UDP 行最近已知远端缓存:表快照无远端,活跃流回填仅在流活跃的轮次
+    /// 生效,流空闲收割后行会回落 *:*;缓存 socket 最后通信的远端,
+    /// socket 存活期间持续展示(键 = (pid, 本地端口),表行消失时清理)
+    udp_last_remote: HashMap<(u32, u16), (Ipv4Addr, u16)>,
     /// TEMP-UDPDIAG:UDP 回填诊断日志上次输出时刻(验收后删除)
     etw_diag_at: Instant,
     /// 连接列表表头排序状态(会话内,不持久化)
@@ -195,6 +199,7 @@ impl NetOwlApp {
             conns_refresh_at: Instant::now() - CONNS_REFRESH_INTERVAL,
             etw_seen: HashSet::new(),
             conn_rates: HashMap::new(),
+            udp_last_remote: HashMap::new(),
             etw_diag_at: Instant::now(),
             conn_sort: None,
             log_window: ui::log_window::PageState::new(),
@@ -597,26 +602,49 @@ impl NetOwlApp {
                     }
                     Protocol::Udp => {
                         udp_rows += 1;
-                        let Some(g) = udp_groups.get(&(c.pid, c.local_port)) else {
-                            continue;
-                        };
-                        udp_filled += 1;
-                        if c.remote_ip != g.rep.key.remote_ip
-                            || c.remote_port != g.rep.key.remote_port
-                        {
-                            c.remote_ip = g.rep.key.remote_ip;
-                            c.remote_port = g.rep.key.remote_port;
-                            c.city = geoip::locate(c.remote_ip).map(Place::Geo);
+                        match udp_groups.get(&(c.pid, c.local_port)) {
+                            Some(g) => {
+                                udp_filled += 1;
+                                if c.remote_ip != g.rep.key.remote_ip
+                                    || c.remote_port != g.rep.key.remote_port
+                                {
+                                    c.remote_ip = g.rep.key.remote_ip;
+                                    c.remote_port = g.rep.key.remote_port;
+                                    c.city = geoip::locate(c.remote_ip).map(Place::Geo);
+                                }
+                                c.bytes_in = g.bytes.0;
+                                c.bytes_out = g.bytes.1;
+                                // 记录最后通信的远端,流收割后 socket 行仍可展示
+                                self.udp_last_remote
+                                    .insert((c.pid, c.local_port), (c.remote_ip, c.remote_port));
+                                hits.extend(g.keys.iter().copied());
+                            }
+                            None => {
+                                // 无活跃流:回退最近已知远端(此前通信过的 socket)
+                                if let Some((ip, port)) =
+                                    self.udp_last_remote.get(&(c.pid, c.local_port))
+                                    && (c.remote_ip != *ip || c.remote_port != *port)
+                                {
+                                    c.remote_ip = *ip;
+                                    c.remote_port = *port;
+                                    c.city = geoip::locate(c.remote_ip).map(Place::Geo);
+                                }
+                            }
                         }
-                        c.bytes_in = g.bytes.0;
-                        c.bytes_out = g.bytes.1;
-                        hits.extend(g.keys.iter().copied());
                     }
                 }
             }
         }
         self.etw_seen.extend(hits);
         drop(by_key);
+        // 缓存清理:socket 关闭(UDP 表行消失)后释放对应项
+        let live_udp: HashSet<(u32, u16)> = self
+            .conns
+            .iter()
+            .filter(|c| c.proto == Protocol::Udp)
+            .map(|c| (c.pid, c.local_port))
+            .collect();
+        self.udp_last_remote.retain(|k, _| live_udp.contains(k));
         self.update_conn_rates(dt);
 
         // TEMP-UDPDIAG:每 5s 输出两侧键样例,定位 UDP 回填断链环节
