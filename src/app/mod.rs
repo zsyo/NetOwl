@@ -362,17 +362,19 @@ impl NetOwlApp {
     }
 
     /// 连接数据刷新(1s 节流):快照拉取与其全部派生逻辑。
-    /// 高帧率重绘(地图动画)帧内直接跳过,连接数据本就是秒级口径
+    /// 高帧率重绘(地图动画)帧内直接跳过,连接数据本就是秒级口径。
+    /// ETW 合并(UDP 远端回填)先于 rDNS 派发与 Tracker diff:
+    /// 前者让 UDP 远端可查 PTR,后者让完结落库带真实远端
     fn poll_conns(&mut self, ctx: &egui::Context) {
         if self.conns_refresh_at.elapsed() < CONNS_REFRESH_INTERVAL {
             return;
         }
         self.conns_refresh_at = Instant::now();
         self.conns = self.collector.snapshot();
+        self.poll_etw();
         self.rdns.update(&self.conns);
         self.poll_icons(ctx);
         self.poll_history();
-        self.poll_etw();
         self.poll_ask();
         self.poll_temp_rules();
     }
@@ -537,8 +539,11 @@ impl NetOwlApp {
     }
 
     /// ETW 流量事件合并(与采集同频):
-    /// 1) 活跃流的收发字节填充到连接快照(键 = PID+协议+本地端口+远端,
-    ///    不含本地 IP —— Connection 未暴露该字段);
+    /// 1) 活跃流的收发字节填充到连接快照:TCP 按精确键(PID+协议+本地端口+
+    ///    远端,不含本地 IP —— Connection 未暴露该字段);UDP 表行无远端
+    ///    (系统 UDP 表不含对端),按 PID+本地端口归并,行字节为该端口全部
+    ///    远端流之和,远端回填最近活跃流的端点(见 merge_udp_groups),归属
+    ///    就地重算,下游(显示/归属/域名/规则/询问/过滤/地图)随之生效;
     /// 2) 完结流若从未被表快照覆盖(存活短于采样间隙的短命连接)则
     ///    生成历史事件落盘;曾被覆盖的由 Tracker 正常处理,跳过。
     fn poll_etw(&mut self) {
@@ -554,19 +559,42 @@ impl NetOwlApp {
 
         let flows = etw.snapshot();
         let finished = etw.take_finished();
-        let by_key: HashMap<(u32, Protocol, u16, Ipv4Addr, u16), &etw::FlowAgg> =
-            flows.iter().map(|f| (flow_merge_key(&f.key), f)).collect();
+        let by_key: HashMap<(u32, Protocol, u16, Ipv4Addr, u16), &etw::FlowAgg> = flows
+            .iter()
+            .filter(|f| f.key.proto == Protocol::Tcp)
+            .map(|f| (flow_merge_key(&f.key), f))
+            .collect();
+        let udp_groups = merge_udp_groups(&flows);
         let mut hits: Vec<etw::FlowKey> = Vec::new();
         if real {
             for c in &mut self.conns {
-                let Some(f) =
-                    by_key.get(&(c.pid, c.proto, c.local_port, c.remote_ip, c.remote_port))
-                else {
-                    continue;
-                };
-                c.bytes_in = f.down_bytes;
-                c.bytes_out = f.up_bytes;
-                hits.push(f.key);
+                match c.proto {
+                    Protocol::Tcp => {
+                        let Some(f) =
+                            by_key.get(&(c.pid, c.proto, c.local_port, c.remote_ip, c.remote_port))
+                        else {
+                            continue;
+                        };
+                        c.bytes_in = f.down_bytes;
+                        c.bytes_out = f.up_bytes;
+                        hits.push(f.key);
+                    }
+                    Protocol::Udp => {
+                        let Some(g) = udp_groups.get(&(c.pid, c.local_port)) else {
+                            continue;
+                        };
+                        if c.remote_ip != g.rep.key.remote_ip
+                            || c.remote_port != g.rep.key.remote_port
+                        {
+                            c.remote_ip = g.rep.key.remote_ip;
+                            c.remote_port = g.rep.key.remote_port;
+                            c.city = geoip::locate(c.remote_ip).map(Place::Geo);
+                        }
+                        c.bytes_in = g.bytes.0;
+                        c.bytes_out = g.bytes.1;
+                        hits.extend(g.keys.iter().copied());
+                    }
+                }
             }
         }
         self.etw_seen.extend(hits);
@@ -620,6 +648,41 @@ impl NetOwlApp {
 /// 表快照连接与 ETW 流的合并键(不含本地 IP)
 fn flow_merge_key(k: &etw::FlowKey) -> (u32, Protocol, u16, Ipv4Addr, u16) {
     (k.pid, k.proto, k.local_port, k.remote_ip, k.remote_port)
+}
+
+/// 同一 UDP socket 行(PID+本地端口)的 ETW 流归并结果
+struct UdpGroup<'a> {
+    /// 代表流(最近活跃),其远端端点回填到表快照行
+    rep: &'a etw::FlowAgg,
+    /// 组内全部流的收发字节和 (下行, 上行):远端列只展示一个代表端点,
+    /// 字节列保持端口级总量不丢账
+    bytes: (u64, u64),
+    /// 组内全部流键:合并命中的流完结时不再按短命连接落盘,由 Tracker
+    /// 按表行口径处理(与 TCP 一致)
+    keys: Vec<etw::FlowKey>,
+}
+
+/// UDP 流按 (PID, 本地端口) 分组:一个 socket 可与多个远端通信,
+/// 表快照行只有一条,归并后单行承载全部远端的流量
+fn merge_udp_groups<'a>(flows: &'a [etw::FlowAgg]) -> HashMap<(u32, u16), UdpGroup<'a>> {
+    let mut groups: HashMap<(u32, u16), UdpGroup<'a>> = HashMap::new();
+    for f in flows.iter().filter(|f| f.key.proto == Protocol::Udp) {
+        let g = groups
+            .entry((f.key.pid, f.key.local_port))
+            .or_insert_with(|| UdpGroup {
+                rep: f,
+                bytes: (0, 0),
+                keys: Vec::new(),
+            });
+        g.bytes.0 += f.down_bytes;
+        g.bytes.1 += f.up_bytes;
+        g.keys.push(f.key);
+        // 代表流取 (最近活跃, 流量) 字典序最大:活跃度并列时选择不抖动
+        if (f.last, f.down_bytes + f.up_bytes) > (g.rep.last, g.rep.down_bytes + g.rep.up_bytes) {
+            g.rep = f;
+        }
+    }
+    groups
 }
 
 /// 短命连接完结事件:进程反查失败(已退出)时进程名留空;

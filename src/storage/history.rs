@@ -57,7 +57,10 @@ impl Tracker {
         }
     }
 
-    /// 对比当前活跃快照,返回本轮完结的连接
+    /// 对比当前活跃快照,返回本轮完结的连接。
+    /// 首见登记 first_seen;远端字段每轮随快照行刷新——UDP 行首见时可能
+    /// 尚无流量(远端回填发生在后续轮的 ETW 合并),不刷新会以 0.0.0.0 落库;
+    /// TCP 行远端稳定,刷新无影响
     pub fn diff(&mut self, real: bool, conns: &[Connection], now: u64) -> Vec<ClosedConn> {
         if !real {
             self.index.clear();
@@ -66,7 +69,7 @@ impl Tracker {
         let mut current: HashSet<u64> = HashSet::with_capacity(conns.len());
         for c in conns {
             current.insert(c.id);
-            self.index.entry(c.id).or_insert_with(|| ClosedConn {
+            let e = self.index.entry(c.id).or_insert_with(|| ClosedConn {
                 event_id: c.id,
                 first_seen: now,
                 last_seen: now,
@@ -78,6 +81,9 @@ impl Tracker {
                 remote_ip: c.remote_ip,
                 remote_port: c.remote_port,
             });
+            // 首见登记 first_seen,远端每轮刷新(见函数注释)
+            e.remote_ip = c.remote_ip;
+            e.remote_port = c.remote_port;
         }
         let gone: Vec<u64> = self
             .index
