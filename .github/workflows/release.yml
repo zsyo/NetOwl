@@ -1,0 +1,104 @@
+name: Release
+
+# 发布工作流:推送 v* tag 时构建 Windows x64 便携包并创建 GitHub Release;
+# 也可手动触发仅构建与打包演练(不创建 Release)。
+# 发布前 Cargo.toml 的 version 应与 tag 对齐(如 tag v0.1.0 ↔ version = "0.1.0");
+# tag 版本号含 '_'(如 v1.0.0_beta.1)时 Release 标记为预发布。
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build windows-x64
+    runs-on: windows-latest
+
+    outputs:
+      # 跨 job 传递预发布标志(release job 使用)
+      prerelease: ${{ steps.version.outputs.prerelease }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          # 自动开启依赖缓存
+          cache: true
+
+      - name: Get version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.ref }}" =~ refs/tags/v(.*) ]]; then
+            version="${BASH_REMATCH[1]}"
+            echo "version=${version}" >> "$GITHUB_OUTPUT"
+            # 预发布判定:tag 版本号含 '_' 分隔符即为预发布
+            # (不用 '-',RPM/pacman 等包管理器版本字段禁止 '-',保持同一规范)
+            if [[ "$version" == *_* ]]; then
+              echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "version=latest" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # 全部资源(底图/GeoIP/图标字体/词条)编译期内嵌,产物仅 exe;
+      # release 构建嵌入 UAC/DPI manifest(build.rs 按 PROFILE 判定)
+      - name: Build
+        run: cargo build --release --target x86_64-pc-windows-msvc
+
+      - name: Create portable zip
+        # 命名与本地 tools/package_release.ps1 对齐:netowl_{v}_windows_x64-portable.zip
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $portableDir = "netowl_${version}_windows_x64-portable"
+          New-Item -ItemType Directory -Force -Path $portableDir
+
+          $exe = "target/x86_64-pc-windows-msvc/release/netowl.exe"
+          if (-not (Test-Path $exe)) {
+              Write-Error "Required file $exe not found!"
+              exit 1
+          }
+          Copy-Item -Path $exe -Destination "$portableDir/"
+
+          Compress-Archive -Path "$portableDir/*" -DestinationPath "$portableDir.zip"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-packages-windows-x64
+          path: netowl_*-portable.zip
+
+  # 独立发布 job:仅 tag 触发时执行,创建 GitHub Release 并挂便携包
+  release:
+    name: Create Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          pattern: release-packages-*
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: artifacts/release-packages-*/**
+          draft: false
+          # tag 版本号含 '_'(如 v1.0.0_beta.1)时标记为预发布
+          prerelease: ${{ needs.build.outputs.prerelease == 'true' }}
+          generate_release_notes: true
