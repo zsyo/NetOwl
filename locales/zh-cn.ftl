@@ -149,7 +149,10 @@ rules-export = 导出
 rules-import = 导入
 rules-temp-badge = 临时
 rules-export-done = 已导出 {$n} 条规则
-rules-import-done = 已导入 {$n} 条规则
+rules-import-done = { $skipped ->
+    [0] 已导入 {$n} 条规则
+   *[other] 已导入 {$n} 条规则,跳过 {$skipped} 条重复
+}
 rules-export-failed = 导出失败: {$err}
 rules-import-failed = 导入失败: {$err}
 rule-action-allow = 允许

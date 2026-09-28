@@ -148,7 +148,10 @@ rules-export = Export
 rules-import = Import
 rules-temp-badge = temp
 rules-export-done = Exported {$n} rules
-rules-import-done = Imported {$n} rules
+rules-import-done = { $skipped ->
+    [0] Imported {$n} rules
+   *[other] Imported {$n} rules, skipped {$skipped} duplicates
+}
 rules-export-failed = Export failed: {$err}
 rules-import-failed = Import failed: {$err}
 rule-action-allow = Allow

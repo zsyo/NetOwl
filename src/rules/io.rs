@@ -1,12 +1,16 @@
 //! 规则导入导出(JSON 文件):文件不含 id/priority/created_at,条目顺序
-//! 即优先顺序;导入按文件顺序逐条追加为最低优先级,事务包裹全进或全不进。
-//! 文件读写与对话框在 UI 层,本模块只处理文本与规则集之间的转换。
+//! 即优先顺序;导入按文件顺序逐条追加为最低优先级,事务包裹全进或全不进;
+//! 与现有规则或文件内前文语义重复的条目跳过。文件读写与对话框在 UI 层,
+//! 本模块只处理文本与规则集之间的转换。
+
+use std::collections::HashSet;
 
 use rusqlite::Connection as Db;
 use serde::{Deserialize, Serialize};
 
-use super::{Rule, RuleSet};
+use super::{Action, Direction, RemoteKind, Rule, RuleSet};
 use super::{parse_action, parse_direction, parse_proto, parse_remote_kind};
+use crate::model::Protocol;
 
 /// 当前导出格式版本
 const FORMAT_VERSION: u32 = 1;
@@ -60,15 +64,20 @@ impl RuleSet {
     }
 
     /// 从 JSON 文本导入规则:条目按文件顺序逐条追加为最低优先级;
-    /// 事务包裹,任一条落库失败则整体回滚(含内存规则集)。返回导入条数
-    pub fn import_json(&mut self, db: &Db, text: &str) -> Result<usize, String> {
+    /// 与现有规则或文件内前文语义重复的条目跳过(判定见 dedup_key);
+    /// 事务包裹,任一条落库失败则整体回滚(含内存规则集)。
+    /// 返回 (导入条数, 跳过的重复条数)
+    pub fn import_json(&mut self, db: &Db, text: &str) -> Result<(usize, usize), String> {
         let file: RuleFile = serde_json::from_str(text).map_err(|e| e.to_string())?;
         if file.version != FORMAT_VERSION {
             return Err(format!("unsupported format version {}", file.version));
         }
         let tx = db.unchecked_transaction().map_err(|e| e.to_string())?;
         let base_len = self.rules.len();
+        // 已有规则(含临时)全量入集合,边导边补实现文件内去重
+        let mut seen: HashSet<DedupKey> = self.rules.iter().map(dedup_key).collect();
         let mut count = 0usize;
+        let mut skipped = 0usize;
         for entry in file.rules {
             let rule = Rule {
                 id: 0,
@@ -84,6 +93,10 @@ impl RuleSet {
                 port: entry.port,
                 local_port: 0,
             };
+            if !seen.insert(dedup_key(&rule)) {
+                skipped += 1;
+                continue;
+            }
             if let Err(e) = self.insert(&tx, rule) {
                 self.rules.truncate(base_len);
                 return Err(format!("insert failed: {e}"));
@@ -91,11 +104,42 @@ impl RuleSet {
             count += 1;
         }
         match tx.commit() {
-            Ok(()) => Ok(count),
+            Ok(()) => Ok((count, skipped)),
             Err(e) => {
                 self.rules.truncate(base_len);
                 Err(format!("commit failed: {e}"))
             }
         }
     }
+}
+
+/// 导入去重键:除名称/启用态/优先级/id 外的全部语义字段(见 dedup_key)
+type DedupKey = (
+    Action,
+    Direction,
+    Option<Protocol>,
+    String,
+    RemoteKind,
+    String,
+    u16,
+    u16,
+);
+
+/// 导入去重键:除名称/启用态/优先级/id 外的全部语义字段。进程与域名
+/// 大小写不敏感(与匹配语义一致)统一小写;动作不同不视为重复。
+/// 网段按原文比较——同数据重导场景均为原样字符串,不做解析归一
+fn dedup_key(r: &Rule) -> DedupKey {
+    (
+        r.action,
+        r.direction,
+        r.proto,
+        r.process.to_lowercase(),
+        r.remote_kind,
+        match r.remote_kind {
+            RemoteKind::Domain => r.remote_value.to_lowercase(),
+            _ => r.remote_value.clone(),
+        },
+        r.port,
+        r.local_port,
+    )
 }

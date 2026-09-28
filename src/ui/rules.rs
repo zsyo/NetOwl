@@ -201,9 +201,12 @@ fn do_import(db: &Db, rules: &mut RuleSet, state: &mut PageState, i18n: &I18n) {
         .map_err(|e| e.to_string())
         .and_then(|text| rules.import_json(db, &text));
     state.feedback = Some(match result {
-        Ok(n) => Feedback::now(
+        Ok((n, skipped)) => Feedback::now(
             false,
-            i18n.t_with_args("rules-import-done", &[("n", n.to_string())]),
+            i18n.t_with_args(
+                "rules-import-done",
+                &[("n", n.to_string()), ("skipped", skipped.to_string())],
+            ),
         ),
         Err(e) => Feedback::now(true, i18n.t_with_args("rules-import-failed", &[("err", e)])),
     });

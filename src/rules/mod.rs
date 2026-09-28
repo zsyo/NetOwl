@@ -22,7 +22,7 @@ use crate::storage::history;
 const EPHEMERAL_MIN: u16 = 49152;
 
 /// 规则动作
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Action {
     Allow,
     Block,
@@ -38,7 +38,7 @@ impl Action {
 }
 
 /// 匹配方向
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Direction {
     Any,
     Out,
@@ -56,7 +56,7 @@ impl Direction {
 }
 
 /// 远端匹配类型
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum RemoteKind {
     Any,
     Ip,
