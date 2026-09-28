@@ -195,13 +195,13 @@ unsafe fn run_consumer(agg: Arc<Mutex<Agg>>) {
         let props = prepare_props();
         let err = StartTraceW(&mut session, SESSION_NAME, props);
         if err.is_err() {
-            eprintln!("[ETW] 会话启动失败({err:?}),流量字节与短命连接不可用");
+            tracing::warn!("[ETW] 会话启动失败({err:?}),流量字节与短命连接不可用");
             return;
         }
         // ENABLE(1)、Information(4)、全部关键字
         let enable = EnableTraceEx2(session, &PROVIDER, 1, 4, u64::MAX, 0, 0, None);
         if enable.is_err() {
-            eprintln!("[ETW] 提供程序启用失败({enable:?}),流量字节与短命连接不可用");
+            tracing::warn!("[ETW] 提供程序启用失败({enable:?}),流量字节与短命连接不可用");
             let _ = ControlTraceW(
                 Default::default(),
                 SESSION_NAME,

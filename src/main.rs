@@ -9,6 +9,7 @@ use eframe::egui;
 
 use netowl::app::NetOwlApp;
 use netowl::i18n;
+use netowl::logging;
 use netowl::platform::{icon, paths};
 use netowl::storage::config::Config;
 use netowl::storage::db;
@@ -19,6 +20,7 @@ const APP_NAME: &str = "NetOwl";
 fn main() -> eframe::Result {
     // 数据根 = exe 同级;此后 config.toml、data/ 均为相对路径
     paths::init_data_root();
+    logging::init();
 
     let mut i18n = i18n::I18n::new();
     let available: Vec<String> = i18n

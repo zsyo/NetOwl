@@ -8,6 +8,7 @@
 pub mod app;
 pub mod collector;
 pub mod i18n;
+pub mod logging;
 pub mod map;
 pub mod model;
 pub mod net;

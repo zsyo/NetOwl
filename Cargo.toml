@@ -54,3 +54,7 @@ toml = "1.1.6"
 # 扩展 Linux 时需评估 default-features = false + 显式后端(AGENTS.md 扩展备忘)
 tray-icon = "0.25.1"
 unic-langid = "0.9"
+# 日志(AGENTS.md 日志规范):RUST_LOG 控制应用自身档位,默认 info 且第三方库收敛 warn;
+# env-filter 支持 RUST_LOG=netowl=debug 定向调试
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

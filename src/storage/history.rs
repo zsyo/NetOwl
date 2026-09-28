@@ -212,7 +212,7 @@ fn write_batch(conn: &mut Db, events: &[ClosedConn]) {
     let tx = match conn.transaction() {
         Ok(t) => t,
         Err(e) => {
-            eprintln!("[History] 开启事务失败: {e}");
+            tracing::warn!("[History] 开启事务失败: {e}");
             return;
         }
     };
@@ -233,11 +233,11 @@ fn write_batch(conn: &mut Db, events: &[ClosedConn]) {
                 e.remote_port
             ],
         ) {
-            eprintln!("[History] 写入连接历史失败: {e}");
+            tracing::warn!("[History] 写入连接历史失败: {e}");
         }
     }
     if let Err(e) = tx.commit() {
-        eprintln!("[History] 提交历史事务失败: {e}");
+        tracing::warn!("[History] 提交历史事务失败: {e}");
     }
 }
 
@@ -254,11 +254,11 @@ fn cleanup(conn: &Db, retention: &AtomicU32, last_cleanup: &mut Instant) {
         [before as i64],
     ) {
         Ok(n) if n > 0 => {
-            eprintln!("[History] 自动清理 {days} 天前历史 {n} 行");
+            tracing::info!("[History] 自动清理 {days} 天前历史 {n} 行");
             reclaim_space(conn);
         }
         Ok(_) => {}
-        Err(e) => eprintln!("[History] 自动清理失败: {e}"),
+        Err(e) => tracing::warn!("[History] 自动清理失败: {e}"),
     }
 }
 
@@ -276,13 +276,13 @@ fn purge_before(conn: &Db, days: u32) {
     match result {
         Ok(n) => {
             if days == 0 {
-                eprintln!("[History] 已清空全部历史 {n} 行");
+                tracing::info!("[History] 已清空全部历史 {n} 行");
             } else {
-                eprintln!("[History] 已清理 {days} 天前历史 {n} 行");
+                tracing::info!("[History] 已清理 {days} 天前历史 {n} 行");
             }
             reclaim_space(conn);
         }
-        Err(e) => eprintln!("[History] 清理历史失败: {e}"),
+        Err(e) => tracing::warn!("[History] 清理历史失败: {e}"),
     }
 }
 
@@ -298,10 +298,10 @@ fn reclaim_space(conn: &Db) {
         Ok(())
     };
     if let Err(e) = reclaim() {
-        eprintln!("[History] 归还空闲页失败: {e}");
+        tracing::warn!("[History] 归还空闲页失败: {e}");
     }
     if let Err(e) = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);") {
-        eprintln!("[History] 截断 WAL 失败: {e}");
+        tracing::warn!("[History] 截断 WAL 失败: {e}");
     }
 }
 

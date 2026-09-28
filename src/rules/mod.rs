@@ -263,7 +263,7 @@ impl RuleSet {
             Ok(())
         })();
         if let Err(e) = result {
-            eprintln!("[Rules] 规则加载失败: {e}");
+            tracing::warn!("[Rules] 规则加载失败: {e}");
         }
         RuleSet {
             rules,

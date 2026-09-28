@@ -83,14 +83,14 @@ impl TableCollector {
         let tcp = match query_tcp() {
             Ok(rows) => rows,
             Err(e) => {
-                eprintln!("[Collector] TCP 表查询失败: {e}");
+                tracing::warn!("[Collector] TCP 表查询失败: {e}");
                 return;
             }
         };
         let udp = match query_udp() {
             Ok(rows) => rows,
             Err(e) => {
-                eprintln!("[Collector] UDP 表查询失败: {e}");
+                tracing::warn!("[Collector] UDP 表查询失败: {e}");
                 return;
             }
         };

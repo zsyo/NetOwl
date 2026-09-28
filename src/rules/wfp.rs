@@ -235,7 +235,7 @@ fn reconcile(engine: HANDLE, live: &mut HashMap<GUID, Spec>, target: &[Spec]) {
         if rc == 0 {
             live.remove(key);
         } else {
-            eprintln!("[Wfp] 删除过滤器失败 code {rc}");
+            tracing::warn!("[Wfp] 删除过滤器失败 code {rc}");
         }
     }
     let live_specs: HashSet<Spec> = live.values().cloned().collect();
@@ -247,7 +247,7 @@ fn reconcile(engine: HANDLE, live: &mut HashMap<GUID, Spec>, target: &[Spec]) {
             Ok(key) => {
                 live.insert(key, spec.clone());
             }
-            Err(e) => eprintln!("[Wfp] 添加过滤器失败: {e}"),
+            Err(e) => tracing::warn!("[Wfp] 添加过滤器失败: {e}"),
         }
     }
 }

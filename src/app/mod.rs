@@ -137,7 +137,7 @@ impl NetOwlApp {
             match etw::Etw::start() {
                 Ok(e) => Some(e),
                 Err(e) => {
-                    eprintln!("[ETW] {e}");
+                    tracing::warn!("[ETW] {e}");
                     None
                 }
             }
@@ -326,9 +326,9 @@ impl NetOwlApp {
             if place != self.local_place {
                 self.local_place = place;
                 if place.is_some() {
-                    eprintln!("[LocalIp] 本机公网 IP {ip}({source})");
+                    tracing::info!("[LocalIp] 本机公网 IP {ip}({source})");
                 } else {
-                    eprintln!("[LocalIp] 本机公网 IP {ip}({source}) 无归属,回退默认点位");
+                    tracing::info!("[LocalIp] 本机公网 IP {ip}({source}) 无归属,回退默认点位");
                 }
             }
         }

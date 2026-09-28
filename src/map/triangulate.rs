@@ -55,7 +55,7 @@ pub fn triangulate(pts: &[(i32, i32)]) -> Vec<[u32; 3]> {
             if scans_without_clip >= n as u32 {
                 // 数值退化:整圈无耳,扇形兜底后立即返回(否则会反复兜底)
                 #[cfg(debug_assertions)]
-                eprintln!(
+                tracing::debug!(
                     "[triangulate] fan fallback: alive={} pts={}",
                     alive.iter().filter(|a| **a).count(),
                     n

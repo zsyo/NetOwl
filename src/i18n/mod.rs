@@ -159,7 +159,7 @@ impl I18n {
 
         let added = self.available_langs.len() - existing_count;
         if added > 0 {
-            eprintln!("[I18n] [locales] 重扫完成,新增 {added} 个语言");
+            tracing::info!("[I18n] [locales] 重扫完成,新增 {added} 个语言");
         }
     }
 

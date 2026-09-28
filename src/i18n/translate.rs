@@ -66,7 +66,7 @@ impl I18n {
     /// 记录缺失键告警(相同键仅告警一次)
     fn warn_missing_key(&self, key: &str) {
         if self.warned_keys.borrow_mut().insert(key.to_string()) {
-            eprintln!(
+            tracing::warn!(
                 "[I18n] [key:{key}] 当前语言({})与默认语言({DEFAULT_LANG_CODE})均无此词条,回退显示键名",
                 self.current_lang
             );

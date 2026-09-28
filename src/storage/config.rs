@@ -125,7 +125,7 @@ impl Config {
                     return cfg;
                 }
                 Err(e) => {
-                    eprintln!(
+                    tracing::warn!(
                         "[Config] 配置文件解析失败: {e},将备份为 {}.bak 并使用默认配置",
                         paths::CONFIG_FILE
                     );
@@ -189,7 +189,7 @@ impl Config {
         let content = match toml::to_string_pretty(self) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("[Config] TOML 序列化失败: {e}");
+                tracing::warn!("[Config] TOML 序列化失败: {e}");
                 return;
             }
         };
@@ -209,7 +209,7 @@ impl Config {
             std::fs::rename(&tmp, paths::CONFIG_FILE)
         });
         if let Err(e) = write_result {
-            eprintln!("[Config] 配置文件写入失败: {e}");
+            tracing::warn!("[Config] 配置文件写入失败: {e}");
         }
     }
 }

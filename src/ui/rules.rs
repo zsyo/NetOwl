@@ -395,7 +395,7 @@ fn rules_table(
                                 }
                                 if small_btn(ui, i18n.t("rules-delete")).clicked() {
                                     if let Err(e) = rules.delete(db, rule.id) {
-                                        eprintln!("[Rules] 删除规则 {} 失败: {e}", rule.id);
+                                        tracing::warn!("[Rules] 删除规则 {} 失败: {e}", rule.id);
                                     }
                                     removed = true;
                                 }
@@ -719,7 +719,7 @@ fn save_draft(draft: &mut Draft, db: &Db, rules: &mut RuleSet) -> bool {
     match result {
         Ok(()) => true,
         Err(e) => {
-            eprintln!("[Rules] 保存规则失败: {e}");
+            tracing::warn!("[Rules] 保存规则失败: {e}");
             draft.error = Some("rules-err-save");
             false
         }
