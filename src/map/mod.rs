@@ -9,6 +9,8 @@ use std::collections::BTreeMap;
 
 use std::collections::HashMap;
 
+use std::hash::{Hash, Hasher};
+
 use eframe::egui;
 use egui::epaint::QuadraticBezierShape;
 use egui::{
@@ -104,34 +106,44 @@ pub fn draw(
     let agg = aggregate(conns);
     let cycle_px = proj.cycle_px();
 
+    // 连线按 远端归属+主导方向 聚合绘制(LOD):连接数不再直接放大绘制量,
+    // 数百连接下仍是一城一线;线宽随聚合数增长表达流量规模
+    let mut lines: BTreeMap<(Place, bool), (usize, u64)> = BTreeMap::new();
     for c in conns {
-        // 归属未知(内网/保留段/未收录)的连接不上图,连接列表仍完整可见;
+        let Some(place) = c.city else { continue };
+        let entry = lines.entry((place, c.inbound_dominant())).or_insert((0, 0));
+        entry.0 += 1;
+        entry.1 += c.total_bytes();
+    }
+    for ((place, inbound), (count, _)) in &lines {
         // 节点端取最短方向等效经度(跨太平洋走短弧),主几何按可见世界副本
         // 平移铺开,屏幕边缘两侧由相邻副本自然接续
-        let Some(place) = c.city else { continue };
-        let (place_lon, place_lat) = geoip::place_pos(place);
+        let (place_lon, place_lat) = geoip::place_pos(*place);
         let end_lon = local_pos.0 + wrap_delta(place_lon - local_pos.0);
         let end = proj.project(end_lon, place_lat);
-        let inbound = c.inbound_dominant();
-        let (start, end) = if inbound { (end, local) } else { (local, end) };
+        let (start, end) = if *inbound { (end, local) } else { (local, end) };
         let ctrl = arc_ctrl(start, end);
-        let color = if inbound {
+        let color = if *inbound {
             theme::c().inbound
         } else {
             theme::c().outbound
         };
         let hovered = hover_pos.is_some_and(|h| wrap_dist(h, end, cycle_px) < 20.0);
+        let width = 1.4 + 1.1 * (*count as f32 - 1.0).sqrt().min(2.0);
         let stroke = if hovered {
-            Stroke::new(2.0, color.gamma_multiply(0.9))
+            Stroke::new(width + 0.6, color.gamma_multiply(0.9))
         } else {
-            Stroke::new(1.4, color.gamma_multiply(0.45))
+            Stroke::new(width, color.gamma_multiply(0.45))
         };
         // 曲线横向 bbox 为端点包围盒(控制点 x 居中),据此求可见副本区间
         let (min_x, max_x) = (start.x.min(end.x), start.x.max(end.x));
         let k0 = ((rect.left() - max_x) / cycle_px).floor() as i32;
         let k1 = ((rect.right() - min_x) / cycle_px).floor() as i32;
-        // 粒子与尾迹(主副本算一次,副本平移)
-        let phase = (t * 0.22 + hash_phase(c.id)) % 1.0;
+        // 粒子与尾迹(主副本算一次,副本平移);相位按聚合键派生保持稳定
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        place.hash(&mut hasher);
+        inbound.hash(&mut hasher);
+        let phase = (t * 0.22 + hash_phase(hasher.finish())) % 1.0;
         let trail: Vec<Pos2> = (0..3u32)
             .map(|k| bezier(start, ctrl, end, (phase - 0.02 * k as f32).rem_euclid(1.0)))
             .collect();

@@ -38,9 +38,11 @@ use crate::ui::rules as ui_rules;
 use crate::ui::theme;
 use crate::ui::{self, Page};
 
-/// 重绘节奏:地图页动画 30fps,静态页面低频
+/// 重绘节奏:地图动画 30fps;连接页速率与历史页反查 500ms;其余静态页 1s;
+/// 窗口隐藏(托盘)时一律 500ms(动画不可见,不再高帧率空转)
 const REPAINT_ANIMATED: Duration = Duration::from_millis(33);
 const REPAINT_IDLE: Duration = Duration::from_millis(500);
+const REPAINT_STATIC: Duration = Duration::from_millis(1000);
 /// 配置写盘防抖:合并连续变更(窗口拖动/缩放每帧都在变)
 const CONFIG_SAVE_DEBOUNCE: Duration = Duration::from_millis(500);
 /// 窗口几何恢复完成判定:超时放弃匹配(避免命令未生效时永久跳过捕获)
@@ -56,6 +58,9 @@ const TRAFFIC_INTERVAL_HIDDEN: Duration = Duration::from_secs(5);
 const WFP_SYNC_INTERVAL: Duration = Duration::from_secs(1);
 /// ETW 流量事件合并间隔(与表快照采集同频)
 const ETW_POLL_INTERVAL: Duration = Duration::from_secs(1);
+/// 连接快照与派生数据(rDNS/图标/历史/速率/询问)刷新间隔:与表快照采集
+/// 同频;地图动画 30fps 的帧内只做绘制,O(连接数) 的逻辑不逐帧执行
+const CONNS_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 /// 托盘常驻写入重试间隔:托盘设置项由 Explorer 在图标注册时创建,
 /// 启动数秒内可能尚不存在
 const TRAY_PIN_RETRY_INTERVAL: Duration = Duration::from_secs(60);
@@ -94,6 +99,8 @@ pub struct NetOwlApp {
     /// ETW 流量事件采集(提权时启动:连接字节填充与短命连接收割)
     etw: Option<etw::Etw>,
     etw_poll_at: Instant,
+    /// 连接快照上次刷新时刻(1s 节流,高帧率帧内跳过 O(连接数) 逻辑)
+    conns_refresh_at: Instant,
     /// 曾被表快照合并覆盖的 ETW 流键:完结流命中此集合说明表快照
     /// 跟踪器已记录,不按短命连接重复落盘
     etw_seen: HashSet<etw::FlowKey>,
@@ -115,6 +122,9 @@ pub struct NetOwlApp {
     conns: Vec<Connection>,
     tray_rx: Receiver<String>,
     should_exit: bool,
+    /// 主窗口可见性(自行跟踪):egui 0.36 的 viewport().visible() 恒为 None
+    /// 不可依赖;全部可见性变更路径(托盘命令/关闭按钮/单实例唤出)都必须同步此字段
+    window_visible: bool,
     /// 首帧窗口几何恢复目标;发送命令后转为 restore_active 等待生效
     pending_restore: Option<WindowRect>,
     /// 恢复命令已发送,几何生效前跳过捕获(防止默认位置覆盖配置)
@@ -170,6 +180,8 @@ impl NetOwlApp {
             wfp_sync_at: Instant::now(),
             etw,
             etw_poll_at: Instant::now(),
+            // 首帧立即拉取快照:把起点回拨一个周期
+            conns_refresh_at: Instant::now() - CONNS_REFRESH_INTERVAL,
             etw_seen: HashSet::new(),
             conn_rates: HashMap::new(),
             conn_sort: None,
@@ -183,6 +195,7 @@ impl NetOwlApp {
             conns: Vec::new(),
             tray_rx,
             should_exit: false,
+            window_visible: true,
             pending_restore,
             restore_active: false,
             restore_started: Instant::now(),
@@ -198,10 +211,12 @@ impl NetOwlApp {
         for cmd in tray::drain(&self.tray_rx) {
             match cmd.as_str() {
                 tray::CMD_SHOW => {
+                    self.window_visible = true;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
                     ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
                 }
                 tray::CMD_HIDE => {
+                    self.window_visible = false;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
                 }
                 tray::CMD_QUIT => {
@@ -342,6 +357,22 @@ impl NetOwlApp {
         }
     }
 
+    /// 连接数据刷新(1s 节流):快照拉取与其全部派生逻辑。
+    /// 高帧率重绘(地图动画)帧内直接跳过,连接数据本就是秒级口径
+    fn poll_conns(&mut self, ctx: &egui::Context) {
+        if self.conns_refresh_at.elapsed() < CONNS_REFRESH_INTERVAL {
+            return;
+        }
+        self.conns_refresh_at = Instant::now();
+        self.conns = self.collector.snapshot();
+        self.rdns.update(&self.conns);
+        self.poll_icons(ctx);
+        self.poll_history();
+        self.poll_etw();
+        self.poll_ask();
+        self.poll_temp_rules();
+    }
+
     /// 本机公网 IP 探测:取每轮首个成功结果,归属变化时刷新地图本机点位
     fn poll_local_ip(&mut self) {
         if let Some((ip, source)) = self.local_probe.poll() {
@@ -361,15 +392,21 @@ impl NetOwlApp {
         }
     }
 
-    /// 总速率采样:窗口隐藏(托盘)时放宽采样间隔降低功耗
+    /// 总速率采样:窗口隐藏(托盘)或最小化时放宽采样间隔降低功耗
     fn poll_traffic(&mut self, ctx: &egui::Context) {
-        let visible = ctx.input(|i| i.viewport().visible()) != Some(false);
-        let interval = if visible {
+        let interval = if self.is_shown(ctx) {
             TRAFFIC_INTERVAL_ACTIVE
         } else {
             TRAFFIC_INTERVAL_HIDDEN
         };
         self.rates = self.traffic.poll(interval);
+    }
+
+    /// 窗口是否对用户可见:自行跟踪的可见性 && 未最小化
+    /// (最小化状态由 egui 填充,可信)
+    fn is_shown(&self, ctx: &egui::Context) -> bool {
+        let minimized = ctx.input(|i| i.viewport().minimized) == Some(true);
+        self.window_visible && !minimized
     }
 
     /// 进程图标:活跃连接的映像路径逐个请求采集器,到位即建纹理缓存。
@@ -605,14 +642,8 @@ impl eframe::App for NetOwlApp {
         self.ensure_collector();
         self.poll_local_ip();
         self.poll_traffic(ctx);
-        self.conns = self.collector.snapshot();
-        self.rdns.update(&self.conns);
-        self.poll_icons(ctx);
+        self.poll_conns(ctx);
         self.writer.set_retention(self.config.general.history_days);
-        self.poll_history();
-        self.poll_etw();
-        self.poll_ask();
-        self.poll_temp_rules();
         self.poll_wfp();
 
         // 进入设置页时重扫 locales,加载运行期间新增的词条文件;
@@ -633,6 +664,7 @@ impl eframe::App for NetOwlApp {
         // 点关闭按钮 = 隐藏到托盘;仅托盘"退出"命令置位后才放行
         let close_requested = ctx.input(|i| i.viewport().close_requested());
         if close_requested && !self.should_exit {
+            self.window_visible = false;
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
         }
@@ -645,6 +677,8 @@ impl eframe::App for NetOwlApp {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // 页面与重绘判定先行(page 借用持续到帧末,后续不能碰 self)
+        let shown = self.is_shown(ui.ctx());
         // 字段级拆借用:conns/rdns 只读,config/map_view 需可变(设置页与地图交互)
         let page = &mut self.page;
         let collector_kind = self.collector.kind();
@@ -699,9 +733,16 @@ impl eframe::App for NetOwlApp {
             .show(ui, |ui| {
                 config_changed |= ui::central_ui(ui, page, &mut ctx);
             });
-        let repaint = match page {
-            Page::Map => REPAINT_ANIMATED,
-            _ => REPAINT_IDLE,
+        // 后台(托盘/最小化)统一低频;可见时地图动画 30fps,连接页速率 500ms,
+        // 历史/规则/设置等静态页 1s(页面切换与交互事件即时唤醒)
+        let repaint = if !shown {
+            REPAINT_IDLE
+        } else {
+            match page {
+                Page::Map => REPAINT_ANIMATED,
+                Page::Connections => REPAINT_IDLE,
+                _ => REPAINT_STATIC,
+            }
         };
         ui.ctx().request_repaint_after(repaint);
 
