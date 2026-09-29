@@ -35,25 +35,25 @@ impl Sampler {
         }
     }
 
-    /// 距上次采样达到 interval 才重新读表,否则沿用最近速率;
+    /// 距上次采样达到 interval 才重新读表;返回 None 表示本帧未产生新采样
+    /// (节流沿用旧值/查询失败/首次仅建基线),调用方不应把它计入历史序列;
     /// 表查询失败时保留旧速率(导航栏速率短暂停更,不中断界面)
-    pub fn poll(&mut self, interval: Duration) -> (u64, u64) {
+    pub fn poll(&mut self, interval: Duration) -> Option<(u64, u64)> {
         if self.last.is_some_and(|(_, _, at)| at.elapsed() < interval) {
-            return self.rates;
+            return None;
         }
         let now = Instant::now();
-        let Some((in_octets, out_octets)) = interface_octets() else {
-            return self.rates;
-        };
+        let (in_octets, out_octets) = interface_octets()?;
         if let Some((last_in, last_out, at)) = self.last.replace((in_octets, out_octets, now)) {
             let dt = now.duration_since(at).as_secs_f32();
             if dt > 0.0 {
                 let down = in_octets.saturating_sub(last_in);
                 let up = out_octets.saturating_sub(last_out);
                 self.rates = ((down as f32 / dt) as u64, (up as f32 / dt) as u64);
+                return Some(self.rates);
             }
         }
-        self.rates
+        None
     }
 }
 

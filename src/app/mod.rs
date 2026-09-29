@@ -461,17 +461,22 @@ impl NetOwlApp {
         }
     }
 
-    /// 总速率采样:窗口隐藏(托盘)或最小化时放宽采样间隔降低功耗
+    /// 总速率采样:窗口隐藏(托盘)或最小化时放宽采样间隔降低功耗。
+    /// 仅在真实采样(节流间隔到达且读表成功)时更新当前值并推进历史序列:
+    /// logic 每帧执行,无条件 push 会让走势图随帧率滚动(地图动画 30fps
+    /// 时 60 点缓冲两秒滚完,数据相同画成横线)
     fn poll_traffic(&mut self, ctx: &egui::Context) {
         let interval = if self.is_shown(ctx) {
             TRAFFIC_INTERVAL_ACTIVE
         } else {
             TRAFFIC_INTERVAL_HIDDEN
         };
-        self.rates = self.traffic.poll(interval);
-        self.rate_hist.push(self.rates);
-        if self.rate_hist.len() > RATE_HIST_LEN {
-            self.rate_hist.remove(0);
+        if let Some(rates) = self.traffic.poll(interval) {
+            self.rates = rates;
+            self.rate_hist.push(rates);
+            if self.rate_hist.len() > RATE_HIST_LEN {
+                self.rate_hist.remove(0);
+            }
         }
     }
 

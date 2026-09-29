@@ -18,7 +18,9 @@ pub fn header_cell(ui: &mut egui::Ui, text: &str) {
     );
 }
 
-/// 可排序表头单元格:激活列高亮并带方向三角,点击返回(由调用方更新排序状态)
+/// 可排序表头单元格:激活列高亮并带方向三角,点击返回(由调用方更新排序状态)。
+/// 按钮水平内边距归零:排序表头是按钮、展示表头是纯 Label,默认 padding
+/// 会让排序表头文字相对列缘整体右移(数据紧贴列缘的"位置"列上尤其明显)
 pub fn header_sort_cell(
     ui: &mut egui::Ui,
     text: &str,
@@ -26,6 +28,7 @@ pub fn header_sort_cell(
     ascending: bool,
 ) -> egui::Response {
     let p = theme::c();
+    ui.style_mut().spacing.button_padding = egui::vec2(0.0, 3.0);
     let mut text = text.to_owned();
     if active {
         text = format!("{} {}", text, widgets::segmented::sort_caret(ascending));
