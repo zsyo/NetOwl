@@ -5,17 +5,17 @@ use egui::{Align, Layout, RichText};
 
 use super::super::theme;
 
-/// 页面头部:强调色标题 + 弱化副标题
+/// 页面头部:强调色标题 + 弱化副标题(空串省略)
 pub fn page_header(ui: &mut egui::Ui, title: &str, subtitle: &str) {
-    ui.vertical(|ui| {
-        ui.label(
-            RichText::new(title)
-                .size(theme::font::H1)
-                .strong()
-                .color(theme::c().accent),
-        );
+    ui.label(
+        RichText::new(title)
+            .size(theme::font::H1)
+            .strong()
+            .color(theme::c().accent),
+    );
+    if !subtitle.is_empty() {
         ui.label(theme::dim_text(subtitle, theme::font::BODY));
-    });
+    }
 }
 
 /// 带右侧动作区的页面头部(动作区与标题块垂直居中对齐)

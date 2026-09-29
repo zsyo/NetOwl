@@ -109,6 +109,10 @@ settings-log-file-on = 写入日志文件
 settings-log-view = 查看日志
 settings-log-hint = 级别立即生效;文件日志写入 exe 同级 logs 目录,旧文件自动轮转;查看日志打开浏览窗口
 
+settings-section-appearance = 外观
+settings-section-monitoring = 监控
+settings-section-logging = 日志
+
 log-level-off = 关闭
 log-level-error = 错误
 log-level-warn = 警告

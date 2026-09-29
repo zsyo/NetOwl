@@ -109,6 +109,10 @@ settings-log-file-on = Write to log file
 settings-log-view = View logs
 settings-log-hint = Level applies immediately; file logs go to the logs directory next to the exe with rotation; "View logs" opens the log browser
 
+settings-section-appearance = Appearance
+settings-section-monitoring = Monitoring
+settings-section-logging = Logging
+
 log-level-off = Off
 log-level-error = Error
 log-level-warn = Warning
