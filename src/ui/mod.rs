@@ -5,6 +5,7 @@ pub mod ask;
 pub mod history;
 pub mod icons;
 pub mod log_window;
+pub mod map_panel;
 pub mod rules;
 pub mod theme;
 
@@ -154,8 +155,8 @@ pub fn nav_ui(
 /// 速率行固定宽度:标签起点固定,速率在行内向右延伸,整体近似居中
 const RATE_ROW_WIDTH: f32 = 150.0;
 
-/// 侧栏字体下文本宽度(居中偏移计算用)
-fn text_width(ui: &egui::Ui, text: &str, size: f32) -> f32 {
+/// 侧栏字体下文本宽度(居中偏移计算用;地图面板行宽计算共用)
+pub(crate) fn text_width(ui: &egui::Ui, text: &str, size: f32) -> f32 {
     ui.painter()
         .layout_no_wrap(
             text.to_owned(),
@@ -200,6 +201,8 @@ pub struct UiCtx<'a> {
     pub history_db: &'a history_store::Db,
     /// 规则集(连接页求值与规则页编辑)
     pub rules: &'a mut rules_engine::RuleSet,
+    /// 地图页左右面板与选中状态(端点点击联动)
+    pub map_panels: &'a mut map_panel::MapPanelState,
     /// 规则页状态
     pub rules_page: &'a mut rules::PageState,
     /// 日志浏览窗口状态
@@ -215,7 +218,9 @@ pub struct UiCtx<'a> {
 pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
     match page {
         Page::Map => {
-            map::draw(
+            map_header(ui, ctx);
+            ui.add_space(6.0);
+            let click = map::draw(
                 ui,
                 ctx.conns,
                 ctx.i18n,
@@ -223,7 +228,19 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
                 ctx.rdns,
                 ctx.icon_tex,
                 ctx.local_pos,
+                ctx.map_panels.place,
             );
+            match click {
+                Some(map::MapClick::Place(place)) => {
+                    ctx.map_panels.place = Some(place);
+                    ctx.map_panels.process = None;
+                }
+                Some(map::MapClick::Background) => {
+                    ctx.map_panels.place = None;
+                    ctx.map_panels.process = None;
+                }
+                None => {}
+            }
             false
         }
         Page::Connections => connections_ui(ui, ctx),
@@ -249,6 +266,60 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
         }
         Page::Settings => settings_ui(ui, ctx.config, ctx.i18n, ctx.log_window),
     }
+}
+
+/// 地图页标题行:标题、副标题、图例与左右面板开关(开关在图例之后,
+/// 从右往左排布)
+fn map_header(ui: &mut egui::Ui, ctx: &mut UiCtx) {
+    ui.horizontal(|ui| {
+        ui.heading(theme::accent_text(&ctx.i18n.t("map-title"), 20.0));
+        ui.label(theme::dim_text(&ctx.i18n.t("map-subtitle"), 13.0));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let panels = &mut *ctx.map_panels;
+            panel_toggle(
+                ui,
+                &mut panels.show_right,
+                icons::LAYOUT_TEXT_SIDEBAR_REVERSE,
+                &ctx.i18n.t("map-panel-toggle-inspector"),
+            );
+            panel_toggle(
+                ui,
+                &mut panels.show_left,
+                icons::LAYOUT_SIDEBAR,
+                &ctx.i18n.t("map-panel-toggle-list"),
+            );
+            ui.add_space(10.0);
+            legend(ui, theme::c().outbound, &ctx.i18n.t("map-legend-out"));
+            ui.add_space(10.0);
+            legend(ui, theme::c().inbound, &ctx.i18n.t("map-legend-in"));
+        });
+    });
+}
+
+/// 面板开关小按钮(图标高亮 = 面板显示)
+fn panel_toggle(ui: &mut egui::Ui, on: &mut bool, glyph: &str, tip: &str) {
+    let text = RichText::new(glyph).size(15.0).color(if *on {
+        theme::c().accent
+    } else {
+        theme::c().text_dim
+    });
+    let resp = ui
+        .add(
+            Button::new(text)
+                .frame(false)
+                .min_size(egui::vec2(24.0, 24.0)),
+        )
+        .on_hover_text(tip);
+    if resp.clicked() {
+        *on = !*on;
+    }
+}
+
+/// 图例:语义色圆点 + 文字
+fn legend(ui: &mut egui::Ui, color: Color32, label: &str) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
+    ui.painter().circle_filled(rect.center(), 4.0, color);
+    ui.label(theme::dim_text(label, 12.0));
 }
 
 /// 连接列表页;返回是否直接改动了配置(隐藏本地/局域网开关)。

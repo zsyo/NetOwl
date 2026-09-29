@@ -95,6 +95,8 @@ pub struct NetOwlApp {
     /// 规则集(内存 + SQLite 同步,规则页编辑与连接页求值共用)
     rules: rules::RuleSet,
     rules_page: ui_rules::PageState,
+    /// 地图页左右面板与选中状态(端点点击联动,会话态)
+    map_panels: ui::map_panel::MapPanelState,
     /// WFP 拦截引擎(启用规则翻译为过滤器,管理线程持有动态会话)
     wfp: wfp::Manager,
     wfp_sync_at: Instant,
@@ -191,6 +193,7 @@ impl NetOwlApp {
             history_db,
             rules,
             rules_page: ui_rules::PageState::new(),
+            map_panels: ui::map_panel::MapPanelState::default(),
             wfp: wfp::Manager::spawn(),
             wfp_sync_at: Instant::now(),
             etw,
@@ -931,6 +934,7 @@ impl eframe::App for NetOwlApp {
             history_db: &self.history_db,
             rules: &mut self.rules,
             rules_page: &mut self.rules_page,
+            map_panels: &mut self.map_panels,
             wfp_status: self.wfp.status(),
             writer: &self.writer,
             local_pos,
@@ -953,6 +957,21 @@ impl eframe::App for NetOwlApp {
             .show(ui, |ui| {
                 ui::nav_ui(ui, page, ctx.conns, ctx.i18n, ctx.rates, collector_kind)
             });
+
+        // 地图页操作面板:面板必须先于中央面板声明(egui 的面板顺序约束),
+        // 位于导航栏与中央画布之间,宽度可拖拽调节
+        if *page == Page::Map && ctx.map_panels.show_left {
+            egui::Panel::left("map-list")
+                .resizable(true)
+                .default_size(300.0)
+                .min_size(240.0)
+                .frame(
+                    egui::Frame::new()
+                        .fill(theme::c().bg_panel)
+                        .inner_margin(egui::Margin::same(10)),
+                )
+                .show(ui, |ui| ui::map_panel::list_panel(ui, &mut ctx));
+        }
 
         egui::CentralPanel::default()
             .frame(

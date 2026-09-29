@@ -23,3 +23,13 @@ pub const CARET_DOWN_FILL: &str = "\u{f229}";
 pub const CHECK_LG: &str = "\u{f633}";
 /// glyph: x-lg(拒绝)
 pub const X_LG: &str = "\u{f659}";
+/// glyph: layout-sidebar(地图页左面板开关)
+pub const LAYOUT_SIDEBAR: &str = "\u{f45f}";
+/// glyph: layout-text-sidebar-reverse(地图页右面板开关)
+pub const LAYOUT_TEXT_SIDEBAR_REVERSE: &str = "\u{f461}";
+/// glyph: chevron-right(进程组收起态)
+pub const CHEVRON_RIGHT: &str = "\u{f285}";
+/// glyph: chevron-down(进程组展开态)
+pub const CHEVRON_DOWN: &str = "\u{f282}";
+/// glyph: ban(进程级阻断生效中)
+pub const BAN: &str = "\u{f6b6}";

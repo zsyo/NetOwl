@@ -114,7 +114,7 @@ impl Rule {
         if self.local_port != 0 && self.local_port != req.local_port {
             return false;
         }
-        if !self.process.is_empty() && !match_process(&self.process, req) {
+        if !self.process.is_empty() && !match_process(&self.process, req.process, req.proc_path) {
             return false;
         }
         match self.remote_kind {
@@ -133,6 +133,29 @@ impl Rule {
             },
         }
         true
+    }
+
+    /// 构造持久阻断规则(地图面板一键阻断):`remote` 传 None 阻断整个
+    /// 进程,传目标 IP 只阻断该进程到此远端(不限端口);方向/协议任意,
+    /// process 填映像名(规则语义:映像名或路径结尾)
+    pub fn block(process: &str, remote: Option<Ipv4Addr>) -> Rule {
+        Rule {
+            id: 0,
+            name: match remote {
+                Some(ip) => format!("{process} -> {ip}"),
+                None => process.to_owned(),
+            },
+            enabled: true,
+            priority: 0,
+            action: Action::Block,
+            direction: Direction::Any,
+            proto: None,
+            process: process.to_owned(),
+            remote_kind: remote.map_or(RemoteKind::Any, |_| RemoteKind::Ip),
+            remote_value: remote.map_or(String::new(), |ip| ip.to_string()),
+            port: 0,
+            local_port: 0,
+        }
     }
 }
 
@@ -203,15 +226,15 @@ pub fn parse_net(input: &str) -> Option<(u32, u32)> {
 }
 
 /// 进程匹配:完整路径结尾(前带分隔符,避免误匹配同级前缀名)或映像名精确相等
-fn match_process(value: &str, req: &MatchReq) -> bool {
+fn match_process(value: &str, process: &str, proc_path: Option<&str>) -> bool {
     let v = value.trim().to_lowercase();
-    if let Some(path) = req.proc_path {
+    if let Some(path) = proc_path {
         let p = path.to_lowercase();
         if p == v || p.ends_with(&format!("\\{v}")) {
             return true;
         }
     }
-    req.process.to_lowercase() == v
+    process.to_lowercase() == v
 }
 
 /// 域名匹配:精确相等或子域名后缀(.value)
@@ -275,6 +298,27 @@ impl RuleSet {
     /// 求值:按优先级首个命中的启用规则;无命中返回 None(默认放行)
     pub fn evaluate(&self, req: &MatchReq) -> Option<&Rule> {
         self.rules.iter().find(|r| r.enabled && r.matches(req))
+    }
+
+    /// 命中该连接的启用阻断规则(求值首个命中且动作为阻断);
+    /// 地图面板的连接级阻断状态与撤销定位用
+    pub fn blocking_rule(&self, conn: &Connection, domain: Option<&str>) -> Option<&Rule> {
+        let req = MatchReq::from_conn(conn, domain);
+        self.evaluate(&req).filter(|r| r.action == Action::Block)
+    }
+
+    /// 进程级(远端任意、不限端口)的启用阻断规则:进程条件命中该映像名
+    /// 或已知完整路径即算;地图面板"阻断进程"的状态与撤销定位用
+    pub fn process_block_rule(&self, process: &str, proc_path: Option<&str>) -> Option<&Rule> {
+        self.rules.iter().find(|r| {
+            r.enabled
+                && r.action == Action::Block
+                && r.remote_kind == RemoteKind::Any
+                && r.port == 0
+                && r.local_port == 0
+                && !r.process.is_empty()
+                && match_process(&r.process, process, proc_path)
+        })
     }
 
     /// 插入会话内临时规则(不落库;负数 id,优先于全部持久规则)。

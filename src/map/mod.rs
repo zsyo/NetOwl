@@ -67,6 +67,17 @@ fn hash_phase(seed: u64) -> f32 {
 /// 归属节点聚合:连接数与累计流量
 type Agg = BTreeMap<Place, (usize, u64)>;
 
+/// 地图画布的点击结果(UI 层据此更新面板选中状态)
+pub enum MapClick {
+    /// 命中归属节点:选中该端点
+    Place(Place),
+    /// 命中空白:清除选中
+    Background,
+}
+
+/// 画布绘制入口,数据面(连接/域名/图标)与视图状态全部参数化传入,
+/// 不引入 App 层上下文类型以保持 map 与 ui 的边界
+#[allow(clippy::too_many_arguments)]
 pub fn draw(
     ui: &mut egui::Ui,
     conns: &[Connection],
@@ -75,18 +86,9 @@ pub fn draw(
     rdns: &rdns::Rdns,
     icon_tex: &HashMap<String, Option<TextureHandle>>,
     local_pos: (f32, f32),
-) {
-    ui.horizontal(|ui| {
-        ui.heading(theme::accent_text(&i18n.t("map-title"), 20.0));
-        ui.label(theme::dim_text(&i18n.t("map-subtitle"), 13.0));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            legend(ui, theme::c().outbound, &i18n.t("map-legend-out"));
-            ui.add_space(10.0);
-            legend(ui, theme::c().inbound, &i18n.t("map-legend-in"));
-        });
-    });
-    ui.add_space(6.0);
-
+    // 选中端点:其余连线/节点淡化,选中节点保持高亮(端点选中联动)
+    selected: Option<Place>,
+) -> Option<MapClick> {
     let (rect, resp) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
     let painter = ui.painter_at(rect);
     let t = ui.input(|i| i.time) as f32;
@@ -127,12 +129,20 @@ pub fn draw(
             theme::c().outbound
         };
         let hovered = hover_pos.is_some_and(|h| wrap_dist(h, end, cycle_px) < 20.0);
+        let dim = selected.is_some_and(|sel| *place != sel);
         let width = 1.4 + 1.1 * (*count as f32 - 1.0).sqrt().min(2.0);
-        let stroke = if hovered {
-            Stroke::new(width + 0.6, color.gamma_multiply(0.9))
+        // 选中端点联动:未选中端点的连线(含粒子)整体淡化
+        let line_alpha = if dim {
+            0.12
+        } else if hovered {
+            0.9
         } else {
-            Stroke::new(width, color.gamma_multiply(0.45))
+            0.45
         };
+        let stroke = Stroke::new(
+            if hovered && !dim { width + 0.6 } else { width },
+            color.gamma_multiply(line_alpha),
+        );
         // 曲线横向 bbox 为端点包围盒(控制点 x 居中),据此求可见副本区间
         let (min_x, max_x) = (start.x.min(end.x), start.x.max(end.x));
         let k0 = ((rect.left() - max_x) / cycle_px).floor() as i32;
@@ -157,15 +167,17 @@ pub fn draw(
                 painter.circle_filled(
                     *pt + off,
                     2.6 - 0.7 * i as f32,
-                    color.gamma_multiply(0.9 - 0.3 * i as f32),
+                    color.gamma_multiply(line_alpha * (1.0 - i as f32 * 0.33)),
                 );
             }
         }
     }
 
-    // 归属节点:半径随连接数增长,外圈脉冲;命中悬停的节点记下来。
-    // 节点与标签对每个可见 wrap 副本各画一份
+    // 归属节点:半径随连接数增长,外圈脉冲;命中悬停的节点记下来,
+    // 单击命中即选中端点(双击复位视图不算选中)。节点与标签对每个
+    // 可见 wrap 副本各画一份
     let mut hovered_place = None;
+    let mut clicked_place = None;
     for (place, (count, bytes)) in &agg {
         let (lon, lat) = geoip::place_pos(*place);
         let pos = proj.project(lon, lat);
@@ -173,7 +185,19 @@ pub fn draw(
         let hovered = hover_pos.is_some_and(|h| wrap_dist(h, pos, cycle_px) < r + 8.0);
         if hovered {
             hovered_place = Some(*place);
+            if resp.clicked() && !resp.double_clicked() {
+                clicked_place = Some(*place);
+            }
         }
+        let is_sel = selected == Some(*place);
+        let dim = selected.is_some() && !is_sel;
+        let fade = |color: Color32| {
+            if dim {
+                color.gamma_multiply(0.35)
+            } else {
+                color
+            }
+        };
         let pulse_alpha =
             0.35 + 0.3 * (0.5 + 0.5 * (t * 2.0 + hash_phase(*bytes) * std::f32::consts::TAU).sin());
         let (k0, k1) = proj.visible_cycles(pos.x, rect);
@@ -182,24 +206,34 @@ pub fn draw(
             painter.circle_stroke(
                 pos,
                 r + 5.0,
-                Stroke::new(1.5, theme::c().map_node.gamma_multiply(pulse_alpha)),
+                Stroke::new(1.5, fade(theme::c().map_node).gamma_multiply(pulse_alpha)),
             );
             painter.circle_filled(
                 pos,
                 r,
-                if hovered {
+                if hovered || is_sel {
                     theme::c().accent
                 } else {
-                    theme::c().map_node
+                    fade(theme::c().map_node)
                 },
             );
-            painter.circle_stroke(pos, r, Stroke::new(1.0, theme::c().text));
+            painter.circle_stroke(pos, r, Stroke::new(1.0, fade(theme::c().text)));
+            if is_sel {
+                // 选中端点常亮高亮环(区别于悬停的填充变色)
+                painter.circle_stroke(
+                    pos,
+                    r + 6.0,
+                    Stroke::new(2.0, theme::c().accent.gamma_multiply(0.8)),
+                );
+            }
             painter.text(
                 pos + Vec2::new(0.0, r + 13.0),
                 Align2::CENTER_CENTER,
                 geoip::place_label(*place, i18n),
                 FontId::proportional(11.0),
-                if hovered {
+                if dim {
+                    theme::c().text_dim.gamma_multiply(0.5)
+                } else if hovered || is_sel {
                     theme::c().text
                 } else {
                     theme::c().text_dim
@@ -229,6 +263,13 @@ pub fn draw(
 
     if let Some(place) = hovered_place {
         card::info_card(&painter, rect, place, conns, i18n, rdns, icon_tex);
+    }
+
+    // 单击空白(未命中任何节点)清除选中;拖拽结束与双击不算单击
+    if resp.clicked() && !resp.double_clicked() {
+        Some(clicked_place.map_or(MapClick::Background, MapClick::Place))
+    } else {
+        None
     }
 }
 
@@ -297,10 +338,4 @@ fn aggregate(conns: &[Connection]) -> Agg {
         entry.1 += c.total_bytes();
     }
     agg
-}
-
-fn legend(ui: &mut egui::Ui, color: Color32, label: &str) {
-    let (rect, _) = ui.allocate_exact_size(Vec2::new(12.0, 12.0), Sense::hover());
-    ui.painter().circle_filled(rect.center(), 4.0, color);
-    ui.label(theme::dim_text(label, 12.0));
 }
