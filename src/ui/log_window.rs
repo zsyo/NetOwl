@@ -8,7 +8,7 @@ use tracing::Level;
 
 use crate::i18n::I18n;
 use crate::logging::{self, LogLevel};
-use crate::ui::theme;
+use crate::ui::{TOOLBAR_ROW_H, theme};
 
 /// 窗口本地缓冲上限(消息长行换行渲染,非虚拟化,过大影响帧耗时)
 const MAX_LINES: usize = 1000;
@@ -109,9 +109,12 @@ pub fn show(ctx: &egui::Context, state: &mut PageState, i18n: &I18n) {
 /// 顶栏:展示级别下拉、自动滚动、过滤输入、清空按钮
 fn toolbar(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n) {
     // 历史页工具栏同款修正:行高从 interact_size.y 起步会导致混排错位
-    ui.style_mut().spacing.interact_size.y = 26.0;
+    ui.style_mut().spacing.interact_size.y = TOOLBAR_ROW_H;
     ui.horizontal(|ui| {
-        ui.label(theme::dim_text(&i18n.t("log-window-level"), 13.0));
+        ui.label(theme::dim_text(
+            &i18n.t("log-window-level"),
+            theme::font::BODY,
+        ));
         let before = state.shown_level;
         egui::ComboBox::from_id_salt("log-window-level")
             .width(110.0)
@@ -121,7 +124,7 @@ fn toolbar(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n) {
                     if ui
                         .selectable_label(
                             state.shown_level == level,
-                            RichText::new(i18n.t(level_key(level))).size(13.0),
+                            RichText::new(i18n.t(level_key(level))).size(theme::font::BODY),
                         )
                         .clicked()
                     {
@@ -137,7 +140,10 @@ fn toolbar(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n) {
         ui.add_space(8.0);
         let clear = ui.button(i18n.t("log-window-clear"));
         ui.add_space(8.0);
-        ui.label(theme::dim_text(&i18n.t("log-window-filter"), 13.0));
+        ui.label(theme::dim_text(
+            &i18n.t("log-window-filter"),
+            theme::font::BODY,
+        ));
         ui.add(
             egui::TextEdit::singleline(&mut state.filter)
                 .desired_width(ui.available_width() - 90.0)
@@ -167,7 +173,7 @@ fn log_list(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n) {
             "log-window-no-match"
         };
         ui.centered_and_justified(|ui| {
-            ui.label(theme::dim_text(&i18n.t(key), 14.0));
+            ui.label(theme::dim_text(&i18n.t(key), theme::font::H3));
         });
         return;
     }
@@ -185,13 +191,13 @@ fn log_list(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n) {
                     ui.label(
                         RichText::new(&line.time)
                             .monospace()
-                            .size(11.0)
+                            .size(theme::font::XS)
                             .color(theme::c().text_dim),
                     );
                     ui.label(
                         RichText::new(format!("{:5}", line.level))
                             .monospace()
-                            .size(11.0)
+                            .size(theme::font::XS)
                             .color(level_color(line.level)),
                     );
                     // 消息体显式 Wrap:horizontal 布局的默认 wrap 模式是
@@ -200,7 +206,7 @@ fn log_list(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n) {
                     ui.add(
                         egui::Label::new(
                             RichText::new(&line.message)
-                                .size(12.0)
+                                .size(theme::font::SM)
                                 .color(theme::c().text),
                         )
                         .wrap_mode(egui::TextWrapMode::Wrap),

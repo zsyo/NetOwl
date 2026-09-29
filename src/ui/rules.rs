@@ -11,10 +11,8 @@ use crate::i18n::I18n;
 use crate::model::Protocol;
 use crate::rules::wfp;
 use crate::rules::{self, Action, Direction, RemoteKind, Rule, RuleSet};
-use crate::ui::{icons, theme, widgets};
+use crate::ui::{TOOLBAR_ROW_H, icons, theme, widgets};
 
-/// 工具栏行内控件最小交互高度(与历史页同因:统一行高垂直居中)
-const TOOLBAR_ROW_H: f32 = 26.0;
 /// 编辑弹窗控件列宽度
 const FIELD_WIDTH: f32 = 220.0;
 /// 工具栏反馈消息展示时长

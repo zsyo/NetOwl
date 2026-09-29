@@ -72,6 +72,10 @@ const NAV_INDICATOR_W: f32 = 3.0;
 /// 导航选中/悬停过渡动画时长(秒)
 const NAV_ANIM_SECS: f32 = 0.15;
 
+/// 工具栏行内控件最小交互高度:egui horizontal 行高从默认 18px 起步,
+/// 混排高低控件会基线错位;统一抬高让整行垂直居中(历史/规则/日志工具栏共用)
+pub(crate) const TOOLBAR_ROW_H: f32 = 26.0;
+
 /// 左侧导航栏:品牌区、页面切换(选中指示条 + 过渡)、底部速率卡与状态行
 pub fn nav_ui(
     ui: &mut egui::Ui,

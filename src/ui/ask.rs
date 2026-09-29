@@ -82,22 +82,29 @@ pub fn show(ctx: &egui::Context, item: &mut AskItem, i18n: &I18n) -> Option<Deci
                     } else {
                         item.process.clone()
                     };
-                    ui.label(
-                        RichText::new(i18n.t("ask-title"))
-                            .size(16.0)
-                            .strong()
-                            .color(theme::c().accent),
-                    );
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(icons::SHIELD_EXCLAMATION)
+                                .size(theme::font::H2)
+                                .color(theme::c().accent),
+                        );
+                        ui.label(
+                            RichText::new(i18n.t("ask-title"))
+                                .size(theme::font::H2)
+                                .strong()
+                                .color(theme::c().accent),
+                        );
+                    });
                     ui.add_space(6.0);
                     ui.label(
                         RichText::new(i18n.t_with_args("ask-question", &[("process", process)]))
-                            .size(14.0)
+                            .size(theme::font::H3)
                             .color(theme::c().text),
                     );
                     ui.add_space(4.0);
                     ui.label(
                         RichText::new(item.remote_display())
-                            .size(15.0)
+                            .size(theme::font::H2)
                             .strong()
                             .color(theme::c().text),
                     );
@@ -113,8 +120,8 @@ pub fn show(ctx: &egui::Context, item: &mut AskItem, i18n: &I18n) -> Option<Deci
                     if item.domain.is_some() {
                         meta.push_str(&format!(" · {}", item.remote_ip));
                     }
-                    ui.label(theme::dim_text(&meta, 12.0));
-                    ui.add_space(8.0);
+                    ui.label(theme::dim_text(&meta, theme::font::SM));
+                    ui.add_space(theme::sp::SM);
 
                     // 倒计时:超时自动执行默认动作(拒绝·仅本次);
                     // 剩余秒数直接显示在条内,高度需容纳文字避免垂直裁剪;
@@ -144,12 +151,12 @@ pub fn show(ctx: &egui::Context, item: &mut AskItem, i18n: &I18n) -> Option<Deci
                     ui.add_space(8.0);
 
                     // 永久选项说明:跟随进度条之后、决策控件之前
-                    ui.label(theme::dim_text(&i18n.t("ask-always-hint"), 11.0));
-                    ui.add_space(8.0);
+                    ui.label(theme::dim_text(&i18n.t("ask-always-hint"), theme::font::XS));
+                    ui.add_space(theme::sp::SM);
 
                     // 生效范围:仅本次 / 永久·仅此目标 / 永久·整个程序
                     ui.horizontal(|ui| {
-                        ui.label(theme::dim_text(&i18n.t("ask-scope"), 13.0));
+                        ui.label(theme::dim_text(&i18n.t("ask-scope"), theme::font::BODY));
                         let name = |s: Scope| match s {
                             Scope::Once => i18n.t("ask-scope-once"),
                             Scope::Target => i18n.t("ask-scope-target"),
@@ -157,13 +164,13 @@ pub fn show(ctx: &egui::Context, item: &mut AskItem, i18n: &I18n) -> Option<Deci
                         };
                         egui::ComboBox::from_id_salt("ask-scope")
                             .width(190.0)
-                            .selected_text(RichText::new(name(item.scope)).size(13.0))
+                            .selected_text(RichText::new(name(item.scope)).size(theme::font::BODY))
                             .show_ui(ui, |ui| {
                                 for s in [Scope::Once, Scope::Target, Scope::Process] {
                                     if ui
                                         .selectable_label(
                                             item.scope == s,
-                                            RichText::new(name(s)).size(13.0),
+                                            RichText::new(name(s)).size(theme::font::BODY),
                                         )
                                         .clicked()
                                     {
@@ -181,10 +188,10 @@ pub fn show(ctx: &egui::Context, item: &mut AskItem, i18n: &I18n) -> Option<Deci
                         let btn = |ui: &mut egui::Ui, key: &str, allow: bool| {
                             let glyph = if allow { icons::CHECK_LG } else { icons::X_LG };
                             let mut text = RichText::new(format!("{glyph} {}", i18n.t(key)))
-                                .size(14.0)
+                                .size(theme::font::H3)
                                 .strong();
                             if allow {
-                                text = text.color(egui::Color32::WHITE);
+                                text = text.color(theme::c().on_accent);
                             }
                             let mut b = egui::Button::new(text)
                                 .corner_radius(CornerRadius::same(theme::RADIUS_MD))

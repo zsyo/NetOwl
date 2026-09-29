@@ -13,7 +13,7 @@ use crate::net::geoip;
 use crate::storage::config::Config;
 use crate::storage::history;
 use crate::storage::history_query::{self, Rows, ViewMode};
-use crate::ui::{icons, theme, widgets};
+use crate::ui::{TOOLBAR_ROW_H, icons, theme, widgets};
 
 /// 历史页;返回是否直接改动了配置(勾选不再提醒/清空还原提醒)
 pub fn show(
@@ -83,11 +83,6 @@ fn remind_card(
         });
     changed
 }
-
-/// 工具栏行内控件的最小交互高度:egui horizontal 的行高从默认 18px 起步,
-/// 高于行高的控件被强制顶部对齐而矮控件行内居中,造成文字基线错位;统一
-/// 抬高该值,让整行控件在同一行高内垂直居中(取行内最高控件并留余量)
-const TOOLBAR_ROW_H: f32 = 26.0;
 
 /// 工具栏:视图切换、筛选与刷新(左),库大小与清空(右)
 fn toolbar(
