@@ -319,7 +319,11 @@ fn rules_table(
                         let rule = rules.rules[i].clone();
                         let row_top = ui.cursor().top();
                         let mut enabled = rule.enabled;
-                        let toggle = widgets::toggle::toggle_switch(ui, &mut enabled);
+                        let toggle = widgets::toggle::toggle_switch(
+                            ui,
+                            &mut enabled,
+                            egui::Id::new(("rule-enabled-toggle", rule.id)),
+                        );
                         if toggle.changed() {
                             let _ = rules.set_enabled(db, rule.id, enabled);
                         }

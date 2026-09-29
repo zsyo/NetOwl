@@ -164,8 +164,9 @@ pub(crate) fn bytes_row(
 ) {
     let in_text = fmt_bytes(bytes_in);
     let out_text = fmt_bytes(bytes_out);
-    let in_w = text_width(ui, &in_text, theme::font::XS);
-    let out_w = text_width(ui, &out_text, theme::font::XS);
+    let arrow_w = text_width(ui, icons::ARROW_DOWN, theme::font::XS);
+    let in_w = text_width(ui, &in_text, theme::font::XS) + arrow_w;
+    let out_w = text_width(ui, &out_text, theme::font::XS) + arrow_w;
     ui.horizontal(|ui| {
         ui.style_mut().spacing.item_spacing.x = 4.0;
         let title_w = (ui.available_width() - in_w - out_w - 4.0 * 3.0).max(60.0);
@@ -180,17 +181,9 @@ pub(crate) fn bytes_row(
             );
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.style_mut().spacing.item_spacing.x = 6.0;
-            ui.label(
-                RichText::new(&out_text)
-                    .size(theme::font::XS)
-                    .color(theme::c().outbound),
-            );
-            ui.label(
-                RichText::new(&in_text)
-                    .size(theme::font::XS)
-                    .color(theme::c().inbound),
-            );
+            ui.style_mut().spacing.item_spacing.x = 3.0;
+            rate_pair(ui, &out_text, theme::c().outbound, icons::ARROW_UP);
+            rate_pair(ui, &in_text, theme::c().inbound, icons::ARROW_DOWN);
         });
     });
     let total = bytes_in + bytes_out;
@@ -202,6 +195,13 @@ pub(crate) fn bytes_row(
             0.0
         },
     );
+}
+
+/// 一组方向速率:方向箭头 + 数值(同色,避免仅靠颜色区分上传/下载)。
+/// 调用处为 right_to_left 布局:先加的靠右,故先数值后箭头得"箭头在左"
+fn rate_pair(ui: &mut egui::Ui, text: &str, color: Color32, arrow: &str) {
+    ui.label(RichText::new(text).size(theme::font::XS).color(color));
+    ui.label(RichText::new(arrow).size(theme::font::XS).color(color));
 }
 
 /// 流量占比条:faint 底轨 + accent 前景(ratio 0 起步保留 2% 可视宽)

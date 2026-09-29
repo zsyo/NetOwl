@@ -263,7 +263,7 @@ fn group_row(
         // 底色由 widget 五态自动接管);Truncate 容器拉满剩余宽
         let count_text = g.conns.len().to_string();
         let badge_w = text_width(ui, &count_text, theme::font::MICRO) + 18.0;
-        let block_w = if unknown { 0.0 } else { 20.0 };
+        let block_w = if unknown { 0.0 } else { 40.0 };
         let name_w = (ui.available_width() - badge_w - block_w - 4.0 * 2.0 - 4.0).max(60.0);
         ui.allocate_ui(egui::vec2(name_w, 22.0), |ui| {
             let text = RichText::new(display.clone())
@@ -292,31 +292,33 @@ fn group_row(
         if unknown {
             return;
         }
-        let blocked = rules.process_block_rule(&g.name, path).is_some();
-        let (glyph, tip) = if blocked {
-            (icons::BAN, i18n.t("map-unblock-process"))
-        } else {
-            (icons::X_LG, i18n.t("map-block-process"))
-        };
-        let resp = ui
-            .add(
-                Button::new(RichText::new(glyph).size(12.0).color(if blocked {
-                    theme::c().danger
-                } else {
-                    theme::c().text_dim
-                }))
-                .min_size(Vec2::new(20.0, 20.0)),
-            )
-            .on_hover_text(tip);
-        if resp.clicked() {
-            if blocked {
-                if let Some(r) = rules.process_block_rule(&g.name, path) {
-                    let id = r.id;
+        // 进程级阻断开关(开启态警示红):on = 阻断生效中,切换即建/删规则
+        let existing = rules.process_block_rule(&g.name, path).map(|r| r.id);
+        let mut on = existing.is_some();
+        let resp = widgets::toggle::toggle_switch_styled(
+            ui,
+            &mut on,
+            theme::c().danger,
+            true,
+            36.0,
+            20.0,
+            egui::Id::new(("proc-block-toggle", g.name.clone())),
+        );
+        if resp.changed() {
+            match (on, existing) {
+                (true, None) => {
+                    let _ = rules.insert(db, Rule::block(&g.name, None));
+                }
+                (false, Some(id)) => {
                     let _ = rules.delete(db, id);
                 }
-            } else {
-                let _ = rules.insert(db, Rule::block(&g.name, None));
+                _ => {}
             }
         }
+        resp.on_hover_text(if on {
+            i18n.t("map-unblock-process")
+        } else {
+            i18n.t("map-block-process")
+        });
     });
 }

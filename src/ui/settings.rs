@@ -144,9 +144,12 @@ pub(super) fn settings_ui(
                 &i18n.t("settings-ask-hint"),
                 |ui| {
                     // 开启后未命中规则的公网新连接弹窗询问
-                    changed |=
-                        widgets::toggle::toggle_switch(ui, &mut config.general.ask_connections)
-                            .changed();
+                    changed |= widgets::toggle::toggle_switch(
+                        ui,
+                        &mut config.general.ask_connections,
+                        egui::Id::new("settings-ask-toggle"),
+                    )
+                    .changed();
                 },
             );
             ui.add_space(theme::sp::SM);
@@ -156,8 +159,12 @@ pub(super) fn settings_ui(
                 &i18n.t("settings-tray-pin-hint"),
                 |ui| {
                     // 注册表 IsPromoted,写入失败静默保持系统默认;新会话生效
-                    changed |= widgets::toggle::toggle_switch(ui, &mut config.general.tray_pinned)
-                        .changed();
+                    changed |= widgets::toggle::toggle_switch(
+                        ui,
+                        &mut config.general.tray_pinned,
+                        egui::Id::new("settings-tray-toggle"),
+                    )
+                    .changed();
                 },
             );
         },
