@@ -3,9 +3,9 @@
 use std::collections::HashMap;
 
 use eframe::egui;
-use egui::{Label, RichText};
+use egui::{Align, Color32, Label, Layout, RichText};
 
-use super::{ConnSort, ConnSortState, UiCtx, conn_visible, icons, theme};
+use super::{ConnSort, ConnSortState, UiCtx, conn_visible, icons, theme, widgets};
 use crate::i18n::I18n;
 use crate::model::{Connection, Signing, fmt_bytes};
 use crate::net::geoip;
@@ -28,13 +28,17 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     } = ctx;
     // &mut UiCtx 解构出的引用字段带两层 &mut,借类型注解 coerce 回单层
     let conn_sort: &mut ConnSortState = conn_sort;
-    ui.heading(theme::accent_text(&i18n.t("conns-title"), 20.0));
-    ui.label(theme::dim_text(&i18n.t("conns-subtitle"), 13.0));
-    ui.add_space(6.0);
+    widgets::header::page_header(ui, &i18n.t("conns-title"), &i18n.t("conns-subtitle"));
+    ui.add_space(theme::sp::SM);
 
     // 本地/局域网远端噪音过滤(config 持久化,连接页与历史页共享)
     let mut changed = false;
     ui.horizontal(|ui| {
+        ui.label(
+            RichText::new(icons::FUNNEL)
+                .size(theme::font::XS)
+                .color(theme::c().text_dim),
+        );
         if ui
             .checkbox(&mut config.general.hide_local, i18n.t("filter-hide-local"))
             .changed()
@@ -48,56 +52,50 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
             changed = true;
         }
     });
-    ui.add_space(4.0);
+    ui.add_space(theme::sp::XS);
 
     // 空态判定与过滤同口径:全部连接都被隐藏时同样提示无连接
     let mut shown: Vec<&Connection> = conns.iter().filter(|c| conn_visible(config, c)).collect();
     sort_conns(&mut shown, conn_sort, conn_rates, i18n);
     if shown.is_empty() {
-        ui.label(theme::dim_text(&i18n.t("conns-empty"), 14.0));
+        ui.add_space(theme::sp::LG);
+        ui.label(theme::dim_text(&i18n.t("conns-empty"), theme::font::H3));
         return changed;
     }
 
     egui::ScrollArea::vertical()
         .auto_shrink(false)
         .show(ui, |ui| {
+            let table_left = ui.max_rect().left();
+            let table_right = ui.max_rect().right();
             egui::Grid::new("connections_grid")
                 .num_columns(9)
                 .spacing([24.0, 9.0])
-                .striped(true)
                 .show(ui, |ui| {
-                    // 表头:可排序列可点击(当前排序列带方向三角),
+                    // 表头:可排序列可点击(当前排序列高亮并带方向三角),
                     // 协议/远端/动作为纯展示列
                     let mut header = |ui: &mut egui::Ui, key: &str, sort: Option<ConnSort>| {
-                        let mut text = i18n.t(key);
                         let active = conn_sort.is_some_and(|(k, _)| Some(k) == sort);
-                        if active {
-                            let tri = if conn_sort.is_some_and(|(_, asc)| asc) {
-                                icons::CARET_UP_FILL
-                            } else {
-                                icons::CARET_DOWN_FILL
-                            };
-                            text = format!("{text} {tri}");
-                        }
-                        let label = RichText::new(text)
-                            .size(12.0)
-                            .strong()
-                            .color(theme::c().text_dim);
                         let resp = match sort {
                             Some(s) => {
-                                let r = ui.selectable_label(active, label);
+                                let ascending = conn_sort.is_some_and(|(_, asc)| asc);
+                                let r = widgets::table::header_sort_cell(
+                                    ui,
+                                    &i18n.t(key),
+                                    active,
+                                    ascending,
+                                );
                                 if r.clicked() {
                                     let current: ConnSortState = *conn_sort;
-                                    let next = match current {
+                                    *conn_sort = Some(match current {
                                         Some((k, asc)) if k == s => (s, !asc),
                                         _ => (s, true),
-                                    };
-                                    *conn_sort = Some(next);
+                                    });
                                 }
                                 r
                             }
                             None => {
-                                ui.add(egui::Label::new(label));
+                                widgets::table::header_cell(ui, &i18n.t(key));
                                 ui.interact(
                                     ui.max_rect(),
                                     egui::Id::new(("conn-header", key)),
@@ -119,13 +117,14 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                     ui.end_row();
 
                     for conn in shown {
+                        let row_top = ui.cursor().top();
                         let process = if conn.process.is_empty() {
                             format!("{} (PID {})", i18n.t("conn-proc-unknown"), conn.pid)
                         } else {
                             conn.process.clone()
                         };
                         // 进程列两行:映像名(带图标)+ 弱化的签名状态与路径。
-                        // 无图标的进程也占位 18px,保证各行文字起点对齐不跳动
+                        // 无图标的进程也占位,保证各行文字起点对齐不跳动
                         ui.vertical(|ui| {
                             ui.horizontal(|ui| {
                                 let tex = conn
@@ -133,33 +132,28 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                                     .as_deref()
                                     .and_then(|p| icon_tex.get(p))
                                     .and_then(|t| t.as_ref());
-                                match tex {
-                                    Some(t) => {
-                                        ui.add(
-                                            egui::Image::new(t)
-                                                .fit_to_exact_size(egui::vec2(16.0, 16.0)),
-                                        );
-                                    }
-                                    None => {
-                                        ui.allocate_exact_size(
-                                            egui::vec2(16.0, 16.0),
-                                            egui::Sense::hover(),
-                                        );
-                                    }
-                                }
+                                widgets::process::proc_icon(ui, tex, 16.0);
                                 ui.add(
                                     Label::new(
-                                        RichText::new(process).size(13.0).color(theme::c().text),
+                                        RichText::new(process)
+                                            .size(theme::font::BODY)
+                                            .color(theme::c().text),
                                     )
                                     .wrap_mode(egui::TextWrapMode::Extend),
                                 );
                             });
                             ui.add(
-                                Label::new(theme::dim_text(&proc_detail(conn, i18n), 11.0))
+                                Label::new(theme::dim_text(&proc_detail(conn, i18n), theme::font::XS))
                                     .wrap_mode(egui::TextWrapMode::Extend),
                             );
                         });
-                        ui.label(theme::dim_text(conn.proto.as_str(), 13.0));
+                        // 协议徽章:TCP 强调 / UDP 弱化
+                        let proto_kind = if conn.proto.as_str() == "TCP" {
+                            widgets::badge::BadgeKind::Accent
+                        } else {
+                            widgets::badge::BadgeKind::Neutral
+                        };
+                        widgets::badge::badge(ui, conn.proto.as_str(), proto_kind);
                         // rDNS 域名优先,域名下方弱化显示裸 IP;无 PTR 回退地址:端口。
                         // 单行延伸(Extend)禁用自动折行,列宽由最宽内容撑开
                         ui.vertical(|ui| match rdns.lookup(conn.remote_ip) {
@@ -167,21 +161,23 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                                 ui.add(
                                     Label::new(
                                         RichText::new(rdns::display(host, conn.remote_port, 36))
-                                            .size(13.0)
+                                            .size(theme::font::BODY)
                                             .color(theme::c().text),
                                     )
                                     .wrap_mode(egui::TextWrapMode::Extend),
                                 );
                                 ui.add(
-                                    Label::new(theme::dim_text(&conn.remote_ip.to_string(), 11.0))
-                                        .wrap_mode(egui::TextWrapMode::Extend),
+                                    Label::new(
+                                        theme::dim_text(&conn.remote_ip.to_string(), theme::font::XS),
+                                    )
+                                    .wrap_mode(egui::TextWrapMode::Extend),
                                 );
                             }
                             None => {
                                 ui.add(
                                     Label::new(
                                         RichText::new(conn.remote_display())
-                                            .size(13.0)
+                                            .size(theme::font::BODY)
                                             .color(theme::c().text),
                                     )
                                     .wrap_mode(egui::TextWrapMode::Extend),
@@ -192,66 +188,71 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                             Some(place) => geoip::place_label(place, i18n),
                             None => i18n.t("conn-loc-unknown"),
                         };
-                        ui.label(theme::dim_text(&location, 13.0));
+                        ui.label(theme::dim_text(&location, theme::font::BODY));
                         // 下载/上传列显示实时速率(ETW 字节差值),悬停显示累计字节;
                         // 未提权时 ETW 未启动,速率恒 0
                         let (rin, rout) = conn_rates.get(&conn.id).copied().unwrap_or((0, 0));
-                        ui.label(
-                            RichText::new(format!("{}/s", fmt_bytes(rin)))
-                                .size(13.0)
-                                .color(theme::c().inbound),
-                        )
-                        .on_hover_text(format!(
-                            "{} {}",
-                            i18n.t("conn-total-bytes"),
-                            fmt_bytes(conn.bytes_in)
-                        ));
-                        ui.label(
-                            RichText::new(format!("{}/s", fmt_bytes(rout)))
-                                .size(13.0)
-                                .color(theme::c().outbound),
-                        )
-                        .on_hover_text(format!(
-                            "{} {}",
-                            i18n.t("conn-total-bytes"),
-                            fmt_bytes(conn.bytes_out)
-                        ));
+                        rate_cell(ui, format!("{}/s", fmt_bytes(rin)), theme::c().inbound)
+                            .on_hover_text(format!(
+                                "{} {}",
+                                i18n.t("conn-total-bytes"),
+                                fmt_bytes(conn.bytes_in)
+                            ));
+                        rate_cell(ui, format!("{}/s", fmt_bytes(rout)), theme::c().outbound)
+                            .on_hover_text(format!(
+                                "{} {}",
+                                i18n.t("conn-total-bytes"),
+                                fmt_bytes(conn.bytes_out)
+                            ));
                         // 累计字节列(速率列的悬停信息在此显式展示)
-                        ui.label(
-                            RichText::new(fmt_bytes(conn.bytes_in))
-                                .size(13.0)
-                                .color(theme::c().inbound),
-                        );
-                        ui.label(
-                            RichText::new(fmt_bytes(conn.bytes_out))
-                                .size(13.0)
-                                .color(theme::c().outbound),
-                        );
-                        // 规则求值:命中规则的连接标注动作,未命中默认放行不标注
+                        rate_cell(ui, fmt_bytes(conn.bytes_in), theme::c().inbound);
+                        rate_cell(ui, fmt_bytes(conn.bytes_out), theme::c().outbound);
+                        // 规则求值:命中规则的连接标注动作徽章,未命中默认放行不标注
                         match rules.evaluate(&rules_engine::MatchReq::from_conn(
                             conn,
                             rdns.lookup(conn.remote_ip),
                         )) {
                             Some(hit) => {
-                                let (key, color) = match hit.action {
+                                let (key, kind) = match hit.action {
                                     rules_engine::Action::Allow => {
-                                        ("conn-action-allow", theme::c().status_ok)
+                                        ("conn-action-allow", widgets::badge::BadgeKind::Ok)
                                     }
                                     rules_engine::Action::Block => {
-                                        ("conn-action-block", theme::c().danger)
+                                        ("conn-action-block", widgets::badge::BadgeKind::Danger)
                                     }
                                 };
-                                ui.label(RichText::new(i18n.t(key)).size(13.0).color(color));
+                                widgets::badge::badge(ui, &i18n.t(key), kind);
                             }
                             None => {
                                 ui.label("");
                             }
                         }
                         ui.end_row();
+                        // 行悬停高亮:横跨表格全宽的底色(绘制于背景层垫在文字下)
+                        let row_bottom = ui.cursor().top() - 9.0;
+                        let row_rect = egui::Rect::from_min_max(
+                            egui::pos2(table_left, row_top),
+                            egui::pos2(table_right, row_bottom),
+                        );
+                        if ui.rect_contains_pointer(row_rect) {
+                            widgets::table::row_background(ui, row_rect, theme::c().hover_bg);
+                        }
                     }
                 });
         });
     changed
+}
+
+/// 速率/累计字节单元格:右对齐语义色数字
+fn rate_cell(ui: &mut egui::Ui, text: String, color: Color32) -> egui::Response {
+    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+        ui.label(
+            RichText::new(text)
+                .size(theme::font::BODY)
+                .color(color),
+        )
+    })
+    .inner
 }
 
 /// 按表头排序状态排列连接(None = 表快照原序);文本键大小写不敏感,
