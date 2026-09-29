@@ -171,17 +171,24 @@ pub(super) fn settings_ui(
         &i18n.t("settings-section-logging"),
         |ui| {
             ui.horizontal(|ui| {
-                ui.vertical(|ui| {
-                    ui.label(
-                        RichText::new(i18n.t("settings-log"))
-                            .size(theme::font::BODY)
-                            .strong()
-                            .color(theme::c().text),
-                    );
-                    ui.label(theme::dim_text(
-                        &i18n.t("settings-log-hint"),
-                        theme::font::XS,
-                    ));
+                // 右侧控件更宽(下拉 + 开关 + 按钮),左列相应多留空间
+                let left_w = (ui.available_width() - 390.0).max(120.0);
+                ui.allocate_ui(egui::vec2(left_w, 0.0), |ui| {
+                    ui.vertical(|ui| {
+                        ui.label(
+                            RichText::new(i18n.t("settings-log"))
+                                .size(theme::font::BODY)
+                                .strong()
+                                .color(theme::c().text),
+                        );
+                        ui.add(
+                            egui::Label::new(theme::dim_text(
+                                &i18n.t("settings-log-hint"),
+                                theme::font::XS,
+                            ))
+                            .wrap_mode(egui::TextWrapMode::Truncate),
+                        );
+                    });
                 });
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if ui.button(i18n.t("settings-log-view")).clicked() {
@@ -252,7 +259,7 @@ fn section_card<R>(
     });
 }
 
-/// 设置项行:左侧标签与说明,右侧控件(垂直居中)
+/// 设置项行:左侧标签与说明(限宽防与右侧控件重叠),右侧控件(垂直居中)
 fn setting_row<R>(
     ui: &mut egui::Ui,
     label: &str,
@@ -260,15 +267,27 @@ fn setting_row<R>(
     control: impl FnOnce(&mut egui::Ui) -> R,
 ) {
     ui.horizontal(|ui| {
-        ui.vertical(|ui| {
-            ui.label(
-                RichText::new(label)
-                    .size(theme::font::BODY)
-                    .strong()
-                    .color(theme::c().text),
-            );
-            ui.label(theme::dim_text(hint, theme::font::XS));
+        let left_w = (ui.available_width() - CTRL_AREA_W).max(120.0);
+        ui.allocate_ui(egui::vec2(left_w, 0.0), |ui| {
+            ui.vertical(|ui| {
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(label)
+                            .size(theme::font::BODY)
+                            .strong()
+                            .color(theme::c().text),
+                    )
+                    .wrap_mode(egui::TextWrapMode::Truncate),
+                );
+                ui.add(
+                    egui::Label::new(theme::dim_text(hint, theme::font::XS))
+                        .wrap_mode(egui::TextWrapMode::Truncate),
+                );
+            });
         });
         ui.with_layout(Layout::right_to_left(Align::Center), control);
     });
 }
+
+/// 右侧控件区预留宽度(最宽控件为 180 宽下拉,含余量)
+const CTRL_AREA_W: f32 = 260.0;

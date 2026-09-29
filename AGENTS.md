@@ -101,17 +101,30 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   与矢量底图解码(Natural Earth 世界 + DataV 中国混合,两档 LOD:110m 全局 /
   50m 放大,zoom>=3 切换;海岸线/国界按邻国共享边分类;labels 三种 kind +
   十段线段节 + 河流折线节两档))
-- src/ui/ - 界面(mod.rs:主窗口布局与页面(导航栏、连接列表、设置页、
-  UiCtx;conn_visible 为连接列表与地图页左右面板共用的本地/局域网远端
+- src/ui/ - 界面(mod.rs:主窗口布局与页面(标题栏、导航栏[品牌区/选中指示条
+  动画/底部速率走势卡]、UiCtx、TOOLBAR_ROW_H 工具栏行高共用常量;
+  conn_visible 为连接列表与地图页左右面板共用的本地/局域网远端
   过滤口径[hide_local/hide_lan]);
-  ask.rs:新连接询问弹窗(右下角无标题栏 toast,范围下拉 + 允许/拒绝,进度条
-  内嵌剩余秒数);history.rs:历史页(双视图切换、档位筛选、库大小显示、
-  超 1 GiB 提醒卡[勾选不再提醒=一票否决持久化,手动清空还原]、清理下拉菜单;
-  位置列实时反查 geoip);rules.rs:规则页(表格列宽常量化、表头与数据列居中、
-  增删改查/启停/上移下移/编辑弹窗带校验、WFP 拦截状态行);theme.rs:主题
+  titlebar.rs:自绘无边框标题栏(拖动 StartDrag/双击最大化/窗控三钮,关闭走
+  隐藏到托盘同路径,app 层处理 TitleAction);connections.rs:连接页(统一
+  表头可排序、行悬停高亮[Order::Background 垫底]、协议/动作徽章、数字列
+  右对齐);settings.rs:设置页(分组卡片:外观/监控/日志,行式布局左标签
+  右控件,主题分段切换);widgets/:公共组件库(header 页头/badge 胶囊徽章/
+  segmented 分段选择/toggle 滑动开关/table 统一表头与行底色/process 进程
+  图标占位/card 卡片/sparkline 多序列迷你走势图,新页面禁止重复实现);
+  ask.rs:新连接询问弹窗(右下角无标题栏 toast,盾形图标标题,范围下拉 +
+  允许[accent 填充 on_accent 字]/拒绝[danger 描边],进度条内嵌剩余秒数);
+  history.rs:历史页(双视图 segmented 切换、档位筛选、库大小显示、
+  超 1 GiB 提醒卡[warn 低透明底 + 警示图标,勾选不再提醒=一票否决持久化,
+  手动清空还原]、清理下拉菜单;位置列实时反查 geoip;表格口径与连接页
+  一致);rules.rs:规则页(toggle 启停、动作/协议徽章、图标操作钮[删除
+  悬停警示]、新建/保存走 accent 主按钮、编辑弹窗带校验、WFP 拦截状态行
+  带盾形图标);log_window.rs:日志浏览窗口(样式与主窗口刻度对齐);
+  icons.rs:Bootstrap Icons 码点常量表(glyph 名注释即契约);theme.rs:主题
   (深/浅两套 Palette 调色板 + AtomicUsize 主题索引,theme::c() 统一取色;
-  Visuals 双主题定制;字体加载;设置页切换即时生效,持久化于 config
-  [general] theme))
+  设计刻度:font 字号/sp 间距/圆角三档+PILL/window_shadow+popup_shadow;
+  Visuals 双主题定制含窗口描边与投影;字体加载;设置页切换即时生效,
+  持久化于 config [general] theme))
 - src/i18n/ - 多语言模块(mod.rs:locales 扫描/加载/语言列表;translate.rs:查找/插值/回退/告警)
 - locales/ - fluent 词条文件(zh-cn.ftl / en.ftl;目录缺失时使用编译期内嵌兜底)
 - src/platform/ - 平台集成(paths.rs:数据根目录 = exe 同级(Windows 便携式);
@@ -138,6 +151,10 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
 ## 平台规范(Windows 首期)
 - 字体:运行时加载 C:\Windows\Fonts\msyh.ttc(微软雅黑)注册为中文 fallback,
   Consolas 注册到 monospace;文件缺失时直接报错,不做静默降级
+- 自绘标题栏:主窗口 with_decorations(false),标题栏由 ui::titlebar 自绘
+  (空白区 StartDrag 拖动/双击切换最大化/最小化/最大化/关闭三钮);关闭按钮
+  与系统关闭事件(Alt+F4 兜底)同走"关闭到托盘"路径;无边框窗口边缘缩放
+  依赖 winit Windows 端 hit-test,勿重复实现
 - 托盘:tray-icon 在 eframe 主线程创建(eframe setup 时),由 winit 消息循环代泵;
   TrayIcon 必须保活(存于 App 内),drop 即移除图标
 - 托盘事件:muda/tray-icon 的 set_event_handler 把命令推入 std::sync::mpsc 通道,
@@ -168,9 +185,19 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
 - 颜色统一在 theme.rs 的 Palette 调色板字段定义(深浅两套),绘制代码经
   theme::c() 取色,禁止散落硬编码色值,新增色前先查重
 - 唯一强调色: 深色主题 #5C9DFF(hover/active 派生),禁止散落蓝色硬编码;
-  语义色(入站/出站等)在调色板内按主题分别定义
-- 圆角刻度: RADIUS_SM=4 / RADIUS_MD=8 / RADIUS_LG=12,不出现圆角魔法数字
-- 可交互控件样式必须区分 hovered / active / disabled 状态
+  语义色(入站/出站等)在调色板内按主题分别定义;accent 上的文字用
+  on_accent,悬停/展开底色用 hover_bg/open_bg(全部走调色板)
+- 圆角刻度: RADIUS_SM=4 / RADIUS_MD=8 / RADIUS_LG=12 / RADIUS_PILL=胶囊
+  (u8::MAX 渲染 clamp 为半圆),不出现圆角魔法数字
+- 字号刻度 theme::font(H1/H2/H3/BODY/SM/XS/MICRO)与间距刻度 theme::sp
+  (XS/SM/MD/LG/XL):页面内禁止散布字号/间距魔法数字
+- 阴影: theme::window_shadow()/popup_shadow() 按主题取用,仅用于浮起层
+  (窗口/弹层/悬浮卡),平面内容不加投影
+- 可交互控件样式必须区分 hovered / active / disabled 状态;按钮选中态
+  优先用 egui Button::selected(走 Visuals selection),自绘态经 painter
+  分状态绘制
+- 公共组件优先用 ui/widgets/(页头/徽章/分段选择/开关/表格件/卡片),
+  新页面禁止重复实现同类小件
 
 ### 4. 多语言(i18n)
 - 基于 fluent-bundle:全部 UI 文本经 I18n::t()/t_with_args() 获取,
