@@ -233,7 +233,8 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                             }
                         }
                         ui.end_row();
-                        // 行悬停高亮:横跨表格全宽的底色(绘制于背景层垫在文字下)
+                        // 行悬停高亮:横跨表格全宽的底色,盖在内容上为半透明,
+                        // 行内文字与徽章透出(同层无法垫底,见 table::row_background)
                         let row_bottom = ui.cursor().top() - 9.0;
                         let row_rect = egui::Rect::from_min_max(
                             egui::pos2(table_left, row_top),

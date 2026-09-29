@@ -51,12 +51,10 @@ pub fn header_sort_cell(
     .on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
-/// 行底色:绘制在 Order::Background,垫在行内容之下(悬停高亮用)
+/// 行底色:悬停高亮用。
+/// 滚动容器内的内容与该矩形同属根背景层,无法真正垫在文字之下;
+/// 画在行末(内容之后)时把填充色转为半透明,让行内文字与徽章透出
 pub fn row_background(ui: &egui::Ui, rect: egui::Rect, fill: Color32) {
-    let bg_painter = egui::Painter::new(
-        ui.ctx().clone(),
-        egui::LayerId::new(egui::Order::Background, ui.layer_id().id),
-        ui.clip_rect(),
-    );
-    bg_painter.rect_filled(rect, 0.0, fill);
+    let overlay = Color32::from_rgba_unmultiplied(fill.r(), fill.g(), fill.b(), 96);
+    ui.painter().rect_filled(rect, 0.0, overlay);
 }
