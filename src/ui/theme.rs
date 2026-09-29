@@ -15,6 +15,8 @@ use egui::{
 pub const RADIUS_SM: u8 = 4;
 pub const RADIUS_MD: u8 = 8;
 pub const RADIUS_LG: u8 = 12;
+/// 胶囊形:圆角大于半高,渲染时被 clamp 成半圆(徽章/开关轨道)
+pub const RADIUS_PILL: u8 = u8::MAX;
 
 // ---- 字号刻度(全局文字尺寸统一入口,页面内不再散布字号魔法数字)----
 pub mod font {

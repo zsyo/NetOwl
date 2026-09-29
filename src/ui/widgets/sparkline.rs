@@ -1,14 +1,9 @@
-//! 公共 UI 组件库:跨页面复用的绘制小件。
-//!
-//! 组件只做绘制与交互返回,状态由调用方持有(架构规范:数据与绘制分离);
-//! 全部取色经 [`theme::c()`](super::theme::c),字号/间距用刻度常量。
+//! 速率迷你走势图(面积填充 + 折线描边)。
 
 use eframe::egui;
 use egui::{Color32, Pos2, Sense, Stroke, Vec2};
 
-/// 速率迷你走势图(面积填充 + 折线描边)。
-///
-/// `data` 为时间正序的采样序列,按峰值归一化;样本不足 2 个时只画基线。
+/// `data` 为时间正序的采样序列,按峰值归一化;样本不足 2 个时只画基线
 pub fn sparkline(ui: &mut egui::Ui, data: &[u64], color: Color32, size: Vec2) {
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
     let painter = ui.painter_at(rect);
