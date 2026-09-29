@@ -1,4 +1,8 @@
 //! 数据表格公共件:统一表头、可排序表头、行悬停底色。
+//!
+//! 斑马纹由各页 Grid 的 `.striped(true)` 提供:奇数行底色取
+//! `Visuals::faint_bg_color`(theme.rs 已接入调色板 faint 字段),
+//! 行底色画在行内容之前,与行悬停垫底同为垫底层,悬停整体覆盖。
 
 use eframe::egui;
 use egui::{Button, Color32, CornerRadius, Label, RichText, Stroke};

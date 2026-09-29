@@ -301,6 +301,7 @@ fn rules_table(
             let table_right = ui.max_rect().right();
             egui::Grid::new("rules_grid")
                 .num_columns(9)
+                .striped(true)
                 .spacing([14.0, widgets::table::ROW_SPACING_Y])
                 .show(ui, |ui| {
                     header_cell(ui, COL_ENABLED, i18n.t("rules-col-enabled"));

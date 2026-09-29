@@ -292,6 +292,7 @@ fn rows_table(
                     let table_right = ui.max_rect().right();
                     egui::Grid::new("history_detail")
                         .num_columns(6)
+                        .striped(true)
                         .spacing([24.0, widgets::table::ROW_SPACING_Y])
                         .show(ui, |ui| {
                             for key in [
@@ -364,6 +365,7 @@ fn rows_table(
                     let table_right = ui.max_rect().right();
                     egui::Grid::new("history_aggregate")
                         .num_columns(7)
+                        .striped(true)
                         .spacing([24.0, widgets::table::ROW_SPACING_Y])
                         .show(ui, |ui| {
                             for key in [

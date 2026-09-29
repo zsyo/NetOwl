@@ -73,6 +73,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
             let table_right = ui.max_rect().right();
             egui::Grid::new("connections_grid")
                 .num_columns(9)
+                .striped(true)
                 .spacing([24.0, widgets::table::ROW_SPACING_Y])
                 .show(ui, |ui| {
                     // 表头:可排序列可点击(当前排序列高亮并带方向三角),
