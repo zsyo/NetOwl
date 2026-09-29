@@ -10,8 +10,7 @@ use std::collections::{HashMap, HashSet};
 
 use eframe::egui;
 use egui::{
-    Button, Color32, CornerRadius, Frame, Label, Margin, RichText, ScrollArea, Stroke, TextEdit,
-    Vec2,
+    Button, CornerRadius, Frame, Label, Margin, RichText, ScrollArea, Stroke, TextEdit, Vec2,
 };
 
 use crate::model::{Connection, Place};
@@ -26,6 +25,7 @@ use crate::ui::icons;
 use crate::ui::map_conn::conn_row;
 use crate::ui::text_width;
 use crate::ui::theme;
+use crate::ui::widgets;
 
 /// 地图页左右面板与选中状态(App 持有,会话态不入 config)
 pub struct MapPanelState {
@@ -162,8 +162,15 @@ pub fn list_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
 
     ui.add(
         TextEdit::singleline(&mut panels.search)
-            .hint_text(RichText::new(i18n.t("map-panel-search")).size(12.0))
-            .desired_width(ui.available_width()),
+            .hint_text(RichText::new(i18n.t("map-panel-search")).size(theme::font::SM))
+            .desired_width(ui.available_width())
+            .frame(
+                Frame::new()
+                    .fill(theme::c().bg_card)
+                    .stroke(Stroke::new(1.0, theme::c().stroke))
+                    .corner_radius(CornerRadius::same(theme::RADIUS_MD))
+                    .inner_margin(Margin::symmetric(8, 6)),
+            ),
     );
 
     ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
@@ -252,15 +259,15 @@ fn group_row(
                 ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
             }
         }
-        // 名称行:导航栏同款的受控选中样式(SelectableLabel 为内部
-        // Toggle 状态,跨行单选不受控,不用);Truncate 容器拉满剩余宽
+        // 名称行:受控选中样式(Button::selected 走 selection 底色,悬停
+        // 底色由 widget 五态自动接管);Truncate 容器拉满剩余宽
         let count_text = g.conns.len().to_string();
-        let badge_w = text_width(ui, &count_text, 10.0) + 12.0;
+        let badge_w = text_width(ui, &count_text, theme::font::MICRO) + 18.0;
         let block_w = if unknown { 0.0 } else { 20.0 };
         let name_w = (ui.available_width() - badge_w - block_w - 4.0 * 2.0 - 4.0).max(60.0);
         ui.allocate_ui(egui::vec2(name_w, 22.0), |ui| {
             let text = RichText::new(display.clone())
-                .size(13.0)
+                .size(theme::font::BODY)
                 .color(if selected {
                     theme::c().text
                 } else {
@@ -268,16 +275,7 @@ fn group_row(
                 });
             let btn = Button::new(text)
                 .truncate()
-                .fill(if selected {
-                    theme::c().accent_soft
-                } else {
-                    Color32::TRANSPARENT
-                })
-                .stroke(if selected {
-                    Stroke::new(1.0, theme::c().accent.gamma_multiply(0.4))
-                } else {
-                    Stroke::NONE
-                })
+                .selected(selected)
                 .corner_radius(CornerRadius::same(theme::RADIUS_SM))
                 .min_size(Vec2::new(0.0, 22.0));
             let resp = ui.add(btn);
@@ -290,7 +288,7 @@ fn group_row(
             }
             resp.on_hover_text(display);
         });
-        badge(ui, &count_text);
+        widgets::badge::badge(ui, &count_text, widgets::badge::BadgeKind::Neutral);
         if unknown {
             return;
         }
@@ -321,19 +319,4 @@ fn group_row(
             }
         }
     });
-}
-
-/// 连接数徽章(faint 圆角小标签)
-fn badge(ui: &mut egui::Ui, text: &str) {
-    Frame::new()
-        .fill(theme::c().faint)
-        .corner_radius(CornerRadius::same(theme::RADIUS_SM))
-        .inner_margin(Margin::symmetric(5, 1))
-        .show(ui, |ui| {
-            ui.label(
-                RichText::new(text.to_owned())
-                    .size(10.0)
-                    .color(theme::c().text_dim),
-            );
-        });
 }

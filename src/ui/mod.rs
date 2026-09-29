@@ -360,10 +360,11 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
 /// 地图页标题行:标题、副标题、图例与左右面板开关(开关在图例之后,
 /// 从右往左排布)
 fn map_header(ui: &mut egui::Ui, ctx: &mut UiCtx) {
-    ui.horizontal(|ui| {
-        ui.heading(theme::accent_text(&ctx.i18n.t("map-title"), 20.0));
-        ui.label(theme::dim_text(&ctx.i18n.t("map-subtitle"), 13.0));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+    widgets::header::page_header_row(
+        ui,
+        &ctx.i18n.t("map-title"),
+        &ctx.i18n.t("map-subtitle"),
+        |ui| {
             let panels = &mut *ctx.map_panels;
             panel_toggle(
                 ui,
@@ -377,17 +378,17 @@ fn map_header(ui: &mut egui::Ui, ctx: &mut UiCtx) {
                 icons::LAYOUT_SIDEBAR,
                 &ctx.i18n.t("map-panel-toggle-list"),
             );
-            ui.add_space(10.0);
+            ui.add_space(theme::sp::MD);
             legend(ui, theme::c().outbound, &ctx.i18n.t("map-legend-out"));
-            ui.add_space(10.0);
+            ui.add_space(theme::sp::SM);
             legend(ui, theme::c().inbound, &ctx.i18n.t("map-legend-in"));
-        });
-    });
+        },
+    );
 }
 
 /// 面板开关小按钮(图标高亮 = 面板显示)
 fn panel_toggle(ui: &mut egui::Ui, on: &mut bool, glyph: &str, tip: &str) {
-    let text = RichText::new(glyph).size(15.0).color(if *on {
+    let text = RichText::new(glyph).size(theme::font::H3).color(if *on {
         theme::c().accent
     } else {
         theme::c().text_dim
@@ -408,7 +409,7 @@ fn panel_toggle(ui: &mut egui::Ui, on: &mut bool, glyph: &str, tip: &str) {
 fn legend(ui: &mut egui::Ui, color: Color32, label: &str) {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
     ui.painter().circle_filled(rect.center(), 4.0, color);
-    ui.label(theme::dim_text(label, 12.0));
+    ui.label(theme::dim_text(label, theme::font::SM));
 }
 
 /// 连接显示过滤:本地/局域网远端噪音(config 持久化;连接列表与

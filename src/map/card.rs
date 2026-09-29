@@ -72,6 +72,8 @@ pub(super) fn info_card(
         Vec2::new(WIDTH, height),
     );
 
+    // 浮层投影 + 卡片底 + 1px 描边(悬浮于地图之上,投影强化浮起层次)
+    painter.add(theme::popup_shadow().as_shape(card, CornerRadius::same(theme::RADIUS_LG)));
     painter.rect_filled(
         card,
         CornerRadius::same(theme::RADIUS_LG),

@@ -16,10 +16,10 @@ use crate::ui::theme;
 
 /// 小节标题(排行/列表段)
 pub(crate) fn section_title(ui: &mut egui::Ui, text: &str) {
-    ui.add_space(8.0);
+    ui.add_space(theme::sp::SM);
     ui.label(
         RichText::new(text.to_owned())
-            .size(12.0)
+            .size(theme::font::SM)
             .strong()
             .color(theme::c().text_dim),
     );
@@ -35,7 +35,7 @@ pub(crate) fn traffic_cards(ui: &mut egui::Ui, down: u64, up: u64, i18n: &crate:
         traffic_card(
             ui,
             w,
-            icons::CARET_DOWN_FILL,
+            icons::ARROW_DOWN,
             &i18n.t("nav-rate-down"),
             &fmt_bytes(down),
             theme::c().inbound,
@@ -43,7 +43,7 @@ pub(crate) fn traffic_cards(ui: &mut egui::Ui, down: u64, up: u64, i18n: &crate:
         traffic_card(
             ui,
             w,
-            icons::CARET_UP_FILL,
+            icons::ARROW_UP,
             &i18n.t("nav-rate-up"),
             &fmt_bytes(up),
             theme::c().outbound,
@@ -65,12 +65,12 @@ fn traffic_card(ui: &mut egui::Ui, w: f32, glyph: &str, label: &str, value: &str
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
                     ui.style_mut().spacing.item_spacing.x = 3.0;
-                    ui.label(RichText::new(glyph).size(10.0).color(color));
-                    ui.label(theme::dim_text(label, 10.0));
+                    ui.label(RichText::new(glyph).size(theme::font::MICRO).color(color));
+                    ui.label(theme::dim_text(label, theme::font::MICRO));
                 });
                 ui.label(
                     RichText::new(value.to_owned())
-                        .size(18.0)
+                        .size(theme::font::H2)
                         .strong()
                         .color(color),
                 );
@@ -97,8 +97,8 @@ pub(crate) fn proc_rank_row(
     let path = g.conns.iter().find_map(|c| c.proc_path.as_deref());
     let in_text = fmt_bytes(g.conns.iter().map(|c| c.bytes_in).sum());
     let out_text = fmt_bytes(g.conns.iter().map(|c| c.bytes_out).sum());
-    let in_w = text_width(ui, &in_text, 11.0);
-    let out_w = text_width(ui, &out_text, 11.0);
+    let in_w = text_width(ui, &in_text, theme::font::XS);
+    let out_w = text_width(ui, &out_text, theme::font::XS);
     ui.horizontal(|ui| {
         ui.style_mut().spacing.item_spacing.x = 4.0;
         let tex = path.and_then(|p| icon_tex.get(p)).and_then(|t| t.as_ref());
@@ -113,7 +113,7 @@ pub(crate) fn proc_rank_row(
         let name_w = (ui.available_width() - in_w - out_w - 4.0 * 3.0).max(60.0);
         ui.allocate_ui(egui::vec2(name_w, 20.0), |ui| {
             let text = RichText::new(format!("{display} ({})", g.conns.len()))
-                .size(12.0)
+                .size(theme::font::SM)
                 .color(if selected {
                     theme::c().accent
                 } else {
@@ -132,10 +132,14 @@ pub(crate) fn proc_rank_row(
             ui.style_mut().spacing.item_spacing.x = 6.0;
             ui.label(
                 RichText::new(&out_text)
-                    .size(11.0)
+                    .size(theme::font::XS)
                     .color(theme::c().outbound),
             );
-            ui.label(RichText::new(&in_text).size(11.0).color(theme::c().inbound));
+            ui.label(
+                RichText::new(&in_text)
+                    .size(theme::font::XS)
+                    .color(theme::c().inbound),
+            );
         });
     });
     let total = g.total;
@@ -160,8 +164,8 @@ pub(crate) fn bytes_row(
 ) {
     let in_text = fmt_bytes(bytes_in);
     let out_text = fmt_bytes(bytes_out);
-    let in_w = text_width(ui, &in_text, 11.0);
-    let out_w = text_width(ui, &out_text, 11.0);
+    let in_w = text_width(ui, &in_text, theme::font::XS);
+    let out_w = text_width(ui, &out_text, theme::font::XS);
     ui.horizontal(|ui| {
         ui.style_mut().spacing.item_spacing.x = 4.0;
         let title_w = (ui.available_width() - in_w - out_w - 4.0 * 3.0).max(60.0);
@@ -169,7 +173,7 @@ pub(crate) fn bytes_row(
             ui.add(
                 Label::new(
                     RichText::new(title.to_owned())
-                        .size(12.0)
+                        .size(theme::font::SM)
                         .color(theme::c().text),
                 )
                 .truncate(),
@@ -179,10 +183,14 @@ pub(crate) fn bytes_row(
             ui.style_mut().spacing.item_spacing.x = 6.0;
             ui.label(
                 RichText::new(&out_text)
-                    .size(11.0)
+                    .size(theme::font::XS)
                     .color(theme::c().outbound),
             );
-            ui.label(RichText::new(&in_text).size(11.0).color(theme::c().inbound));
+            ui.label(
+                RichText::new(&in_text)
+                    .size(theme::font::XS)
+                    .color(theme::c().inbound),
+            );
         });
     });
     let total = bytes_in + bytes_out;
@@ -199,15 +207,21 @@ pub(crate) fn bytes_row(
 /// 流量占比条:faint 底轨 + accent 前景(ratio 0 起步保留 2% 可视宽)
 fn rank_bar(ui: &mut egui::Ui, ratio: f32) {
     let (rect, _) =
-        ui.allocate_exact_size(egui::vec2(ui.available_width(), 3.0), egui::Sense::hover());
-    // 3px 高条取 1px 圆角(接近半高胶囊)
-    ui.painter().rect_filled(rect, 1_u8, theme::c().faint);
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 4.0), egui::Sense::hover());
+    ui.painter().rect_filled(
+        rect,
+        CornerRadius::same(theme::RADIUS_PILL),
+        theme::c().faint,
+    );
     if ratio > f32::EPSILON {
         let fg = egui::Rect::from_min_size(
             rect.min,
             egui::vec2(rect.width() * ratio.clamp(0.02, 1.0), rect.height()),
         );
-        ui.painter()
-            .rect_filled(fg, 1_u8, theme::c().accent.gamma_multiply(0.7));
+        ui.painter().rect_filled(
+            fg,
+            CornerRadius::same(theme::RADIUS_PILL),
+            theme::c().accent.gamma_multiply(0.7),
+        );
     }
 }

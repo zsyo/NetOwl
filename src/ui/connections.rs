@@ -143,8 +143,11 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                                 );
                             });
                             ui.add(
-                                Label::new(theme::dim_text(&proc_detail(conn, i18n), theme::font::XS))
-                                    .wrap_mode(egui::TextWrapMode::Extend),
+                                Label::new(theme::dim_text(
+                                    &proc_detail(conn, i18n),
+                                    theme::font::XS,
+                                ))
+                                .wrap_mode(egui::TextWrapMode::Extend),
                             );
                         });
                         // 协议徽章:TCP 强调 / UDP 弱化
@@ -167,9 +170,10 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                                     .wrap_mode(egui::TextWrapMode::Extend),
                                 );
                                 ui.add(
-                                    Label::new(
-                                        theme::dim_text(&conn.remote_ip.to_string(), theme::font::XS),
-                                    )
+                                    Label::new(theme::dim_text(
+                                        &conn.remote_ip.to_string(),
+                                        theme::font::XS,
+                                    ))
                                     .wrap_mode(egui::TextWrapMode::Extend),
                                 );
                             }
@@ -246,11 +250,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
 /// 速率/累计字节单元格:右对齐语义色数字
 fn rate_cell(ui: &mut egui::Ui, text: String, color: Color32) -> egui::Response {
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-        ui.label(
-            RichText::new(text)
-                .size(theme::font::BODY)
-                .color(color),
-        )
+        ui.label(RichText::new(text).size(theme::font::BODY).color(color))
     })
     .inner
 }

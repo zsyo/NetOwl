@@ -317,17 +317,9 @@ fn apply_visuals(ctx: &egui::Context) {
     v.selection.stroke = Stroke::new(1.0, p.accent);
     v.window_corner_radius = CornerRadius::same(RADIUS_LG);
     v.window_stroke = Stroke::new(1.0, p.stroke);
-    v.window_shadow = if is_dark() {
-        WINDOW_SHADOW_DARK
-    } else {
-        WINDOW_SHADOW_LIGHT
-    };
+    v.window_shadow = window_shadow();
     v.menu_corner_radius = CornerRadius::same(RADIUS_MD);
-    v.popup_shadow = if is_dark() {
-        POPUP_SHADOW_DARK
-    } else {
-        POPUP_SHADOW_LIGHT
-    };
+    v.popup_shadow = popup_shadow();
 
     let widget = |mut w: egui::style::WidgetVisuals, bg: Color32, fg: Color32, r: u8| {
         w.bg_fill = bg;
@@ -354,6 +346,24 @@ fn apply_visuals(ctx: &egui::Context) {
         style.spacing.button_padding = Vec2::new(10.0, 5.0);
         style.spacing.menu_margin = Margin::same(6);
     });
+}
+
+/// 当前主题的窗口投影(egui::Window 等大浮层用)
+pub fn window_shadow() -> Shadow {
+    if is_dark() {
+        WINDOW_SHADOW_DARK
+    } else {
+        WINDOW_SHADOW_LIGHT
+    }
+}
+
+/// 当前主题的弹层投影(悬浮卡片/菜单等小浮层用)
+pub fn popup_shadow() -> Shadow {
+    if is_dark() {
+        POPUP_SHADOW_DARK
+    } else {
+        POPUP_SHADOW_LIGHT
+    }
 }
 
 /// 带字号的强调色文本
