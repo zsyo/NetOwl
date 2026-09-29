@@ -5,6 +5,7 @@ pub mod ask;
 pub mod history;
 pub mod icons;
 pub mod log_window;
+pub mod map_inspector;
 pub mod map_panel;
 pub mod rules;
 pub mod theme;

@@ -38,6 +38,7 @@ map-inspector-place = Endpoint details
 map-inspector-process = Process details
 map-inspector-clear = Clear selection
 map-inspector-procs = Related processes
+map-inspector-conns = Connection details
 map-inspector-path = Path
 map-inspector-top-proc = Top Processes
 map-inspector-top-domain = Top Domains

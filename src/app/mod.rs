@@ -965,12 +965,26 @@ impl eframe::App for NetOwlApp {
                 .resizable(true)
                 .default_size(300.0)
                 .min_size(240.0)
+                .max_size(460.0)
                 .frame(
                     egui::Frame::new()
                         .fill(theme::c().bg_panel)
                         .inner_margin(egui::Margin::same(10)),
                 )
                 .show(ui, |ui| ui::map_panel::list_panel(ui, &mut ctx));
+        }
+        if *page == Page::Map && ctx.map_panels.show_right {
+            egui::Panel::right("map-inspector")
+                .resizable(true)
+                .default_size(320.0)
+                .min_size(260.0)
+                .max_size(480.0)
+                .frame(
+                    egui::Frame::new()
+                        .fill(theme::c().bg_panel)
+                        .inner_margin(egui::Margin::same(10)),
+                )
+                .show(ui, |ui| ui::map_inspector::inspector_panel(ui, &mut ctx));
         }
 
         egui::CentralPanel::default()

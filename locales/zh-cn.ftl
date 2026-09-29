@@ -38,6 +38,7 @@ map-inspector-place = 端点详情
 map-inspector-process = 进程详情
 map-inspector-clear = 清除选中
 map-inspector-procs = 相关进程
+map-inspector-conns = 连接明细
 map-inspector-path = 路径
 map-inspector-top-proc = 流量排行 · 进程
 map-inspector-top-domain = 流量排行 · 域名

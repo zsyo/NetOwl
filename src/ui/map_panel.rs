@@ -12,9 +12,9 @@ use crate::net::geoip;
 use crate::net::rdns;
 use crate::rules::wfp;
 use crate::rules::{RemoteKind, Rule};
+use crate::ui::UiCtx;
 use crate::ui::icons;
 use crate::ui::theme;
-use crate::ui::{UiCtx, text_width};
 
 /// 地图页左右面板与选中状态(App 持有,会话态不入 config)
 pub struct MapPanelState {
@@ -45,17 +45,29 @@ impl Default for MapPanelState {
     }
 }
 
-/// 按映像名分组的进程连接(组名空串 = 未知进程)
-struct ProcGroup<'a> {
-    name: String,
-    conns: Vec<&'a Connection>,
+/// 行内文本字符截断:egui 的 truncate(以及拉满剩余宽的控件)放在
+/// 行中间会把后续控件挤出面板,经 resizable 面板的宽度记忆逐帧放大,
+/// 因此所有行内文本统一按字符数预截断
+pub(crate) fn truncate_chars(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_owned();
+    }
+    let cut: String = text.chars().take(max_chars).collect();
+    format!("{cut}…")
+}
+
+/// 按映像名分组的进程连接(组名空串 = 未知进程);左列表与右侧
+/// Inspector 的进程排行共用
+pub(crate) struct ProcGroup<'a> {
+    pub(crate) name: String,
+    pub(crate) conns: Vec<&'a Connection>,
     /// 组内累计流量(排序键)
-    total: u64,
+    pub(crate) total: u64,
 }
 
 /// 当前过滤口径下的进程分组:端点选中收窄,搜索词命中组名时保留组内
 /// 全部连接,否则只保留远端(IP/域名)命中的连接;组按累计流量降序
-fn collect_groups<'a>(
+pub(crate) fn collect_groups<'a>(
     conns: &'a [Connection],
     place: Option<Place>,
     search: &str,
@@ -86,7 +98,9 @@ fn collect_groups<'a>(
         entry.total += c.total_bytes();
     }
     let mut groups: Vec<ProcGroup> = map.into_values().collect();
-    groups.sort_by_key(|g| std::cmp::Reverse(g.total));
+    // 次级键按名称:HashMap 迭代序随机,total 相同(如未提权时字节恒 0)
+    // 的组若不加稳定键,列表顺序每帧跳动
+    groups.sort_by(|a, b| b.total.cmp(&a.total).then_with(|| a.name.cmp(&b.name)));
     groups
 }
 
@@ -108,7 +122,11 @@ pub fn list_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
                 "map-panel-filter",
                 &[("place", geoip::place_label(place, i18n))],
             );
-            ui.add(Label::new(RichText::new(text).size(11.0).color(theme::c().accent)).truncate());
+            let text = truncate_chars(&text, 16);
+            ui.add(
+                Label::new(RichText::new(text).size(11.0).color(theme::c().accent))
+                    .wrap_mode(egui::TextWrapMode::Extend),
+            );
             let clear = Button::new(
                 RichText::new(icons::X_LG)
                     .size(10.0)
@@ -213,7 +231,7 @@ fn group_row(
         }
         // 名称行:导航栏同款的受控选中样式(SelectableLabel 为内部
         // Toggle 状态,跨行单选不受控,不用)
-        let label = format!("{display} ({})", g.conns.len());
+        let label = truncate_chars(&format!("{display} ({})", g.conns.len()), 20);
         let text = RichText::new(label).size(13.0).color(if selected {
             theme::c().text
         } else {
@@ -231,9 +249,7 @@ fn group_row(
                 Stroke::NONE
             })
             .corner_radius(CornerRadius::same(theme::RADIUS_SM));
-        let block_w = if unknown { 0.0 } else { 24.0 };
-        let label_w = (ui.available_width() - block_w - 4.0).max(60.0);
-        if ui.add_sized([label_w, 22.0], btn).clicked() {
+        if ui.add(btn).clicked() {
             if selected {
                 panels.process = None;
             } else {
@@ -284,8 +300,9 @@ enum BlockAct {
 }
 
 /// 连接明细行:远端(域名/地址):端口 + 协议、累计字节与目标级阻断开关。
-/// 已被进程级规则阻断的连接按钮置灰(撤销进程规则会放大放行范围,不做)
-fn conn_row(
+/// 已被进程级规则阻断的连接按钮置灰(撤销进程规则会放大放行范围,不做);
+/// 左列表与右侧 Inspector 的连接明细共用
+pub(crate) fn conn_row(
     ui: &mut egui::Ui,
     rules: &mut crate::rules::RuleSet,
     db: &crate::storage::history::Db,
@@ -302,11 +319,10 @@ fn conn_row(
         };
         let text = format!("{} {}", remote, c.proto.as_str());
         let bytes_text = format!("{} / {}", fmt_bytes(c.bytes_in), fmt_bytes(c.bytes_out));
-        let bytes_w = text_width(ui, &bytes_text, 11.0) + 4.0;
-        let left_w = (ui.available_width() - bytes_w - 24.0).max(60.0);
-        ui.add_sized(
-            [left_w, 18.0],
-            Label::new(RichText::new(text).size(12.0).color(theme::c().text)).truncate(),
+        ui.label(
+            RichText::new(truncate_chars(&text, 18))
+                .size(12.0)
+                .color(theme::c().text),
         );
         ui.label(
             RichText::new(bytes_text)
