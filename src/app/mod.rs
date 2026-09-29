@@ -418,6 +418,12 @@ impl NetOwlApp {
         // 已存在),无归属无流量,只余噪音;列表/地图/历史一并排除
         self.conns
             .retain(|c| !(c.proto == Protocol::Udp && c.remote_ip.is_unspecified()));
+        // UDP 表对同一 socket 的多个绑定地址各返回一行(同 pid+本地端口,
+        // 多网卡机器 NetBIOS 类服务可达 5+ 行);ETW 合并键不含本机地址,
+        // 这些行注定共享同一份回填数据,按 (pid, 本地端口) 去重留一行
+        let mut seen_udp = HashSet::new();
+        self.conns
+            .retain(|c| c.proto != Protocol::Udp || seen_udp.insert((c.pid, c.local_port)));
         self.rdns.update(&self.conns);
         self.poll_icons(ctx);
         self.poll_history();
