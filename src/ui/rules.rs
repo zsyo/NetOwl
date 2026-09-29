@@ -4,14 +4,14 @@
 use std::time::{Duration, Instant};
 
 use eframe::egui;
-use egui::{CornerRadius, RichText};
+use egui::{Align2, CornerRadius, FontId, RichText};
 use rusqlite::Connection as Db;
 
 use crate::i18n::I18n;
 use crate::model::Protocol;
 use crate::rules::wfp;
 use crate::rules::{self, Action, Direction, RemoteKind, Rule, RuleSet};
-use crate::ui::theme;
+use crate::ui::{icons, theme, widgets};
 
 /// 工具栏行内控件最小交互高度(与历史页同因:统一行高垂直居中)
 const TOOLBAR_ROW_H: f32 = 26.0;
@@ -132,35 +132,31 @@ pub fn show(
     rules: &mut RuleSet,
     wfp_status: &wfp::Status,
 ) {
-    ui.heading(theme::accent_text(&i18n.t("rules-title"), 20.0));
-    ui.label(theme::dim_text(&i18n.t("rules-subtitle"), 13.0));
-    ui.add_space(4.0);
+    widgets::header::page_header(ui, &i18n.t("rules-title"), &i18n.t("rules-subtitle"));
+    ui.add_space(theme::sp::XS);
     wfp_status_line(ui, i18n, wfp_status);
-    ui.add_space(6.0);
+    ui.add_space(theme::sp::SM);
 
     ui.style_mut().spacing.interact_size.y = TOOLBAR_ROW_H;
     ui.horizontal(|ui| {
-        if ui
-            .button(RichText::new(i18n.t("rules-new")).size(13.0))
-            .clicked()
-        {
+        if primary_btn(ui, format!("{}  {}", icons::PLUS_LG, i18n.t("rules-new"))).clicked() {
             state.draft = Some(Draft::new_rule());
         }
         if ui
-            .button(RichText::new(i18n.t("rules-export")).size(13.0))
+            .button(RichText::new(i18n.t("rules-export")).size(theme::font::BODY))
             .clicked()
         {
             do_export(rules, state, i18n);
         }
         if ui
-            .button(RichText::new(i18n.t("rules-import")).size(13.0))
+            .button(RichText::new(i18n.t("rules-import")).size(theme::font::BODY))
             .clicked()
         {
             do_import(db, rules, state, i18n);
         }
         feedback_label(ui, state);
     });
-    ui.add_space(8.0);
+    ui.add_space(theme::sp::SM);
 
     rules_table(ui, state, i18n, db, rules);
     edit_window(ui, state, i18n, db, rules);
@@ -228,55 +224,57 @@ fn feedback_label(ui: &mut egui::Ui, state: &mut PageState) {
             } else {
                 theme::c().status_ok
             };
-            ui.label(RichText::new(&fb.text).size(12.0).color(color));
+            ui.label(RichText::new(&fb.text).size(theme::font::SM).color(color));
         });
     }
 }
 
-/// 拦截引擎状态行:未提权/失败时用警示色提示(只读标注模式)
+/// 拦截引擎状态行:图标 + 说明(未提权/失败时用警示色提示,只读标注模式)
 fn wfp_status_line(ui: &mut egui::Ui, i18n: &I18n, status: &wfp::Status) {
-    match status {
+    let (glyph, color, text) = match status {
         wfp::Status::Active(n) => {
-            let text = i18n.t_with_args("wfp-status-active", &[("n", n.to_string())]);
-            ui.label(theme::dim_text(
-                &format!("{};{}", text, i18n.t("wfp-active-hint")),
-                12.0,
-            ));
+            let t = i18n.t_with_args("wfp-status-active", &[("n", n.to_string())]);
+            (
+                icons::SHIELD_CHECK,
+                theme::c().text_dim,
+                format!("{};{}", t, i18n.t("wfp-active-hint")),
+            )
         }
-        wfp::Status::NoAdmin => {
-            ui.label(
-                RichText::new(i18n.t("wfp-status-noadmin"))
-                    .size(12.0)
-                    .color(theme::c().danger),
-            );
-        }
-        wfp::Status::Failed(e) => {
-            let text = i18n.t_with_args("wfp-status-failed", &[("err", e.clone())]);
-            ui.label(RichText::new(text).size(12.0).color(theme::c().danger));
-        }
-        wfp::Status::Off => {
-            ui.label(theme::dim_text(&i18n.t("wfp-status-off"), 12.0));
-        }
-    }
+        wfp::Status::NoAdmin => (
+            icons::SHIELD_FILL_X,
+            theme::c().danger,
+            i18n.t("wfp-status-noadmin"),
+        ),
+        wfp::Status::Failed(e) => (
+            icons::SHIELD_FILL_X,
+            theme::c().danger,
+            i18n.t_with_args("wfp-status-failed", &[("err", e.clone())]),
+        ),
+        wfp::Status::Off => (icons::SHIELD, theme::c().text_dim, i18n.t("wfp-status-off")),
+    };
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(glyph).size(theme::font::SM).color(color));
+        ui.label(RichText::new(text).size(theme::font::SM).color(color));
+    });
 }
 
 /// 表格列宽(逻辑点);表头与数据列同宽,add_sized 居中
-const COL_ENABLED: f32 = 30.0;
+const COL_ENABLED: f32 = 44.0;
 const COL_NAME: f32 = 170.0;
-const COL_ACTION: f32 = 40.0;
+const COL_ACTION: f32 = 56.0;
 const COL_DIRECTION: f32 = 64.0;
-const COL_PROTO: f32 = 44.0;
+const COL_PROTO: f32 = 56.0;
 const COL_PROCESS: f32 = 160.0;
 const COL_REMOTE: f32 = 160.0;
 const COL_PORT: f32 = 44.0;
-const COL_OPS: f32 = 200.0;
+const COL_OPS: f32 = 120.0;
 
 fn header_cell(ui: &mut egui::Ui, w: f32, text: String) {
     ui.add_sized(
         [w, 16.0],
         egui::Label::new(
             RichText::new(text)
-                .size(12.0)
+                .size(theme::font::SM)
                 .strong()
                 .color(theme::c().text_dim),
         ),
@@ -292,17 +290,18 @@ fn rules_table(
     rules: &mut RuleSet,
 ) {
     if rules.rules.is_empty() {
-        ui.add_space(20.0);
-        ui.label(theme::dim_text(&i18n.t("rules-empty"), 14.0));
+        ui.add_space(theme::sp::XL);
+        ui.label(theme::dim_text(&i18n.t("rules-empty"), theme::font::H3));
         return;
     }
     egui::ScrollArea::vertical()
         .auto_shrink(false)
         .show(ui, |ui| {
+            let table_left = ui.max_rect().left();
+            let table_right = ui.max_rect().right();
             egui::Grid::new("rules_grid")
                 .num_columns(9)
-                .spacing([14.0, 7.0])
-                .striped(true)
+                .spacing([14.0, 9.0])
                 .show(ui, |ui| {
                     header_cell(ui, COL_ENABLED, i18n.t("rules-col-enabled"));
                     header_cell(ui, COL_NAME, i18n.t("rules-col-name"));
@@ -320,12 +319,10 @@ fn rules_table(
                     let mut removed = false;
                     for i in 0..rules.rules.len() {
                         let rule = rules.rules[i].clone();
+                        let row_top = ui.cursor().top();
                         let mut enabled = rule.enabled;
-                        let cb = ui.add_sized(
-                            [COL_ENABLED, 18.0],
-                            egui::Checkbox::without_text(&mut enabled),
-                        );
-                        if cb.changed() {
+                        let toggle = widgets::toggle::toggle_switch(ui, &mut enabled);
+                        if toggle.changed() {
                             let _ = rules.set_enabled(db, rule.id, enabled);
                         }
                         // 会话临时规则(负 id):名称加标注并以弱化色显示
@@ -337,66 +334,94 @@ fn rules_table(
                         };
                         ui.add_sized(
                             [COL_NAME, 18.0],
-                            egui::Label::new(RichText::new(name_text).size(13.0).color(
-                                if is_temp {
-                                    theme::c().text_dim
-                                } else {
-                                    theme::c().text
-                                },
-                            ))
+                            egui::Label::new(
+                                RichText::new(name_text).size(theme::font::BODY).color(
+                                    if is_temp {
+                                        theme::c().text_dim
+                                    } else {
+                                        theme::c().text
+                                    },
+                                ),
+                            )
                             .wrap_mode(egui::TextWrapMode::Truncate),
                         );
-                        let (action_key, action_color) = match rule.action {
-                            Action::Allow => ("rule-action-allow", theme::c().status_ok),
-                            Action::Block => ("rule-action-block", theme::c().danger),
+                        let (action_key, action_kind) = match rule.action {
+                            Action::Allow => ("rule-action-allow", widgets::badge::BadgeKind::Ok),
+                            Action::Block => {
+                                ("rule-action-block", widgets::badge::BadgeKind::Danger)
+                            }
                         };
-                        ui.add_sized(
-                            [COL_ACTION, 18.0],
-                            egui::Label::new(
-                                RichText::new(i18n.t(action_key))
-                                    .size(13.0)
-                                    .color(action_color),
-                            ),
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(COL_ACTION, 18.0),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |ui| {
+                                widgets::badge::badge(ui, &i18n.t(action_key), action_kind);
+                            },
                         );
                         ui.add_sized(
                             [COL_DIRECTION, 18.0],
                             egui::Label::new(theme::dim_text(
                                 &direction_name(i18n, rule.direction),
-                                13.0,
+                                theme::font::BODY,
                             )),
                         );
-                        ui.add_sized(
-                            [COL_PROTO, 18.0],
-                            egui::Label::new(theme::dim_text(&proto_name(i18n, rule.proto), 13.0)),
+                        ui.allocate_ui_with_layout(
+                            egui::vec2(COL_PROTO, 18.0),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |ui| {
+                                widgets::badge::badge(
+                                    ui,
+                                    &proto_name(i18n, rule.proto),
+                                    widgets::badge::BadgeKind::Neutral,
+                                );
+                            },
                         );
                         ui.add_sized(
                             [COL_PROCESS, 18.0],
-                            egui::Label::new(theme::dim_text(&process_display(&rule), 13.0))
-                                .wrap_mode(egui::TextWrapMode::Truncate),
+                            egui::Label::new(theme::dim_text(
+                                &process_display(&rule),
+                                theme::font::BODY,
+                            ))
+                            .wrap_mode(egui::TextWrapMode::Truncate),
                         );
                         ui.add_sized(
                             [COL_REMOTE, 18.0],
-                            egui::Label::new(theme::dim_text(&remote_display(&rule), 13.0))
-                                .wrap_mode(egui::TextWrapMode::Truncate),
+                            egui::Label::new(theme::dim_text(
+                                &remote_display(&rule),
+                                theme::font::BODY,
+                            ))
+                            .wrap_mode(egui::TextWrapMode::Truncate),
                         );
                         ui.add_sized(
                             [COL_PORT, 18.0],
-                            egui::Label::new(theme::dim_text(&port_display(rule.port), 13.0)),
+                            egui::Label::new(theme::dim_text(
+                                &port_display(rule.port),
+                                theme::font::BODY,
+                            )),
                         );
                         ui.allocate_ui_with_layout(
                             egui::vec2(COL_OPS, 26.0),
                             egui::Layout::left_to_right(egui::Align::Min),
                             |ui| {
-                                if small_btn(ui, i18n.t("rules-move-up")).clicked() {
+                                ui.style_mut().spacing.item_spacing.x = 2.0;
+                                if icon_btn(ui, icons::ARROW_UP, i18n.t("rules-move-up"), false)
+                                    .clicked()
+                                {
                                     let _ = rules.move_rule(db, rule.id, -1);
                                 }
-                                if small_btn(ui, i18n.t("rules-move-down")).clicked() {
+                                if icon_btn(ui, icons::ARROW_DOWN, i18n.t("rules-move-down"), false)
+                                    .clicked()
+                                {
                                     let _ = rules.move_rule(db, rule.id, 1);
                                 }
-                                if small_btn(ui, i18n.t("rules-edit")).clicked() {
+                                if icon_btn(ui, icons::PENCIL, i18n.t("rules-edit"), false)
+                                    .clicked()
+                                {
                                     state.draft = Some(Draft::from_rule(&rule));
                                 }
-                                if small_btn(ui, i18n.t("rules-delete")).clicked() {
+                                if icon_btn(ui, icons::TRASH, i18n.t("rules-delete"), true)
+                                    .clicked()
+                                {
                                     if let Err(e) = rules.delete(db, rule.id) {
                                         tracing::warn!("[Rules] 删除规则 {} 失败: {e}", rule.id);
                                     }
@@ -405,6 +430,15 @@ fn rules_table(
                             },
                         );
                         ui.end_row();
+                        // 行悬停高亮(与连接页同款)
+                        let row_bottom = ui.cursor().top() - 9.0;
+                        let row_rect = egui::Rect::from_min_max(
+                            egui::pos2(table_left, row_top),
+                            egui::pos2(table_right, row_bottom),
+                        );
+                        if ui.rect_contains_pointer(row_rect) {
+                            widgets::table::row_background(ui, row_rect, theme::c().hover_bg);
+                        }
                         if removed {
                             break;
                         }
@@ -413,11 +447,49 @@ fn rules_table(
         });
 }
 
-fn small_btn(ui: &mut egui::Ui, text: String) -> egui::Response {
+/// 主按钮:强调色填充 + 反色文字(页内首要动作)
+fn primary_btn(ui: &mut egui::Ui, text: String) -> egui::Response {
     ui.add(
-        egui::Button::new(RichText::new(text).size(12.0))
-            .corner_radius(CornerRadius::same(theme::RADIUS_SM)),
+        egui::Button::new(
+            RichText::new(text)
+                .size(theme::font::BODY)
+                .strong()
+                .color(theme::c().on_accent),
+        )
+        .fill(theme::c().accent)
+        .corner_radius(CornerRadius::same(theme::RADIUS_MD)),
     )
+}
+
+/// 图标操作钮:24px 方形,悬停显底色;danger 用于删除(悬停警示)
+fn icon_btn(ui: &mut egui::Ui, glyph: &str, tip: String, danger: bool) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(24.0, 22.0), egui::Sense::click());
+    if resp.hovered() {
+        let bg = if danger {
+            theme::c().danger.gamma_multiply(0.12)
+        } else {
+            theme::c().hover_bg
+        };
+        ui.painter()
+            .rect_filled(rect, CornerRadius::same(theme::RADIUS_SM), bg);
+    }
+    let color = if resp.hovered() {
+        if danger {
+            theme::c().danger
+        } else {
+            theme::c().text
+        }
+    } else {
+        theme::c().text_dim
+    };
+    ui.painter().text(
+        rect.center(),
+        Align2::CENTER_CENTER,
+        glyph,
+        FontId::proportional(theme::font::SM),
+        color,
+    );
+    resp.on_hover_text(tip)
 }
 
 fn direction_name(i18n: &I18n, d: Direction) -> String {
@@ -495,159 +567,166 @@ fn edit_window(
     let mut open = true;
     let mut save = false;
     let mut close = false;
-    egui::Window::new(RichText::new(i18n.t(title_key)).size(16.0).strong())
-        .open(&mut open)
-        .collapsible(false)
-        .resizable(false)
-        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-        .show(ui, |ui| {
-            egui::Grid::new("rule_edit_grid")
-                .num_columns(2)
-                .spacing([12.0, 8.0])
-                .show(ui, |ui| {
-                    field_label(ui, i18n.t("rules-col-name"));
-                    ui.add(
-                        egui::TextEdit::singleline(&mut draft.name)
-                            .desired_width(FIELD_WIDTH)
-                            .font(egui::FontId::proportional(13.0)),
-                    );
-                    ui.end_row();
-
-                    field_label(ui, i18n.t("rules-col-action"));
-                    combo(ui, "rule-action", action_text(i18n, draft.action), |ui| {
-                        for a in [Action::Allow, Action::Block] {
-                            if ui
-                                .selectable_label(draft.action == a, action_text(i18n, a))
-                                .clicked()
-                            {
-                                draft.action = a;
-                            }
-                        }
-                    });
-                    ui.end_row();
-
-                    field_label(ui, i18n.t("rules-col-direction"));
-                    ui.vertical(|ui| {
-                        combo(
-                            ui,
-                            "rule-direction",
-                            direction_name(i18n, draft.direction),
-                            |ui| {
-                                for d in [Direction::Any, Direction::Out, Direction::In] {
-                                    if ui
-                                        .selectable_label(
-                                            draft.direction == d,
-                                            direction_name(i18n, d),
-                                        )
-                                        .clicked()
-                                    {
-                                        draft.direction = d;
-                                    }
-                                }
-                            },
-                        );
-                        ui.label(theme::dim_text(&i18n.t("rules-direction-hint"), 11.0));
-                    });
-                    ui.end_row();
-
-                    field_label(ui, i18n.t("col-proto"));
-                    combo(ui, "rule-proto", proto_name(i18n, draft.proto), |ui| {
-                        for p in [None, Some(Protocol::Tcp), Some(Protocol::Udp)] {
-                            if ui
-                                .selectable_label(draft.proto == p, proto_name(i18n, p))
-                                .clicked()
-                            {
-                                draft.proto = p;
-                            }
-                        }
-                    });
-                    ui.end_row();
-
-                    field_label(ui, i18n.t("col-process"));
-                    ui.vertical(|ui| {
-                        ui.add(
-                            egui::TextEdit::singleline(&mut draft.process)
-                                .desired_width(FIELD_WIDTH)
-                                .font(egui::FontId::proportional(13.0)),
-                        );
-                        ui.label(theme::dim_text(&i18n.t("rules-process-hint"), 11.0));
-                    });
-                    ui.end_row();
-
-                    field_label(ui, i18n.t("rules-col-remote"));
-                    ui.vertical(|ui| {
-                        combo(
-                            ui,
-                            "rule-remote-kind",
-                            remote_kind_name(i18n, draft.remote_kind),
-                            |ui| {
-                                for k in [RemoteKind::Any, RemoteKind::Ip, RemoteKind::Domain] {
-                                    if ui
-                                        .selectable_label(
-                                            draft.remote_kind == k,
-                                            remote_kind_name(i18n, k),
-                                        )
-                                        .clicked()
-                                    {
-                                        draft.remote_kind = k;
-                                    }
-                                }
-                            },
-                        );
-                        if draft.remote_kind != RemoteKind::Any {
-                            let hint = if draft.remote_kind == RemoteKind::Ip {
-                                i18n.t("rules-remote-ip-hint")
-                            } else {
-                                i18n.t("rules-remote-domain-hint")
-                            };
-                            ui.add(
-                                egui::TextEdit::singleline(&mut draft.remote_value)
-                                    .hint_text(hint)
-                                    .desired_width(FIELD_WIDTH)
-                                    .font(egui::FontId::proportional(13.0)),
-                            );
-                        }
-                    });
-                    ui.end_row();
-
-                    field_label(ui, i18n.t("col-port"));
-                    ui.horizontal(|ui| {
-                        ui.add(
-                            egui::DragValue::new(&mut draft.port)
-                                .range(0..=65535)
-                                .custom_formatter(|v, _| port_display(v as u16)),
-                        );
-                        ui.label(theme::dim_text(&i18n.t("rules-port-any-hint"), 11.0));
-                    });
-                    ui.end_row();
-                });
-            ui.add_space(6.0);
-            if let Some(err) = &draft.error {
-                ui.label(
-                    RichText::new(i18n.t(err))
-                        .size(12.0)
-                        .color(theme::c().danger),
+    egui::Window::new(
+        RichText::new(i18n.t(title_key))
+            .size(theme::font::H2)
+            .strong(),
+    )
+    .open(&mut open)
+    .collapsible(false)
+    .resizable(false)
+    .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+    .show(ui, |ui| {
+        egui::Grid::new("rule_edit_grid")
+            .num_columns(2)
+            .spacing([12.0, 8.0])
+            .show(ui, |ui| {
+                field_label(ui, i18n.t("rules-col-name"));
+                ui.add(
+                    egui::TextEdit::singleline(&mut draft.name)
+                        .desired_width(FIELD_WIDTH)
+                        .font(egui::FontId::proportional(theme::font::BODY)),
                 );
-            }
-            ui.add_space(4.0);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .button(RichText::new(i18n.t("rules-save")).size(13.0))
-                    .clicked()
-                {
-                    match validate(draft) {
-                        Ok(()) => save = true,
-                        Err(key) => draft.error = Some(key),
+                ui.end_row();
+
+                field_label(ui, i18n.t("rules-col-action"));
+                combo(ui, "rule-action", action_text(i18n, draft.action), |ui| {
+                    for a in [Action::Allow, Action::Block] {
+                        if ui
+                            .selectable_label(draft.action == a, action_text(i18n, a))
+                            .clicked()
+                        {
+                            draft.action = a;
+                        }
                     }
-                }
-                if ui
-                    .button(RichText::new(i18n.t("rules-cancel")).size(13.0))
-                    .clicked()
-                {
-                    close = true;
-                }
+                });
+                ui.end_row();
+
+                field_label(ui, i18n.t("rules-col-direction"));
+                ui.vertical(|ui| {
+                    combo(
+                        ui,
+                        "rule-direction",
+                        direction_name(i18n, draft.direction),
+                        |ui| {
+                            for d in [Direction::Any, Direction::Out, Direction::In] {
+                                if ui
+                                    .selectable_label(draft.direction == d, direction_name(i18n, d))
+                                    .clicked()
+                                {
+                                    draft.direction = d;
+                                }
+                            }
+                        },
+                    );
+                    ui.label(theme::dim_text(
+                        &i18n.t("rules-direction-hint"),
+                        theme::font::XS,
+                    ));
+                });
+                ui.end_row();
+
+                field_label(ui, i18n.t("col-proto"));
+                combo(ui, "rule-proto", proto_name(i18n, draft.proto), |ui| {
+                    for p in [None, Some(Protocol::Tcp), Some(Protocol::Udp)] {
+                        if ui
+                            .selectable_label(draft.proto == p, proto_name(i18n, p))
+                            .clicked()
+                        {
+                            draft.proto = p;
+                        }
+                    }
+                });
+                ui.end_row();
+
+                field_label(ui, i18n.t("col-process"));
+                ui.vertical(|ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut draft.process)
+                            .desired_width(FIELD_WIDTH)
+                            .font(egui::FontId::proportional(theme::font::BODY)),
+                    );
+                    ui.label(theme::dim_text(
+                        &i18n.t("rules-process-hint"),
+                        theme::font::XS,
+                    ));
+                });
+                ui.end_row();
+
+                field_label(ui, i18n.t("rules-col-remote"));
+                ui.vertical(|ui| {
+                    combo(
+                        ui,
+                        "rule-remote-kind",
+                        remote_kind_name(i18n, draft.remote_kind),
+                        |ui| {
+                            for k in [RemoteKind::Any, RemoteKind::Ip, RemoteKind::Domain] {
+                                if ui
+                                    .selectable_label(
+                                        draft.remote_kind == k,
+                                        remote_kind_name(i18n, k),
+                                    )
+                                    .clicked()
+                                {
+                                    draft.remote_kind = k;
+                                }
+                            }
+                        },
+                    );
+                    if draft.remote_kind != RemoteKind::Any {
+                        let hint = if draft.remote_kind == RemoteKind::Ip {
+                            i18n.t("rules-remote-ip-hint")
+                        } else {
+                            i18n.t("rules-remote-domain-hint")
+                        };
+                        ui.add(
+                            egui::TextEdit::singleline(&mut draft.remote_value)
+                                .hint_text(hint)
+                                .desired_width(FIELD_WIDTH)
+                                .font(egui::FontId::proportional(theme::font::BODY)),
+                        );
+                    }
+                });
+                ui.end_row();
+
+                field_label(ui, i18n.t("col-port"));
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::DragValue::new(&mut draft.port)
+                            .range(0..=65535)
+                            .custom_formatter(|v, _| port_display(v as u16)),
+                    );
+                    ui.label(theme::dim_text(
+                        &i18n.t("rules-port-any-hint"),
+                        theme::font::XS,
+                    ));
+                });
+                ui.end_row();
             });
+        ui.add_space(6.0);
+        if let Some(err) = &draft.error {
+            ui.label(
+                RichText::new(i18n.t(err))
+                    .size(theme::font::SM)
+                    .color(theme::c().danger),
+            );
+        }
+        ui.add_space(4.0);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if primary_btn(ui, i18n.t("rules-save")).clicked() {
+                match validate(draft) {
+                    Ok(()) => save = true,
+                    Err(key) => draft.error = Some(key),
+                }
+            }
+            if ui
+                .button(RichText::new(i18n.t("rules-cancel")).size(theme::font::BODY))
+                .clicked()
+            {
+                close = true;
+            }
         });
+    });
     if !open {
         state.draft = None;
     }
@@ -669,14 +748,14 @@ fn edit_window(
 fn combo(ui: &mut egui::Ui, salt: &str, selected: String, content: impl FnOnce(&mut egui::Ui)) {
     egui::ComboBox::from_id_salt(salt)
         .width(FIELD_WIDTH)
-        .selected_text(RichText::new(selected).size(13.0))
+        .selected_text(RichText::new(selected).size(theme::font::BODY))
         .show_ui(ui, content);
 }
 
 fn field_label(ui: &mut egui::Ui, text: String) {
     ui.label(
         RichText::new(text)
-            .size(13.0)
+            .size(theme::font::BODY)
             .strong()
             .color(theme::c().text_dim),
     );
