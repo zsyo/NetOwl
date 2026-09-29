@@ -803,6 +803,34 @@ impl eframe::App for NetOwlApp {
         // 页面与重绘判定先行(page 借用持续到帧末,后续不能碰 self)
         let shown = self.is_shown(ui.ctx());
         let log_open = self.log_window.open;
+
+        // 自绘标题栏(顶栏最先声明,位于导航栏之上);窗口动作直接处理,
+        // 此时 page/UiCtx 借用尚未建立,Close 可安全写 self.window_visible
+        let title_action = egui::Panel::top("titlebar")
+            .exact_size(ui::titlebar::HEIGHT)
+            .resizable(false)
+            .frame(egui::Frame::new().fill(theme::c().bg_panel))
+            .show(ui, |ui| ui::titlebar::show(ui, crate::APP_NAME))
+            .inner;
+        match title_action {
+            ui::titlebar::TitleAction::Minimize => {
+                ui.ctx()
+                    .send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+            }
+            ui::titlebar::TitleAction::ToggleMaximize => {
+                let maximized = ui.ctx().input(|i| i.viewport().maximized).unwrap_or(false);
+                ui.ctx()
+                    .send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
+            }
+            ui::titlebar::TitleAction::Close => {
+                // 与系统关闭事件同路径:隐藏到托盘(logic 的 close 拦截兜底 Alt+F4)
+                self.window_visible = false;
+                ui.ctx()
+                    .send_viewport_cmd(egui::ViewportCommand::Visible(false));
+            }
+            ui::titlebar::TitleAction::None => {}
+        }
+
         // 字段级拆借用:conns/rdns 只读,config/map_view 需可变(设置页与地图交互)
         let page = &mut self.page;
         let collector_kind = self.collector.kind();

@@ -48,6 +48,8 @@ fn main() -> eframe::Result {
     let restore_target = app_config.window_position();
     let mut viewport = egui::ViewportBuilder::default()
         .with_title(APP_NAME)
+        // 无系统标题栏,标题栏由 ui::titlebar 自绘(拖动/最大化/关闭到托盘)
+        .with_decorations(false)
         .with_min_inner_size([1280.0, 720.0])
         .with_icon(Arc::new(icon::window_icon()));
     match restore_target {

@@ -11,6 +11,7 @@ pub mod map_panel;
 pub mod map_widgets;
 pub mod rules;
 pub mod theme;
+pub mod titlebar;
 
 use std::collections::HashMap;
 
