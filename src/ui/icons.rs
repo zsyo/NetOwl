@@ -33,3 +33,85 @@ pub const CHEVRON_RIGHT: &str = "\u{f285}";
 pub const CHEVRON_DOWN: &str = "\u{f282}";
 /// glyph: ban(进程级阻断生效中)
 pub const BAN: &str = "\u{f6b6}";
+
+// ---- 通用操作 ----
+/// glyph: search(搜索框)
+pub const SEARCH: &str = "\u{f52a}";
+/// glyph: plus(新增)
+pub const PLUS: &str = "\u{f4fe}";
+/// glyph: plus-lg(新增,大号)
+pub const PLUS_LG: &str = "\u{f64d}";
+/// glyph: pencil(编辑)
+pub const PENCIL: &str = "\u{f4cb}";
+/// glyph: trash(删除)
+pub const TRASH: &str = "\u{f5de}";
+/// glyph: arrow-up(上移/上传)
+pub const ARROW_UP: &str = "\u{f148}";
+/// glyph: arrow-down(下移/下载)
+pub const ARROW_DOWN: &str = "\u{f128}";
+/// glyph: arrow-down-up(收发双向)
+pub const ARROW_DOWN_UP: &str = "\u{f127}";
+/// glyph: arrow-repeat(刷新)
+pub const ARROW_REPEAT: &str = "\u{f130}";
+/// glyph: funnel(筛选)
+pub const FUNNEL: &str = "\u{f3e1}";
+/// glyph: copy(窗口还原态)
+pub const COPY: &str = "\u{f759}";
+
+// ---- 状态与提示 ----
+/// glyph: check-circle(启用/成功)
+pub const CHECK_CIRCLE: &str = "\u{f26b}";
+/// glyph: x-circle(停用/失败)
+pub const X_CIRCLE: &str = "\u{f623}";
+/// glyph: exclamation-circle(警示)
+pub const EXCLAMATION_CIRCLE: &str = "\u{f333}";
+/// glyph: info-circle(信息)
+pub const INFO_CIRCLE: &str = "\u{f431}";
+/// glyph: question-circle(未知/疑问)
+pub const QUESTION_CIRCLE: &str = "\u{f505}";
+/// glyph: shield-check(已验证签名/拦截引擎正常)
+pub const SHIELD_CHECK: &str = "\u{f52f}";
+/// glyph: shield-fill-x(拦截引擎失效)
+pub const SHIELD_FILL_X: &str = "\u{f535}";
+/// glyph: shield-exclamation(新连接询问)
+pub const SHIELD_EXCLAMATION: &str = "\u{f530}";
+
+// ---- 窗口控制(自绘标题栏) ----
+/// glyph: dash-lg(最小化)
+pub const DASH_LG: &str = "\u{f63b}";
+/// glyph: square(最大化)
+pub const SQUARE: &str = "\u{f584}";
+
+// ---- 分组/功能标识 ----
+/// glyph: translate(语言)
+pub const TRANSLATE: &str = "\u{f658}";
+/// glyph: palette(主题外观)
+pub const PALETTE: &str = "\u{f4b1}";
+/// glyph: moon(深色主题)
+pub const MOON: &str = "\u{f497}";
+/// glyph: brightness-high(浅色主题)
+pub const BRIGHTNESS_HIGH: &str = "\u{f5a2}";
+/// glyph: hdd(数据存储)
+pub const HDD: &str = "\u{f412}";
+/// glyph: database(历史数据库)
+pub const DATABASE: &str = "\u{f8c4}";
+/// glyph: bell(新连接询问)
+pub const BELL: &str = "\u{f18a}";
+/// glyph: terminal(日志)
+pub const TERMINAL: &str = "\u{f5c3}";
+/// glyph: pin(托盘)
+pub const PIN: &str = "\u{f4ed}";
+/// glyph: sliders(通用设置)
+pub const SLIDERS: &str = "\u{f56b}";
+/// glyph: clock(保留期/时间)
+pub const CLOCK: &str = "\u{f293}";
+/// glyph: ethernet(网络连接)
+pub const ETHERNET: &str = "\u{f6d5}";
+/// glyph: pc-display(本机)
+pub const PC_DISPLAY: &str = "\u{f6a6}";
+/// glyph: flask(模拟数据源)
+pub const FLASK: &str = "\u{f90a}";
+/// glyph: view-list(明细视图)
+pub const VIEW_LIST: &str = "\u{f605}";
+/// glyph: view-stacked(聚合视图)
+pub const VIEW_STACKED: &str = "\u{f606}";
