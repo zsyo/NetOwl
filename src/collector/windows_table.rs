@@ -1,5 +1,7 @@
 //! 真实连接采集:GetExtendedTcpTable/GetExtendedUdpTable(owner-PID)定期
-//! 快照(底层查询见 query),进程元数据(路径/签名)按 PID 缓存。
+//! 快照(底层查询见 query),进程元数据(路径/签名)按 PID 缓存;路径反查
+//! 被目标 DACL 拒绝(非提权/受保护服务)时以 NtQuerySystemInformation
+//! 全量名字快照兜底,拿名字但无完整路径。
 //! 均为只读查询,普通用户权限即可,无需管理员。
 //!
 //! 表快照无字节计数语义(ESTATS Data 采集在本机系统上返回值不可信,
@@ -12,7 +14,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use super::icon::{self, IconImage};
-use super::query::{ConnKey, query_process_path, query_tcp, query_udp};
+use super::query::{ConnKey, query_process_names, query_process_path, query_tcp, query_udp};
 use super::{Collector, CollectorKind, IconState, signature};
 use crate::model::{Connection, Place, Signing};
 
@@ -27,6 +29,7 @@ const SIG_DISPATCH_PER_POLL: usize = 2;
 const ICON_DISPATCH_PER_POLL: usize = 4;
 
 /// 进程元数据(按 PID 缓存;签名状态异步回填)
+#[derive(Clone)]
 struct ProcMeta {
     name: String,
     path: Option<String>,
@@ -102,6 +105,8 @@ impl TableCollector {
         let old = std::mem::take(&mut self.live);
         let mut new_live: HashMap<ConnKey, Connection> =
             HashMap::with_capacity(tcp.len() + udp.len());
+        // 名字兜底枚举按轮懒执行:存在路径反查失败的 PID 才枚举一次,行间复用
+        let mut nt_names: Option<HashMap<u32, String>> = None;
 
         for key in tcp.into_iter().chain(udp) {
             let pid = key.pid;
@@ -112,14 +117,14 @@ impl TableCollector {
             let remote_ip = key.remote_ip();
             let city = crate::net::geoip::locate(remote_ip).map(Place::Geo);
             let first_seen = old.get(&key).map_or(now, |c| c.first_seen);
-            let meta = self.proc_meta(pid);
+            let meta = self.proc_meta(pid, &mut nt_names);
             new_live.insert(
                 key,
                 Connection {
                     id,
                     pid,
-                    process: meta.name.clone(),
-                    proc_path: meta.path.clone(),
+                    process: meta.name,
+                    proc_path: meta.path,
                     signed: meta.signed,
                     proto,
                     local_port,
@@ -151,28 +156,39 @@ impl TableCollector {
         self.last_poll = now;
     }
 
-    /// 进程元数据(带缓存);首次出现时同步查路径(微秒级),
-    /// 签名状态由异步查询回填,回填前为 Unknown
-    fn proc_meta(&mut self, pid: u32) -> &ProcMeta {
-        self.proc_metas.entry(pid).or_insert_with(|| {
-            if pid == SYSTEM_PID {
-                return ProcMeta {
-                    name: "System".to_owned(),
-                    path: None,
-                    signed: Signing::Unknown,
-                };
-            }
-            let path = query_process_path(pid);
-            let name = path
-                .as_deref()
-                .map(|p| p.rsplit(['\\', '/']).next().unwrap_or_default().to_owned())
-                .unwrap_or_default();
-            ProcMeta {
-                name,
-                path,
+    /// 进程元数据(带缓存):优先反查完整映像路径(权限允许时),失败
+    /// (服务进程 DACL 拒绝/非提权/刚退出)时以 NtQuerySystemInformation
+    /// 全量名字快照兜底(nt_names 当轮懒枚举一次复用),拿名字但无路径
+    /// (签名/图标依赖路径,维持未知);最终仍无名的行不缓存,下轮重查,
+    /// 避免瞬时失败固化为整个连接存活期的"未知进程"
+    fn proc_meta(&mut self, pid: u32, nt_names: &mut Option<HashMap<u32, String>>) -> ProcMeta {
+        if pid == SYSTEM_PID {
+            return ProcMeta {
+                name: "System".to_owned(),
+                path: None,
                 signed: Signing::Unknown,
+            };
+        }
+        if let Some(meta) = self.proc_metas.get(&pid) {
+            return meta.clone();
+        }
+        let path = query_process_path(pid);
+        let name = match &path {
+            Some(p) => p.rsplit(['\\', '/']).next().unwrap_or_default().to_owned(),
+            None => {
+                let names = nt_names.get_or_insert_with(query_process_names);
+                names.get(&pid).cloned().unwrap_or_default()
             }
-        })
+        };
+        let meta = ProcMeta {
+            name,
+            path,
+            signed: Signing::Unknown,
+        };
+        if !meta.name.is_empty() {
+            self.proc_metas.insert(pid, meta.clone());
+        }
+        meta
     }
 
     /// 收割已完成的签名查询结果回填缓存

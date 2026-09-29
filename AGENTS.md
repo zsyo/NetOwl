@@ -36,9 +36,13 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   CollectorKind,icon_image 默认返回 Pending;mock.rs:模拟数据供演示/测试;
   query.rs:Win32 查询原语,GetExtendedTcpTable/GetExtendedUdpTable owner-PID
   快照(TCP 仅活动状态,两段式缓冲重试)与 OpenProcess+QueryFullProcessImageNameW
-  全路径反查;windows_table.rs:真实采集器,1s 节流,TCP 过滤 SYN_SENT..LAST_ACK,
+  全路径反查;反查被目标 DACL 拒绝(非提权/受保护服务)时以
+  NtQuerySystemInformation 全量进程名快照兜底(任务管理器同源,无需句柄,
+  拿名字无路径,签名/图标维持未知);windows_table.rs:真实采集器,1s 节流,
+  TCP 过滤 SYN_SENT..LAST_ACK,
   连接身份四元组+PID hash 派生稳定 id,进程元数据(名/路径/签名)按 PID 缓存、
-  行消失即剔除(PID 4 特判 System),图标按路径常驻缓存(连接关闭后进程再现
+  行消失即剔除(仅成功项,无名行不缓存每轮重查防瞬时失败固化;PID 4 特判
+  System),图标按路径常驻缓存(连接关闭后进程再现
   即取即用);signature.rs:WinVerifyTrust Authenticode 校验(UI_NONE+REVOKE_NONE
   不弹窗不联网,须在工作线程跑),每轮限流派发(在途 4/每轮 2 个)结果回填,
   回填前 Unknown;icon.rs:SHGetFileInfoW 取 32x32 关联图标 + GetIconInfo/

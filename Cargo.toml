@@ -30,7 +30,9 @@ rusqlite = { version = "0.40.2", features = ["bundled"] }
 # WinTrust 与 Cryptography feature[WINTRUST_DATA 结构门控];进程图标提取
 # 需 Shell/Gdi/WindowsAndMessaging feature;WFP 拦截引擎需
 # WindowsFilteringPlatform 与 Security[TOKEN_ELEVATION/条件结构门控];
-# ETW 流量事件采集需 Diagnostics_Etw feature);
+# ETW 流量事件采集需 Diagnostics_Etw feature;进程名兜底反查需
+# Wdk_System_SystemInformation[NtQuerySystemInformation] 与
+# WindowsProgramming[SYSTEM_PROCESS_INFORMATION]);
 # 版本与依赖树中 tray-icon 的 windows 0.62 保持一致,避免双份 windows crate
 windows = { version = "0.62.2", features = [
     "Win32_Foundation",
@@ -46,6 +48,7 @@ windows = { version = "0.62.2", features = [
     "Win32_System_Diagnostics_Etw",
     "Win32_System_Registry",
     "Win32_System_SystemInformation",
+    "Win32_System_WindowsProgramming",
     "Win32_System_Time",
     "Win32_System_Rpc",
     "Win32_System_Time",
@@ -53,6 +56,7 @@ windows = { version = "0.62.2", features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_HiDpi",
+    "Wdk_System_SystemInformation",
 ] }
 # 配置持久化(serde + config.toml,参照 wallwarp 实际实现)
 serde = { version = "1.0.229", features = ["derive"] }

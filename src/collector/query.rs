@@ -1,10 +1,14 @@
 //! Win32 底层查询原语:TCP/UDP owner-PID 表快照与进程映像路径。
 //! 全部只读 API,普通用户权限可调用;供 windows_table 采集器使用。
 
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::net::Ipv4Addr;
 
-use windows::Win32::Foundation::{CloseHandle, ERROR_INSUFFICIENT_BUFFER, ERROR_SUCCESS};
+use windows::Wdk::System::SystemInformation::{NtQuerySystemInformation, SystemProcessInformation};
+use windows::Win32::Foundation::{
+    CloseHandle, ERROR_INSUFFICIENT_BUFFER, ERROR_SUCCESS, STATUS_INFO_LENGTH_MISMATCH,
+};
 use windows::Win32::NetworkManagement::IpHelper::{
     GetExtendedTcpTable, GetExtendedUdpTable, MIB_TCP_STATE_LAST_ACK, MIB_TCP_STATE_SYN_SENT,
     MIB_TCPTABLE_OWNER_PID, MIB_UDPTABLE_OWNER_PID, TCP_TABLE_OWNER_PID_ALL, UDP_TABLE_OWNER_PID,
@@ -13,6 +17,7 @@ use windows::Win32::Networking::WinSock::AF_INET;
 use windows::Win32::System::Threading::{
     OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
+use windows::Win32::System::WindowsProgramming::SYSTEM_PROCESS_INFORMATION;
 use windows::core::PWSTR;
 
 use crate::model::Protocol;
@@ -118,6 +123,69 @@ pub fn query_process_path(pid: u32) -> Option<String> {
         let _ = CloseHandle(handle);
         path
     }
+}
+
+/// 全量进程映像名快照(PID -> 映像名):NtQuerySystemInformation 枚举
+/// 不打开进程句柄,被 DACL 拒绝 OpenProcess 的服务进程也能拿到名字
+/// (任务管理器同源);仅作为路径反查失败后的名字兜底,拿不到完整路径
+pub fn query_process_names() -> HashMap<u32, String> {
+    // 缓冲自适应:所需大小随进程数增长,STATUS_INFO_LENGTH_MISMATCH 时
+    // 倍增重试,上限 16 MiB(异常则放弃,返回空表由上层按无名处理)
+    let mut size = 512 * 1024usize;
+    loop {
+        let mut buf = vec![0u8; size];
+        let mut ret = 0u32;
+        let status = unsafe {
+            NtQuerySystemInformation(
+                SystemProcessInformation,
+                buf.as_mut_ptr().cast(),
+                buf.len() as u32,
+                &mut ret,
+            )
+        };
+        if status.is_ok() {
+            return parse_process_names(&buf);
+        }
+        if status == STATUS_INFO_LENGTH_MISMATCH && size < 16 * 1024 * 1024 {
+            size *= 2;
+            continue;
+        }
+        return HashMap::new();
+    }
+}
+
+/// 解析 SystemProcessInformation 单链表(仅取名字与 PID,布局由
+/// windows crate 的 WDK 结构保证):节点 ImageName.Buffer 指向本缓冲区
+/// 内部,仍做区间校验防越界读;无名节点(内核线程等)跳过
+fn parse_process_names(buf: &[u8]) -> HashMap<u32, String> {
+    let step = std::mem::size_of::<SYSTEM_PROCESS_INFORMATION>();
+    let mut out = HashMap::new();
+    let base = buf.as_ptr() as usize;
+    let mut off = 0usize;
+    while off + step <= buf.len() {
+        let info = unsafe { &*((base + off) as *const SYSTEM_PROCESS_INFORMATION) };
+        let name = &info.ImageName;
+        if name.Length > 0 && !name.Buffer.is_null() {
+            let start = name.Buffer.0 as usize;
+            let span = name.Length as usize;
+            if start >= base && start + span <= base + buf.len() {
+                let chars = unsafe { std::slice::from_raw_parts(name.Buffer.0, span / 2) };
+                out.insert(
+                    info.UniqueProcessId.0 as usize as u32,
+                    String::from_utf16_lossy(chars),
+                );
+            }
+        }
+        if info.NextEntryOffset == 0 {
+            break;
+        }
+        // 病态偏移(小于节点尺寸)直接终止,防死循环
+        if (info.NextEntryOffset as usize) < step {
+            break;
+        }
+        off += info.NextEntryOffset as usize;
+    }
+    out
 }
 
 /// 两段式表查询(首次调用取所需缓冲大小,不足时按返回值重试);
