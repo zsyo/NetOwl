@@ -114,8 +114,6 @@ pub struct NetOwlApp {
     /// 生效,流空闲收割后行会回落 *:*;缓存 socket 最后通信的远端,
     /// socket 存活期间持续展示(键 = (pid, 本地端口),表行消失时清理)
     udp_last_remote: HashMap<(u32, u16), (Ipv4Addr, u16)>,
-    /// TEMP-UDPDIAG:UDP 回填诊断日志上次输出时刻(验收后删除)
-    etw_diag_at: Instant,
     /// 连接列表表头排序状态(会话内,不持久化)
     conn_sort: ui::ConnSortState,
     /// 日志浏览窗口状态(内存层日志展示,参照 wallwarp)
@@ -203,7 +201,6 @@ impl NetOwlApp {
             etw_seen: HashSet::new(),
             conn_rates: HashMap::new(),
             udp_last_remote: HashMap::new(),
-            etw_diag_at: Instant::now(),
             conn_sort: None,
             log_window: ui::log_window::PageState::new(),
             conn_prev_bytes: HashMap::new(),
@@ -383,7 +380,9 @@ impl NetOwlApp {
     /// 连接数据刷新(1s 节流):快照拉取与其全部派生逻辑。
     /// 高帧率重绘(地图动画)帧内直接跳过,连接数据本就是秒级口径。
     /// ETW 合并(UDP 远端回填)先于 rDNS 派发与 Tracker diff:
-    /// 前者让 UDP 远端可查 PTR,后者让完结落库带真实远端
+    /// 前者让 UDP 远端可查 PTR,后者让完结落库带真实远端;
+    /// 远端未知行的排除也必须夹在两者之间:早于回填会把待回填的
+    /// 活跃 UDP 行一并丢弃,晚于落库则 0.0.0.0:0 已写入历史
     fn poll_conns(&mut self, ctx: &egui::Context) {
         if self.conns_refresh_at.elapsed() < CONNS_REFRESH_INTERVAL {
             return;
@@ -391,6 +390,10 @@ impl NetOwlApp {
         self.conns_refresh_at = Instant::now();
         self.conns = self.collector.snapshot();
         self.poll_etw();
+        // UDP 表行无远端且 ETW 合并后仍无回退值(未提权/从未通信/启动前
+        // 已存在),无归属无流量,只余噪音;列表/地图/历史一并排除
+        self.conns
+            .retain(|c| !(c.proto == Protocol::Udp && c.remote_ip.is_unspecified()));
         self.rdns.update(&self.conns);
         self.poll_icons(ctx);
         self.poll_history();
@@ -585,10 +588,6 @@ impl NetOwlApp {
             .collect();
         let udp_groups = merge_udp_groups(&flows);
         let mut hits: Vec<etw::FlowKey> = Vec::new();
-        // TEMP-UDPDIAG:统计本轮回填命中(验收后删除)
-        let mut udp_rows = 0usize;
-        let mut udp_filled = 0usize;
-        let mut tcp_matched = 0usize;
         if real {
             for c in &mut self.conns {
                 match c.proto {
@@ -600,14 +599,11 @@ impl NetOwlApp {
                         };
                         c.bytes_in = f.down_bytes;
                         c.bytes_out = f.up_bytes;
-                        tcp_matched += 1;
                         hits.push(f.key);
                     }
                     Protocol::Udp => {
-                        udp_rows += 1;
                         match udp_groups.get(&(c.pid, c.local_port)) {
                             Some(g) => {
-                                udp_filled += 1;
                                 if c.remote_ip != g.rep.key.remote_ip
                                     || c.remote_port != g.rep.key.remote_port
                                 {
@@ -649,110 +645,6 @@ impl NetOwlApp {
             .collect();
         self.udp_last_remote.retain(|k, _| live_udp.contains(k));
         self.update_conn_rates(dt);
-
-        // TEMP-UDPDIAG:每 5s 输出两侧键样例,定位 UDP 回填断链环节
-        // (flows 无 udp 流 = ETW 未收到 42/43;keys 不相交 = 端口/PID 归一
-        // 不一致;相交而 filled=0 = 合并逻辑问题)
-        if self.etw_diag_at.elapsed() >= Duration::from_secs(5) {
-            self.etw_diag_at = Instant::now();
-            let tcp_n = flows
-                .iter()
-                .filter(|f| f.key.proto == Protocol::Tcp)
-                .count();
-            let udp_n = flows
-                .iter()
-                .filter(|f| f.key.proto == Protocol::Udp)
-                .count();
-            let gkeys: Vec<String> = udp_groups
-                .values()
-                .take(6)
-                .map(|g| {
-                    format!(
-                        "pid={} lport={} rep={}:{}",
-                        g.rep.key.pid,
-                        g.rep.key.local_port,
-                        g.rep.key.remote_ip,
-                        g.rep.key.remote_port
-                    )
-                })
-                .collect();
-            let rkeys: Vec<String> = self
-                .conns
-                .iter()
-                .filter(|c| c.proto == Protocol::Udp)
-                .take(6)
-                .map(|c| {
-                    format!(
-                        "pid={} lport={} r={}",
-                        c.pid,
-                        c.local_port,
-                        c.remote_display()
-                    )
-                })
-                .collect();
-            // 两侧键交集数:直接判定合并断链在匹配逻辑还是键归一
-            let udp_row_keys: HashSet<(u32, u16)> = self
-                .conns
-                .iter()
-                .filter(|c| c.proto == Protocol::Udp)
-                .map(|c| (c.pid, c.local_port))
-                .collect();
-            let udp_match = udp_groups
-                .keys()
-                .filter(|k| udp_row_keys.contains(*k))
-                .count();
-            let tcp_row_keys: HashSet<(u32, u16, Ipv4Addr, u16)> = self
-                .conns
-                .iter()
-                .filter(|c| c.proto == Protocol::Tcp)
-                .map(|c| (c.pid, c.local_port, c.remote_ip, c.remote_port))
-                .collect();
-            let tcp_flow_keys: HashSet<(u32, u16, Ipv4Addr, u16)> = flows
-                .iter()
-                .filter(|f| f.key.proto == Protocol::Tcp)
-                .map(|f| {
-                    (
-                        f.key.pid,
-                        f.key.local_port,
-                        f.key.remote_ip,
-                        f.key.remote_port,
-                    )
-                })
-                .collect();
-            let tcp_match = tcp_flow_keys.intersection(&tcp_row_keys).count();
-            let tsample: Vec<String> = self
-                .conns
-                .iter()
-                .filter(|c| c.proto == Protocol::Tcp)
-                .take(3)
-                .map(|c| {
-                    format!(
-                        "p{}:{}->{}:{}",
-                        c.pid, c.local_port, c.remote_ip, c.remote_port
-                    )
-                })
-                .collect();
-            let fsample: Vec<String> = flows
-                .iter()
-                .filter(|f| f.key.proto == Protocol::Tcp)
-                .take(3)
-                .map(|f| {
-                    format!(
-                        "p{}:{}->{}:{}",
-                        f.key.pid, f.key.local_port, f.key.remote_ip, f.key.remote_port
-                    )
-                })
-                .collect();
-            // 多行消息:Label 对 \n 恒换行,窄窗口下样例也可读全
-            tracing::debug!(
-                "[EtwDiag] flows tcp={tcp_n} udp={udp_n} groups={} | rows udp={udp_rows} filled={udp_filled} tcp_hits={tcp_matched} | xmatch tcp={tcp_match} udp={udp_match}\n  gkeys=[{}]\n  rkeys=[{}]\n  trow=[{}]\n  tflow=[{}]",
-                udp_groups.len(),
-                gkeys.join("; "),
-                rkeys.join("; "),
-                tsample.join("; "),
-                fsample.join("; ")
-            );
-        }
 
         let mut events = Vec::new();
         for f in finished {
