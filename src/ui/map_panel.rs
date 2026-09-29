@@ -190,7 +190,17 @@ pub fn list_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
                     conn_row(ui, rules, db, i18n, rdns, c);
                 }
             }
-            ui.add_space(3.0);
+            // 组间分隔线(一级列表行界,子行不画)
+            let bottom = ui.cursor().top();
+            ui.painter().rect_filled(
+                egui::Rect::from_min_max(
+                    egui::pos2(ui.max_rect().left(), bottom),
+                    egui::pos2(ui.max_rect().right(), bottom + 1.0),
+                ),
+                0.0,
+                theme::c().stroke,
+            );
+            ui.add_space(theme::sp::SM);
         }
     });
 
@@ -211,8 +221,8 @@ pub fn list_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
 }
 
 /// 进程组头行:展开箭头、图标、名称(点击选中联动右侧详情,命中区
-/// 拉满剩余宽)、连接数徽章与进程级阻断开关(未知进程不可阻断,避免
-/// 空进程条件生成全局规则)
+/// 拉满剩余宽)、连接数徽章与行尾进程级阻断开关(未知进程不可阻断,
+/// 避免空进程条件生成全局规则);行高加宽松散排布
 #[allow(clippy::too_many_arguments)]
 fn group_row(
     ui: &mut egui::Ui,
@@ -224,6 +234,9 @@ fn group_row(
     g: &ProcGroup,
     path: Option<&str>,
 ) {
+    const ROW_H: f32 = 28.0;
+    const SWITCH_W: f32 = 36.0;
+    const SWITCH_H: f32 = 20.0;
     let unknown = g.name.is_empty();
     let display = if unknown {
         i18n.t("conn-proc-unknown")
@@ -244,28 +257,22 @@ fn group_row(
         };
         let fold = Button::new(RichText::new(arrow).size(10.0).color(theme::c().text_dim))
             .frame(false)
-            .min_size(Vec2::new(14.0, 22.0));
+            .min_size(Vec2::new(14.0, ROW_H));
         let fold_clicked = ui.add(fold).clicked();
         // 未展开(remove 失败)则展开,已展开则收起
         if fold_clicked && !panels.expanded.remove(&g.name) {
             panels.expanded.insert(g.name.clone());
         }
         let tex = path.and_then(|p| icon_tex.get(p)).and_then(|t| t.as_ref());
-        match tex {
-            Some(t) => {
-                ui.add(egui::Image::new(t).fit_to_exact_size(egui::vec2(16.0, 16.0)));
-            }
-            None => {
-                ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
-            }
-        }
+        widgets::process::proc_icon(ui, tex, 16.0);
         // 名称行:受控选中样式(Button::selected 走 selection 底色,悬停
-        // 底色由 widget 五态自动接管);Truncate 容器拉满剩余宽
+        // 底色由 widget 五态自动接管);按钮拉满命中区容器,徽章与开关
+        // 由此贴到行尾
         let count_text = g.conns.len().to_string();
         let badge_w = text_width(ui, &count_text, theme::font::MICRO) + 18.0;
-        let block_w = if unknown { 0.0 } else { 40.0 };
+        let block_w = if unknown { 0.0 } else { SWITCH_W + 4.0 };
         let name_w = (ui.available_width() - badge_w - block_w - 4.0 * 2.0 - 4.0).max(60.0);
-        ui.allocate_ui(egui::vec2(name_w, 22.0), |ui| {
+        ui.allocate_ui(egui::vec2(name_w, ROW_H), |ui| {
             let text = RichText::new(display.clone())
                 .size(theme::font::BODY)
                 .color(if selected {
@@ -277,7 +284,7 @@ fn group_row(
                 .truncate()
                 .selected(selected)
                 .corner_radius(CornerRadius::same(theme::RADIUS_SM))
-                .min_size(Vec2::new(0.0, 22.0));
+                .min_size(Vec2::new(ui.available_width(), ROW_H));
             let resp = ui.add(btn);
             if resp.clicked() {
                 if selected {
@@ -292,16 +299,15 @@ fn group_row(
         if unknown {
             return;
         }
-        // 进程级阻断开关(开启态警示红):on = 阻断生效中,切换即建/删规则
+        // 进程级阻断开关(off 绿 = 放行 / on 红 = 阻断):切换即建/删规则
         let existing = rules.process_block_rule(&g.name, path).map(|r| r.id);
         let mut on = existing.is_some();
-        let resp = widgets::toggle::toggle_switch_styled(
+        let resp = widgets::toggle::block_switch(
             ui,
             &mut on,
-            theme::c().danger,
             true,
-            36.0,
-            20.0,
+            SWITCH_W,
+            SWITCH_H,
             egui::Id::new(("proc-block-toggle", g.name.clone())),
         );
         if resp.changed() {

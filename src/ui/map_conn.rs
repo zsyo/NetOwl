@@ -24,8 +24,7 @@ use crate::ui::widgets;
 const SWITCH_W: f32 = 26.0;
 const SWITCH_H: f32 = 15.0;
 
-/// 连接明细行:远端(域名/地址)、协议、累计字节与目标级阻断开关;
-/// 行底带 1px 分隔线
+/// 连接明细行:远端(域名/地址)、协议、累计字节与目标级阻断开关
 pub(crate) fn conn_row(
     ui: &mut egui::Ui,
     rules: &mut crate::rules::RuleSet,
@@ -56,10 +55,14 @@ pub(crate) fn conn_row(
         let remote_w = (ui.available_width() - right_w).max(60.0);
 
         // 远端:受限容器内 Truncate,拉满容器宽并绘制省略号(不溢出)
-        ui.allocate_ui(egui::vec2(remote_w, 16.0), |ui| {
+        ui.allocate_ui(egui::vec2(remote_w, 22.0), |ui| {
             ui.add(
-                Label::new(RichText::new(remote).size(theme::font::SM).color(theme::c().text))
-                    .truncate(),
+                Label::new(
+                    RichText::new(remote)
+                        .size(theme::font::SM)
+                        .color(theme::c().text),
+                )
+                .truncate(),
             );
         });
         // 右侧区从右往左排:阻断开关、上传数值+箭头、下载数值+箭头、协议
@@ -92,13 +95,7 @@ pub(crate) fn conn_row(
             ui.label(theme::dim_text(proto_text, theme::font::XS));
         });
     });
-    // 行底分隔线(表格行界;stroke 色在深浅两套面板底上均呈弱凹槽感)
-    let bottom = ui.cursor().top();
-    let rect = egui::Rect::from_min_max(
-        egui::pos2(ui.max_rect().left() + 16.0, bottom),
-        egui::pos2(ui.max_rect().right(), bottom + 1.0),
-    );
-    ui.painter().rect_filled(rect, 0.0, theme::c().stroke);
+    ui.add_space(theme::sp::XS);
 }
 
 /// 目标级阻断开关:按命中规则分流(可撤销的 Ip 规则 / 进程级置灰 /
@@ -117,13 +114,12 @@ fn block_action(
         .blocking_rule(c, rdns.lookup(c.remote_ip))
         .map(|r| (r.id, r.remote_kind == RemoteKind::Ip));
     match hit {
-        // 可撤销的目标级规则:开关开启(警示红),关 = 撤销
+        // 可撤销的目标级规则:开关开启(红 = 阻断中),关 = 撤销
         Some((id, true)) => {
             let mut on = true;
-            let resp = widgets::toggle::toggle_switch_styled(
+            let resp = widgets::toggle::block_switch(
                 ui,
                 &mut on,
-                theme::c().danger,
                 true,
                 SWITCH_W,
                 SWITCH_H,
@@ -137,10 +133,9 @@ fn block_action(
         // 命中的是进程级规则:目标级开关置灰,撤销交给组头的进程开关
         Some((_, false)) => {
             let mut on = true;
-            widgets::toggle::toggle_switch_styled(
+            widgets::toggle::block_switch(
                 ui,
                 &mut on,
-                theme::c().danger,
                 false,
                 SWITCH_W,
                 SWITCH_H,
@@ -150,10 +145,9 @@ fn block_action(
         }
         None => {
             let mut on = false;
-            let resp = widgets::toggle::toggle_switch_styled(
+            let resp = widgets::toggle::block_switch(
                 ui,
                 &mut on,
-                theme::c().danger,
                 true,
                 SWITCH_W,
                 SWITCH_H,
