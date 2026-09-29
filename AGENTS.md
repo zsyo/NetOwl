@@ -101,7 +101,9 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   与矢量底图解码(Natural Earth 世界 + DataV 中国混合,两档 LOD:110m 全局 /
   50m 放大,zoom>=3 切换;海岸线/国界按邻国共享边分类;labels 三种 kind +
   十段线段节 + 河流折线节两档))
-- src/ui/ - 界面(mod.rs:主窗口布局与页面(导航栏、连接列表、设置页、UiCtx);
+- src/ui/ - 界面(mod.rs:主窗口布局与页面(导航栏、连接列表、设置页、
+  UiCtx;conn_visible 为连接列表与地图页左右面板共用的本地/局域网远端
+  过滤口径[hide_local/hide_lan]);
   ask.rs:新连接询问弹窗(右下角无标题栏 toast,范围下拉 + 允许/拒绝,进度条
   内嵌剩余秒数);history.rs:历史页(双视图切换、档位筛选、库大小显示、
   超 1 GiB 提醒卡[勾选不再提醒=一票否决持久化,手动清空还原]、清理下拉菜单;

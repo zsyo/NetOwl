@@ -15,7 +15,9 @@ use egui::{Button, Color32, CornerRadius, Frame, Label, Margin, RichText, Scroll
 use crate::model::{Connection, Place, Signing, fmt_bytes};
 use crate::net::geoip;
 use crate::net::rdns;
+use crate::storage::config::Config;
 use crate::ui::UiCtx;
+use crate::ui::conn_visible;
 use crate::ui::icons;
 use crate::ui::map_panel::{MapPanelState, ProcGroup, collect_groups, conn_row, truncate_chars};
 use crate::ui::theme;
@@ -35,32 +37,39 @@ pub fn inspector_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
     let db = ctx.history_db;
     let rdns = ctx.rdns;
     let icon_tex = ctx.icon_tex;
+    let config: &Config = ctx.config;
 
     ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
         let process = panels.process.clone();
         match (panels.place, process) {
-            (_, Some(name)) => {
-                process_view(ui, panels, rules, db, i18n, rdns, icon_tex, conns, &name)
+            (_, Some(name)) => process_view(
+                ui, panels, rules, db, i18n, rdns, icon_tex, config, conns, &name,
+            ),
+            (Some(place), None) => {
+                place_view(ui, panels, i18n, rdns, icon_tex, config, conns, place)
             }
-            (Some(place), None) => place_view(ui, panels, i18n, rdns, icon_tex, conns, place),
-            (None, None) => summary_view(ui, panels, i18n, rdns, icon_tex, conns),
+            (None, None) => summary_view(ui, panels, i18n, rdns, icon_tex, config, conns),
         }
     });
 }
 
-/// 概览:进程/远端计数、总流量与 Top 进程/域名排行(无选中时)
+/// 概览:进程/远端计数、总流量与 Top 进程/域名排行(无选中时);
+/// 全部数据与连接列表同口径(本地/局域网远端噪音过滤)
 fn summary_view(
     ui: &mut egui::Ui,
     panels: &mut MapPanelState,
     i18n: &crate::i18n::I18n,
     rdns: &rdns::Rdns,
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
+    config: &Config,
     conns: &[Connection],
 ) {
     ui.heading(theme::accent_text(&i18n.t("map-inspector-summary"), 18.0));
-    let procs: std::collections::HashSet<&str> = conns.iter().map(|c| c.process.as_str()).collect();
+    let visible: Vec<&Connection> = conns.iter().filter(|c| conn_visible(config, c)).collect();
+    let procs: std::collections::HashSet<&str> =
+        visible.iter().map(|c| c.process.as_str()).collect();
     let remotes: std::collections::HashSet<std::net::Ipv4Addr> =
-        conns.iter().map(|c| c.remote_ip).collect();
+        visible.iter().map(|c| c.remote_ip).collect();
     ui.label(theme::dim_text(
         &i18n.t_with_args(
             "map-inspector-processes",
@@ -73,12 +82,12 @@ fn summary_view(
     ));
     traffic_cards(
         ui,
-        conns.iter().map(|c| c.bytes_in).sum(),
-        conns.iter().map(|c| c.bytes_out).sum(),
+        visible.iter().map(|c| c.bytes_in).sum(),
+        visible.iter().map(|c| c.bytes_out).sum(),
         i18n,
     );
     section_title(ui, &i18n.t("map-inspector-top-proc"));
-    let groups = collect_groups(conns, None, "", rdns);
+    let groups = collect_groups(conns, config, None, "", rdns);
     if groups.is_empty() {
         ui.label(theme::dim_text(&i18n.t("map-panel-empty"), 12.0));
     }
@@ -87,18 +96,20 @@ fn summary_view(
     }
 
     section_title(ui, &i18n.t("map-inspector-top-domain"));
-    for (host, bytes_in, bytes_out) in top_domains(conns, rdns, 5) {
+    for (host, bytes_in, bytes_out) in top_domains(conns, config, rdns, 5) {
         bytes_row(ui, &host, bytes_in, bytes_out);
     }
 }
 
 /// 端点详情:位置名、连接数、双向流量与相关进程排行
+#[allow(clippy::too_many_arguments)]
 fn place_view(
     ui: &mut egui::Ui,
     panels: &mut MapPanelState,
     i18n: &crate::i18n::I18n,
     rdns: &rdns::Rdns,
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
+    config: &Config,
     conns: &[Connection],
     place: Place,
 ) {
@@ -112,6 +123,7 @@ fn place_view(
         panels.process = None;
         return;
     }
+    // 端点定位自地图聚合,远端必有归属,连接数/流量按端点收窄即无需噪音过滤
     let rows: Vec<&Connection> = conns.iter().filter(|c| c.city == Some(place)).collect();
     ui.label(theme::dim_text(
         &i18n.t_with_args("status-conn-count", &[("count", rows.len().to_string())]),
@@ -125,7 +137,7 @@ fn place_view(
     );
 
     section_title(ui, &i18n.t("map-inspector-procs"));
-    let groups = collect_groups(conns, Some(place), "", rdns);
+    let groups = collect_groups(conns, config, Some(place), "", rdns);
     for g in groups {
         proc_rank_row(ui, panels, i18n, icon_tex, &g);
     }
@@ -142,12 +154,14 @@ fn process_view(
     i18n: &crate::i18n::I18n,
     rdns: &rdns::Rdns,
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
+    config: &Config,
     conns: &[Connection],
     name: &str,
 ) {
     let rows: Vec<&Connection> = conns
         .iter()
         .filter(|c| c.process == name)
+        .filter(|c| conn_visible(config, c))
         .filter(|c| panels.place.is_none_or(|p| c.city == Some(p)))
         .collect();
     let path = rows.iter().find_map(|c| c.proc_path.clone());
@@ -391,9 +405,14 @@ fn proc_rank_row(
 }
 
 /// 域名/IP 聚合的流量排行(前 n,双向字节降序);UDP 无远端不计
-fn top_domains(conns: &[Connection], rdns: &rdns::Rdns, n: usize) -> Vec<(String, u64, u64)> {
+fn top_domains(
+    conns: &[Connection],
+    config: &Config,
+    rdns: &rdns::Rdns,
+    n: usize,
+) -> Vec<(String, u64, u64)> {
     let mut map: HashMap<String, (u64, u64)> = HashMap::new();
-    for c in conns {
+    for c in conns.iter().filter(|c| conn_visible(config, c)) {
         if c.remote_ip.is_unspecified() {
             continue;
         }

@@ -12,7 +12,9 @@ use crate::net::geoip;
 use crate::net::rdns;
 use crate::rules::wfp;
 use crate::rules::{RemoteKind, Rule};
+use crate::storage::config::Config;
 use crate::ui::UiCtx;
+use crate::ui::conn_visible;
 use crate::ui::icons;
 use crate::ui::theme;
 
@@ -65,10 +67,12 @@ pub(crate) struct ProcGroup<'a> {
     pub(crate) total: u64,
 }
 
-/// 当前过滤口径下的进程分组:端点选中收窄,搜索词命中组名时保留组内
-/// 全部连接,否则只保留远端(IP/域名)命中的连接;组按累计流量降序
+/// 当前过滤口径下的进程分组:本地/局域网远端噪音过滤(config 持久化,
+/// 与连接列表同口径)、端点选中收窄,搜索词命中组名时保留组内全部连接,
+/// 否则只保留远端(IP/域名)命中的连接;组按累计流量降序
 pub(crate) fn collect_groups<'a>(
     conns: &'a [Connection],
+    config: &Config,
     place: Option<Place>,
     search: &str,
     rdns: &rdns::Rdns,
@@ -76,6 +80,9 @@ pub(crate) fn collect_groups<'a>(
     let needle = search.trim().to_lowercase();
     let mut map = std::collections::HashMap::<&str, ProcGroup<'a>>::new();
     for c in conns {
+        if !conn_visible(config, c) {
+            continue;
+        }
         if place.is_some_and(|p| c.city != Some(p)) {
             continue;
         }
@@ -113,6 +120,7 @@ pub fn list_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
     let db = ctx.history_db;
     let rdns = ctx.rdns;
     let icon_tex = ctx.icon_tex;
+    let config: &Config = ctx.config;
     let wfp_status = &ctx.wfp_status;
 
     // 端点过滤提示条(地图点选的联动来源,可就地解除)
@@ -147,7 +155,7 @@ pub fn list_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
     );
 
     ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-        let groups = collect_groups(conns, panels.place, &panels.search, rdns);
+        let groups = collect_groups(conns, config, panels.place, &panels.search, rdns);
         if groups.is_empty() {
             ui.vertical_centered(|ui| {
                 ui.add_space(24.0);

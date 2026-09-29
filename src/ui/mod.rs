@@ -323,6 +323,13 @@ fn legend(ui: &mut egui::Ui, color: Color32, label: &str) {
     ui.label(theme::dim_text(label, 12.0));
 }
 
+/// 连接显示过滤:本地/局域网远端噪音(config 持久化;连接列表与
+/// 地图页左右面板共用同一口径)
+pub(crate) fn conn_visible(config: &Config, c: &Connection) -> bool {
+    !(config.general.hide_local && c.remote_ip.is_loopback())
+        && !(config.general.hide_lan && c.remote_ip.is_private())
+}
+
 /// 连接列表页;返回是否直接改动了配置(隐藏本地/局域网开关)。
 /// 末列显示规则求值动作(允许/阻断,规则引擎默认放行)
 fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
@@ -362,11 +369,7 @@ fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     ui.add_space(4.0);
 
     // 空态判定与过滤同口径:全部连接都被隐藏时同样提示无连接
-    let visible = |c: &Connection| {
-        !(config.general.hide_local && c.remote_ip.is_loopback())
-            && !(config.general.hide_lan && c.remote_ip.is_private())
-    };
-    let mut shown: Vec<&Connection> = conns.iter().filter(|c| visible(c)).collect();
+    let mut shown: Vec<&Connection> = conns.iter().filter(|c| conn_visible(config, c)).collect();
     sort_conns(&mut shown, conn_sort, conn_rates, i18n);
     if shown.is_empty() {
         ui.label(theme::dim_text(&i18n.t("conns-empty"), 14.0));
