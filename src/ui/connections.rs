@@ -76,11 +76,11 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                 .striped(true)
                 .spacing([24.0, widgets::table::ROW_SPACING_Y])
                 .show(ui, |ui| {
-                    // 表头:可排序列可点击(当前排序列高亮并带方向三角),
-                    // 协议/远端/动作为纯展示列
+                    // 表头:可排序列整格可点击(当前排序列高亮并带方向三角),
+                    // 协议/远端/动作为纯展示列,不给手型光标(不可点)
                     let mut header = |ui: &mut egui::Ui, key: &str, sort: Option<ConnSort>| {
                         let active = conn_sort.is_some_and(|(k, _)| Some(k) == sort);
-                        let resp = match sort {
+                        match sort {
                             Some(s) => {
                                 let ascending = conn_sort.is_some_and(|(_, asc)| asc);
                                 let r = widgets::table::header_sort_cell(
@@ -96,18 +96,9 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                                         _ => (s, true),
                                     });
                                 }
-                                r
                             }
-                            None => {
-                                widgets::table::header_cell(ui, &i18n.t(key));
-                                ui.interact(
-                                    ui.max_rect(),
-                                    egui::Id::new(("conn-header", key)),
-                                    egui::Sense::hover(),
-                                )
-                            }
-                        };
-                        resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+                            None => widgets::table::header_cell(ui, &i18n.t(key)),
+                        }
                     };
                     header(ui, "col-process", Some(ConnSort::Process));
                     header(ui, "col-proto", None);
