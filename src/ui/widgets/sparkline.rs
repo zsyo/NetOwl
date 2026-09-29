@@ -1,13 +1,27 @@
-//! 速率迷你走势图(面积填充 + 折线描边)。
+//! 速率迷你走势图(多序列面积叠加)。
 
 use eframe::egui;
 use egui::{Color32, Pos2, Sense, Stroke, Vec2};
 
-/// `data` 为时间正序的采样序列,按峰值归一化;样本不足 2 个时只画基线
-pub fn sparkline(ui: &mut egui::Ui, data: &[u64], color: Color32, size: Vec2) {
+/// 多序列迷你走势图:同一坐标系叠加面积填充与折线描边,
+/// 峰值按全序列统一归一;样本不足 2 个的序列只画基线。
+pub fn sparklines(ui: &mut egui::Ui, series: &[(&[u64], Color32)], size: Vec2) {
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
     let painter = ui.painter_at(rect);
-    let max = data.iter().copied().max().unwrap_or(0).max(1) as f32;
+    let max = series
+        .iter()
+        .flat_map(|(d, _)| d.iter())
+        .copied()
+        .max()
+        .unwrap_or(0)
+        .max(1) as f32;
+    for (data, color) in series {
+        draw_series(&painter, rect, data, *color, max);
+    }
+}
+
+/// 单序列绘制:相邻采样点与底部构成 quad 面积,再叠折线
+fn draw_series(painter: &egui::Painter, rect: egui::Rect, data: &[u64], color: Color32, max: f32) {
     let n = data.len();
     if n < 2 {
         painter.line_segment(

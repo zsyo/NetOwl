@@ -87,6 +87,8 @@ pub struct NetOwlApp {
     rates: (u64, u64),
     /// 总速率历史环形缓冲(时间正序,(下行, 上行));导航栏迷你走势图数据源
     rate_hist: Vec<(u64, u64)>,
+    /// 应用图标纹理(导航栏品牌区);启动时从内嵌 PNG 建一次
+    logo_tex: egui::TextureHandle,
     /// 进程图标纹理(键 = 映像路径);None 表示已提取且无图标
     icon_tex: HashMap<String, Option<egui::TextureHandle>>,
     /// 连接历史写线程(批量落盘 conn_events)
@@ -180,6 +182,16 @@ impl NetOwlApp {
         } else {
             None
         };
+        // 导航栏品牌区图标:内嵌 PNG 一次性建纹理(256x256 RGBA)
+        let icon_data = crate::platform::icon::window_icon();
+        let logo_tex = cc.egui_ctx.load_texture(
+            "app-logo",
+            egui::ColorImage::from_rgba_unmultiplied(
+                [icon_data.width as usize, icon_data.height as usize],
+                &icon_data.rgba,
+            ),
+            egui::TextureOptions::LINEAR,
+        );
         NetOwlApp {
             page: Page::Map,
             last_page: Page::Map,
@@ -189,6 +201,7 @@ impl NetOwlApp {
             traffic: traffic::Sampler::new(),
             rates: (0, 0),
             rate_hist: Vec::with_capacity(RATE_HIST_LEN + 1),
+            logo_tex,
             icon_tex: HashMap::new(),
             writer: history::Writer::spawn(config.general.history_days),
             tracker: history::Tracker::new(),
@@ -885,7 +898,7 @@ impl eframe::App for NetOwlApp {
                     }),
             )
             .show(ui, |ui| {
-                ui::nav_ui(ui, page, ctx.conns, ctx.i18n, ctx.rates, collector_kind)
+                ui::nav_ui(ui, page, &ctx, &self.logo_tex, collector_kind)
             });
 
         // 地图页操作面板:面板必须先于中央面板声明(egui 的面板顺序约束),
