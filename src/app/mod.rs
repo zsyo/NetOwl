@@ -56,6 +56,8 @@ const LOCAL_IP_PROBE_INTERVAL: Duration = Duration::from_secs(10 * 60);
 /// 总速率采样间隔:窗口可见时 1s,隐藏(托盘)时放宽到 5s 降低功耗
 const TRAFFIC_INTERVAL_ACTIVE: Duration = Duration::from_secs(1);
 const TRAFFIC_INTERVAL_HIDDEN: Duration = Duration::from_secs(5);
+/// 速率历史采样点数(约 1 分钟窗口,迷你走势图用)
+const RATE_HIST_LEN: usize = 60;
 /// WFP 过滤器目标集合同步间隔(与采集同频:进程路径出现/消失的生效延迟上限)
 const WFP_SYNC_INTERVAL: Duration = Duration::from_secs(1);
 /// ETW 流量事件合并间隔(与表快照采集同频)
@@ -83,6 +85,8 @@ pub struct NetOwlApp {
     traffic: traffic::Sampler,
     /// 最近总速率(字节/秒):(下行, 上行),导航栏展示
     rates: (u64, u64),
+    /// 总速率历史环形缓冲(时间正序,(下行, 上行));导航栏迷你走势图数据源
+    rate_hist: Vec<(u64, u64)>,
     /// 进程图标纹理(键 = 映像路径);None 表示已提取且无图标
     icon_tex: HashMap<String, Option<egui::TextureHandle>>,
     /// 连接历史写线程(批量落盘 conn_events)
@@ -184,6 +188,7 @@ impl NetOwlApp {
             rdns: rdns::Rdns::new(),
             traffic: traffic::Sampler::new(),
             rates: (0, 0),
+            rate_hist: Vec::with_capacity(RATE_HIST_LEN + 1),
             icon_tex: HashMap::new(),
             writer: history::Writer::spawn(config.general.history_days),
             tracker: history::Tracker::new(),
@@ -428,6 +433,10 @@ impl NetOwlApp {
             TRAFFIC_INTERVAL_HIDDEN
         };
         self.rates = self.traffic.poll(interval);
+        self.rate_hist.push(self.rates);
+        if self.rate_hist.len() > RATE_HIST_LEN {
+            self.rate_hist.remove(0);
+        }
     }
 
     /// 窗口是否对用户可见:自行跟踪的可见性 && 未最小化
@@ -846,6 +855,7 @@ impl eframe::App for NetOwlApp {
             config: &mut self.config,
             rdns: &self.rdns,
             rates: self.rates,
+            rate_hist: &self.rate_hist,
             conn_rates: &self.conn_rates,
             conn_sort: &mut self.conn_sort,
             log_window: &mut self.log_window,

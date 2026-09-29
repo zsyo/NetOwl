@@ -12,6 +12,7 @@ pub mod map_widgets;
 pub mod rules;
 pub mod theme;
 pub mod titlebar;
+pub mod widgets;
 
 use std::collections::HashMap;
 
@@ -193,6 +194,8 @@ pub struct UiCtx<'a> {
     pub rdns: &'a rdns::Rdns,
     /// 总速率(字节/秒):(下行, 上行)
     pub rates: (u64, u64),
+    /// 总速率历史(时间正序,(下行, 上行),约 1 分钟窗口;迷你走势图用)
+    pub rate_hist: &'a [(u64, u64)],
     /// 每连接实时速率(键 = 连接 id;ETW 字节差值/秒,未提权恒 0)
     pub conn_rates: &'a HashMap<u64, (u64, u64)>,
     /// 连接列表表头排序状态(表头点击切换)
