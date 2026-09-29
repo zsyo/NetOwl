@@ -13,7 +13,7 @@ use crate::net::geoip;
 use crate::storage::config::Config;
 use crate::storage::history;
 use crate::storage::history_query::{self, Rows, ViewMode};
-use crate::ui::theme;
+use crate::ui::{icons, theme, widgets};
 
 /// 历史页;返回是否直接改动了配置(勾选不再提醒/清空还原提醒)
 pub fn show(
@@ -28,24 +28,23 @@ pub fn show(
     state.refresh_if_needed(db, config.general.hide_local, config.general.hide_lan);
     let mut config_changed = false;
 
-    ui.heading(theme::accent_text(&i18n.t("history-title"), 20.0));
-    ui.label(theme::dim_text(&i18n.t("history-subtitle"), 13.0));
-    ui.add_space(10.0);
+    widgets::header::page_header(ui, &i18n.t("history-title"), &i18n.t("history-subtitle"));
+    ui.add_space(theme::sp::SM);
 
     // 超容提醒:大小超阈值且用户未勾选"不再提醒"时展示
     if state.db_size > history_query::REMIND_SIZE && config.general.history_remind {
         config_changed |= remind_card(ui, state, i18n, config);
-        ui.add_space(8.0);
+        ui.add_space(theme::sp::SM);
     }
 
     toolbar(ui, state, i18n, db, writer, config, &mut config_changed);
-    ui.add_space(8.0);
+    ui.add_space(theme::sp::SM);
 
     rows_table(ui, state, i18n, icon_tex);
     config_changed
 }
 
-/// 超容提醒卡片;勾选"不再提醒"写 config 持久化
+/// 超容提醒卡片(warn 低透明底 + 警示图标);勾选"不再提醒"写 config 持久化
 fn remind_card(
     ui: &mut egui::Ui,
     state: &history_query::PageState,
@@ -53,16 +52,26 @@ fn remind_card(
     config: &mut Config,
 ) -> bool {
     let mut changed = false;
+    let warn = theme::c().status_warn;
     Frame::new()
-        .fill(theme::c().bg_card)
-        .stroke(Stroke::new(1.0, theme::c().accent.gamma_multiply(0.5)))
+        .fill(warn.gamma_multiply(0.10))
+        .stroke(Stroke::new(1.0, warn.gamma_multiply(0.4)))
         .corner_radius(CornerRadius::same(theme::RADIUS_MD))
-        .inner_margin(Margin::same(12))
+        .inner_margin(Margin::same(theme::sp::MD as i8))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(icons::EXCLAMATION_CIRCLE)
+                        .size(theme::font::H3)
+                        .color(warn),
+                );
                 let text =
                     i18n.t_with_args("history-remind-text", &[("size", fmt_bytes(state.db_size))]);
-                ui.label(RichText::new(text).size(13.0).color(theme::c().text));
+                ui.label(
+                    RichText::new(text)
+                        .size(theme::font::BODY)
+                        .color(theme::c().text),
+                );
                 if ui
                     .checkbox(&mut false, i18n.t("history-remind-dismiss"))
                     .clicked()
@@ -92,27 +101,21 @@ fn toolbar(
 ) {
     ui.style_mut().spacing.interact_size.y = TOOLBAR_ROW_H;
     ui.horizontal(|ui| {
-        // 视图切换
-        let mut switch = None;
-        let view_label = |i18n: &I18n, mode: ViewMode| match mode {
-            ViewMode::Detail => i18n.t("history-view-detail"),
-            ViewMode::Aggregate => i18n.t("history-view-aggregate"),
+        // 视图切换(segmented:明细/聚合)
+        let view_items = [
+            (&*i18n.t("history-view-detail"), icons::VIEW_LIST),
+            (&*i18n.t("history-view-aggregate"), icons::VIEW_STACKED),
+        ];
+        let view_idx = match state.view {
+            ViewMode::Detail => 0,
+            ViewMode::Aggregate => 1,
         };
-        for mode in [ViewMode::Detail, ViewMode::Aggregate] {
-            let selected = state.view == mode;
-            let label = RichText::new(view_label(i18n, mode))
-                .size(13.0)
-                .color(if selected {
-                    theme::c().accent
-                } else {
-                    theme::c().text
-                });
-            if ui.selectable_label(selected, label).clicked() {
-                switch = Some(mode);
-            }
-        }
-        if let Some(mode) = switch {
-            state.view = mode;
+        if let Some(i) = widgets::segmented::segmented(ui, &view_items, view_idx) {
+            state.view = if i == 0 {
+                ViewMode::Detail
+            } else {
+                ViewMode::Aggregate
+            };
             state.dirty = true;
         }
 
@@ -133,11 +136,14 @@ fn toolbar(
         };
         egui::ComboBox::from_id_salt("history-range")
             .width(120.0)
-            .selected_text(RichText::new(range_name(i18n, state.range)).size(13.0))
+            .selected_text(RichText::new(range_name(i18n, state.range)).size(theme::font::BODY))
             .show_ui(ui, |ui| {
                 for (r, key) in ranges {
                     if ui
-                        .selectable_label(state.range == r, RichText::new(i18n.t(key)).size(13.0))
+                        .selectable_label(
+                            state.range == r,
+                            RichText::new(i18n.t(key)).size(theme::font::BODY),
+                        )
                         .clicked()
                     {
                         state.range = r;
@@ -150,26 +156,26 @@ fn toolbar(
         let process = ui.add(
             egui::TextEdit::singleline(&mut state.process)
                 .hint_text(i18n.t("history-filter-process"))
-                .font(egui::FontId::proportional(13.0))
+                .font(egui::FontId::proportional(theme::font::BODY))
                 .desired_width(110.0),
         );
         let remote = ui.add(
             egui::TextEdit::singleline(&mut state.remote)
                 .hint_text(i18n.t("history-filter-remote"))
-                .font(egui::FontId::proportional(13.0))
+                .font(egui::FontId::proportional(theme::font::BODY))
                 .desired_width(110.0),
         );
 
         // 协议
         egui::ComboBox::from_id_salt("history-proto")
             .width(90.0)
-            .selected_text(RichText::new(proto_name(i18n, state.proto)).size(13.0))
+            .selected_text(RichText::new(proto_name(i18n, state.proto)).size(theme::font::BODY))
             .show_ui(ui, |ui| {
                 for p in [None, Some(Protocol::Tcp), Some(Protocol::Udp)] {
                     if ui
                         .selectable_label(
                             state.proto == p,
-                            RichText::new(proto_name(i18n, p)).size(13.0),
+                            RichText::new(proto_name(i18n, p)).size(theme::font::BODY),
                         )
                         .clicked()
                     {
@@ -180,7 +186,7 @@ fn toolbar(
             });
 
         if ui
-            .button(RichText::new(i18n.t("history-refresh")).size(13.0))
+            .button(RichText::new(i18n.t("history-refresh")).size(theme::font::BODY))
             .clicked()
         {
             state.dirty = true;
@@ -190,7 +196,7 @@ fn toolbar(
         }
 
         // 本地/局域网远端噪音过滤(config 持久化,连接页与历史页共享)
-        let hide_local_text = RichText::new(i18n.t("filter-hide-local")).size(13.0);
+        let hide_local_text = RichText::new(i18n.t("filter-hide-local")).size(theme::font::BODY);
         if ui
             .checkbox(&mut config.general.hide_local, hide_local_text)
             .changed()
@@ -198,7 +204,7 @@ fn toolbar(
             state.dirty = true;
             *config_changed = true;
         }
-        let hide_lan_text = RichText::new(i18n.t("filter-hide-lan")).size(13.0);
+        let hide_lan_text = RichText::new(i18n.t("filter-hide-lan")).size(theme::font::BODY);
         if ui
             .checkbox(&mut config.general.hide_lan, hide_lan_text)
             .changed()
@@ -210,17 +216,21 @@ fn toolbar(
         // 库大小与手动清理(右对齐):点击弹出档位菜单
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let size = i18n.t_with_args("history-db-size", &[("size", fmt_bytes(state.db_size))]);
-            ui.label(theme::dim_text(&size, 12.0));
-            let purge_button = egui::Button::new(RichText::new(i18n.t("history-purge")).size(13.0))
-                .fill(theme::c().accent_soft)
-                .corner_radius(CornerRadius::same(theme::RADIUS_SM));
+            ui.label(theme::dim_text(&size, theme::font::SM));
+            let purge_button =
+                egui::Button::new(RichText::new(i18n.t("history-purge")).size(theme::font::BODY))
+                    .fill(theme::c().accent_soft)
+                    .corner_radius(CornerRadius::same(theme::RADIUS_SM));
             MenuButton::from_button(purge_button).ui(ui, |ui| {
                 ui.with_layout(
                     egui::Layout::top_down(egui::Align::LEFT).with_cross_justify(true),
                     |ui| {
                         for (days, text) in purge_choices(i18n) {
                             if ui
-                                .selectable_label(false, RichText::new(text).size(13.0))
+                                .selectable_label(
+                                    false,
+                                    RichText::new(text).size(theme::font::BODY),
+                                )
                                 .clicked()
                             {
                                 state.request_purge(writer, days);
@@ -278,10 +288,11 @@ fn rows_table(
             egui::ScrollArea::vertical()
                 .auto_shrink(false)
                 .show(ui, |ui| {
+                    let table_left = ui.max_rect().left();
+                    let table_right = ui.max_rect().right();
                     egui::Grid::new("history_detail")
                         .num_columns(6)
-                        .spacing([24.0, 7.0])
-                        .striped(true)
+                        .spacing([24.0, 9.0])
                         .show(ui, |ui| {
                             for key in [
                                 "history-col-process",
@@ -291,10 +302,11 @@ fn rows_table(
                                 "history-col-first",
                                 "history-col-duration",
                             ] {
-                                header(ui, i18n.t(key));
+                                widgets::table::header_cell(ui, &i18n.t(key));
                             }
                             ui.end_row();
                             for r in rows {
+                                let row_top = ui.cursor().top();
                                 proc_cell(
                                     ui,
                                     &r.process,
@@ -303,11 +315,19 @@ fn rows_table(
                                     icon_tex,
                                     i18n,
                                 );
-                                ui.label(theme::dim_text(r.proto.as_str(), 13.0));
+                                widgets::badge::badge(
+                                    ui,
+                                    r.proto.as_str(),
+                                    if r.proto.as_str() == "TCP" {
+                                        widgets::badge::BadgeKind::Accent
+                                    } else {
+                                        widgets::badge::BadgeKind::Neutral
+                                    },
+                                );
                                 ui.add(
                                     Label::new(
                                         RichText::new(format!("{}:{}", r.remote_ip, r.remote_port))
-                                            .size(13.0)
+                                            .size(theme::font::BODY)
                                             .color(theme::c().text),
                                     )
                                     .wrap_mode(egui::TextWrapMode::Extend),
@@ -315,15 +335,16 @@ fn rows_table(
                                 location_cell(ui, i18n, r.remote_ip);
                                 ui.label(theme::dim_text(
                                     &history_query::fmt_local(r.first_seen),
-                                    13.0,
+                                    theme::font::BODY,
                                 ));
                                 ui.label(theme::dim_text(
                                     &history_query::fmt_duration(
                                         r.last_seen.saturating_sub(r.first_seen),
                                     ),
-                                    13.0,
+                                    theme::font::BODY,
                                 ));
                                 ui.end_row();
+                                paint_row_hover(ui, table_left, table_right, row_top);
                             }
                         });
                     truncated_hint(ui, rows.len(), i18n);
@@ -337,10 +358,11 @@ fn rows_table(
             egui::ScrollArea::vertical()
                 .auto_shrink(false)
                 .show(ui, |ui| {
+                    let table_left = ui.max_rect().left();
+                    let table_right = ui.max_rect().right();
                     egui::Grid::new("history_aggregate")
                         .num_columns(7)
-                        .spacing([24.0, 7.0])
-                        .striped(true)
+                        .spacing([24.0, 9.0])
                         .show(ui, |ui| {
                             for key in [
                                 "history-col-process",
@@ -351,16 +373,25 @@ fn rows_table(
                                 "history-col-total",
                                 "history-col-last",
                             ] {
-                                header(ui, i18n.t(key));
+                                widgets::table::header_cell(ui, &i18n.t(key));
                             }
                             ui.end_row();
                             for r in rows {
+                                let row_top = ui.cursor().top();
                                 proc_cell(ui, &r.process, None, None, icon_tex, i18n);
-                                ui.label(theme::dim_text(r.proto.as_str(), 13.0));
+                                widgets::badge::badge(
+                                    ui,
+                                    r.proto.as_str(),
+                                    if r.proto.as_str() == "TCP" {
+                                        widgets::badge::BadgeKind::Accent
+                                    } else {
+                                        widgets::badge::BadgeKind::Neutral
+                                    },
+                                );
                                 ui.add(
                                     Label::new(
                                         RichText::new(r.remote_ip.to_string())
-                                            .size(13.0)
+                                            .size(theme::font::BODY)
                                             .color(theme::c().text),
                                     )
                                     .wrap_mode(egui::TextWrapMode::Extend),
@@ -368,18 +399,19 @@ fn rows_table(
                                 location_cell(ui, i18n, r.remote_ip);
                                 ui.label(
                                     RichText::new(r.count.to_string())
-                                        .size(13.0)
+                                        .size(theme::font::BODY)
                                         .color(theme::c().text),
                                 );
                                 ui.label(theme::dim_text(
                                     &history_query::fmt_duration(r.total_secs),
-                                    13.0,
+                                    theme::font::BODY,
                                 ));
                                 ui.label(theme::dim_text(
                                     &history_query::fmt_local(r.last_active),
-                                    13.0,
+                                    theme::font::BODY,
                                 ));
                                 ui.end_row();
+                                paint_row_hover(ui, table_left, table_right, row_top);
                             }
                         });
                     truncated_hint(ui, rows.len(), i18n);
@@ -388,29 +420,29 @@ fn rows_table(
     }
 }
 
-fn header(ui: &mut egui::Ui, text: String) {
-    ui.label(
-        RichText::new(text)
-            .size(12.0)
-            .strong()
-            .color(theme::c().text_dim),
-    );
+/// 行悬停高亮:横跨表格全宽的底色(与连接页同款)
+fn paint_row_hover(ui: &egui::Ui, left: f32, right: f32, top: f32) {
+    let bottom = ui.cursor().top() - 9.0;
+    let rect = egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, bottom));
+    if ui.rect_contains_pointer(rect) {
+        widgets::table::row_background(ui, rect, theme::c().hover_bg);
+    }
 }
 
 fn empty_hint(ui: &mut egui::Ui, i18n: &I18n) {
-    ui.add_space(20.0);
-    ui.label(theme::dim_text(&i18n.t("history-empty"), 14.0));
+    ui.add_space(theme::sp::XL);
+    ui.label(theme::dim_text(&i18n.t("history-empty"), theme::font::H3));
 }
 
 fn truncated_hint(ui: &mut egui::Ui, len: usize, i18n: &I18n) {
     if len >= history_query::QUERY_LIMIT {
-        ui.add_space(8.0);
+        ui.add_space(theme::sp::SM);
         ui.label(theme::dim_text(
             &i18n.t_with_args(
                 "history-truncated",
                 &[("n", history_query::QUERY_LIMIT.to_string())],
             ),
-            12.0,
+            theme::font::SM,
         ));
     }
 }
@@ -426,14 +458,7 @@ fn proc_cell(
 ) {
     ui.horizontal(|ui| {
         let tex = path.and_then(|p| icon_tex.get(p)).and_then(|t| t.as_ref());
-        match tex {
-            Some(t) => {
-                ui.add(egui::Image::new(t).fit_to_exact_size(egui::vec2(16.0, 16.0)));
-            }
-            None => {
-                ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
-            }
-        }
+        widgets::process::proc_icon(ui, tex, 16.0);
         let text = match (name.is_empty(), pid) {
             (true, Some(pid)) => {
                 format!("{} (PID {pid})", i18n.t("conn-proc-unknown"))
@@ -443,8 +468,12 @@ fn proc_cell(
             (false, None) => name.to_owned(),
         };
         ui.add(
-            Label::new(RichText::new(text).size(13.0).color(theme::c().text))
-                .wrap_mode(egui::TextWrapMode::Extend),
+            Label::new(
+                RichText::new(text)
+                    .size(theme::font::BODY)
+                    .color(theme::c().text),
+            )
+            .wrap_mode(egui::TextWrapMode::Extend),
         );
     });
 }
@@ -455,5 +484,5 @@ fn location_cell(ui: &mut egui::Ui, i18n: &I18n, ip: std::net::Ipv4Addr) {
         Some(p) => geoip::place_label(p, i18n),
         None => i18n.t("conn-loc-unknown"),
     };
-    ui.label(theme::dim_text(&text, 13.0));
+    ui.label(theme::dim_text(&text, theme::font::BODY));
 }
