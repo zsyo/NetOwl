@@ -1,21 +1,30 @@
 //! 地图页左面板:按进程分组的连接列表,支持端点过滤、搜索与一键阻断。
 //! 阻断 = 创建永久 Block 规则(求值未命中默认放行,故无"允许"按钮),
 //! 再次点击删除对应规则撤销;WFP 由 App 层轮询自动同步生效。
+//!
+//! 行内可变长文本统一"固定宽度容器 + Truncate"(宽度扣除同行其余控件):
+//! 拉满剩余宽的控件若不设容器会把后续控件挤出面板,经 resizable 面板的
+//! 宽度记忆逐帧放大(map_inspector 模块注释)。
 
 use std::collections::{HashMap, HashSet};
 
 use eframe::egui;
-use egui::{Button, Color32, CornerRadius, Label, RichText, ScrollArea, Stroke, TextEdit, Vec2};
+use egui::{
+    Button, Color32, CornerRadius, Frame, Label, Margin, RichText, ScrollArea, Stroke, TextEdit,
+    Vec2,
+};
 
-use crate::model::{Connection, Place, fmt_bytes};
+use crate::model::{Connection, Place};
 use crate::net::geoip;
 use crate::net::rdns;
+use crate::rules::Rule;
 use crate::rules::wfp;
-use crate::rules::{RemoteKind, Rule};
 use crate::storage::config::Config;
 use crate::ui::UiCtx;
 use crate::ui::conn_visible;
 use crate::ui::icons;
+use crate::ui::map_conn::conn_row;
+use crate::ui::text_width;
 use crate::ui::theme;
 
 /// 地图页左右面板与选中状态(App 持有,会话态不入 config)
@@ -45,17 +54,6 @@ impl Default for MapPanelState {
             search: String::new(),
         }
     }
-}
-
-/// 行内文本字符截断:egui 的 truncate(以及拉满剩余宽的控件)放在
-/// 行中间会把后续控件挤出面板,经 resizable 面板的宽度记忆逐帧放大,
-/// 因此所有行内文本统一按字符数预截断
-pub(crate) fn truncate_chars(text: &str, max_chars: usize) -> String {
-    if text.chars().count() <= max_chars {
-        return text.to_owned();
-    }
-    let cut: String = text.chars().take(max_chars).collect();
-    format!("{cut}…")
 }
 
 /// 按映像名分组的进程连接(组名空串 = 未知进程);左列表与右侧
@@ -108,6 +106,16 @@ pub(crate) fn collect_groups<'a>(
     // 次级键按名称:HashMap 迭代序随机,total 相同(如未提权时字节恒 0)
     // 的组若不加稳定键,列表顺序每帧跳动
     groups.sort_by(|a, b| b.total.cmp(&a.total).then_with(|| a.name.cmp(&b.name)));
+    // 组内连接按远端四元组排序:表快照顺序不稳定,展开的子行会每秒跳动
+    for g in &mut groups {
+        g.conns.sort_by(|a, b| {
+            (a.remote_ip, a.remote_port, a.local_port).cmp(&(
+                b.remote_ip,
+                b.remote_port,
+                b.local_port,
+            ))
+        });
+    }
     groups
 }
 
@@ -126,15 +134,19 @@ pub fn list_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
     // 端点过滤提示条(地图点选的联动来源,可就地解除)
     if let Some(place) = panels.place {
         ui.horizontal(|ui| {
+            ui.style_mut().spacing.item_spacing.x = 4.0;
+            ui.style_mut().spacing.button_padding = egui::vec2(2.0, 0.0);
             let text = i18n.t_with_args(
                 "map-panel-filter",
                 &[("place", geoip::place_label(place, i18n))],
             );
-            let text = truncate_chars(&text, 16);
-            ui.add(
-                Label::new(RichText::new(text).size(11.0).color(theme::c().accent))
-                    .wrap_mode(egui::TextWrapMode::Extend),
-            );
+            let clear_w = 16.0;
+            let text_w = (ui.available_width() - clear_w - 4.0).max(40.0);
+            ui.allocate_ui(egui::vec2(text_w, 14.0), |ui| {
+                ui.add(
+                    Label::new(RichText::new(text).size(11.0).color(theme::c().accent)).truncate(),
+                );
+            });
             let clear = Button::new(
                 RichText::new(icons::X_LG)
                     .size(10.0)
@@ -171,7 +183,7 @@ pub fn list_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
                     conn_row(ui, rules, db, i18n, rdns, c);
                 }
             }
-            ui.add_space(2.0);
+            ui.add_space(3.0);
         }
     });
 
@@ -191,8 +203,9 @@ pub fn list_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
     }
 }
 
-/// 进程组头行:展开箭头、图标、名称(点击选中联动右侧详情)与
-/// 进程级阻断开关(未知进程不可阻断,避免空进程条件生成全局规则)
+/// 进程组头行:展开箭头、图标、名称(点击选中联动右侧详情,命中区
+/// 拉满剩余宽)、连接数徽章与进程级阻断开关(未知进程不可阻断,避免
+/// 空进程条件生成全局规则)
 #[allow(clippy::too_many_arguments)]
 fn group_row(
     ui: &mut egui::Ui,
@@ -214,7 +227,9 @@ fn group_row(
     let expanded = panels.expanded.contains(&g.name);
 
     ui.horizontal(|ui| {
-        ui.style_mut().spacing.item_spacing.x = 2.0;
+        ui.style_mut().spacing.item_spacing.x = 4.0;
+        // 行内小图标按钮用紧凑 padding(style.button_padding 默认 10x5 太宽)
+        ui.style_mut().spacing.button_padding = egui::vec2(2.0, 0.0);
         let arrow = if expanded {
             icons::CHEVRON_DOWN
         } else {
@@ -222,7 +237,7 @@ fn group_row(
         };
         let fold = Button::new(RichText::new(arrow).size(10.0).color(theme::c().text_dim))
             .frame(false)
-            .min_size(Vec2::new(16.0, 20.0));
+            .min_size(Vec2::new(14.0, 22.0));
         let fold_clicked = ui.add(fold).clicked();
         // 未展开(remove 失败)则展开,已展开则收起
         if fold_clicked && !panels.expanded.remove(&g.name) {
@@ -238,32 +253,44 @@ fn group_row(
             }
         }
         // 名称行:导航栏同款的受控选中样式(SelectableLabel 为内部
-        // Toggle 状态,跨行单选不受控,不用)
-        let label = truncate_chars(&format!("{display} ({})", g.conns.len()), 20);
-        let text = RichText::new(label).size(13.0).color(if selected {
-            theme::c().text
-        } else {
-            theme::c().text_dim
-        });
-        let btn = Button::new(text)
-            .fill(if selected {
-                theme::c().accent_soft
-            } else {
-                Color32::TRANSPARENT
-            })
-            .stroke(if selected {
-                Stroke::new(1.0, theme::c().accent.gamma_multiply(0.4))
-            } else {
-                Stroke::NONE
-            })
-            .corner_radius(CornerRadius::same(theme::RADIUS_SM));
-        if ui.add(btn).clicked() {
-            if selected {
-                panels.process = None;
-            } else {
-                panels.process = Some(g.name.clone());
+        // Toggle 状态,跨行单选不受控,不用);Truncate 容器拉满剩余宽
+        let count_text = g.conns.len().to_string();
+        let badge_w = text_width(ui, &count_text, 10.0) + 12.0;
+        let block_w = if unknown { 0.0 } else { 20.0 };
+        let name_w = (ui.available_width() - badge_w - block_w - 4.0 * 2.0 - 4.0).max(60.0);
+        ui.allocate_ui(egui::vec2(name_w, 22.0), |ui| {
+            let text = RichText::new(display.clone())
+                .size(13.0)
+                .color(if selected {
+                    theme::c().text
+                } else {
+                    theme::c().text_dim
+                });
+            let btn = Button::new(text)
+                .truncate()
+                .fill(if selected {
+                    theme::c().accent_soft
+                } else {
+                    Color32::TRANSPARENT
+                })
+                .stroke(if selected {
+                    Stroke::new(1.0, theme::c().accent.gamma_multiply(0.4))
+                } else {
+                    Stroke::NONE
+                })
+                .corner_radius(CornerRadius::same(theme::RADIUS_SM))
+                .min_size(Vec2::new(0.0, 22.0));
+            let resp = ui.add(btn);
+            if resp.clicked() {
+                if selected {
+                    panels.process = None;
+                } else {
+                    panels.process = Some(g.name.clone());
+                }
             }
-        }
+            resp.on_hover_text(display);
+        });
+        badge(ui, &count_text);
         if unknown {
             return;
         }
@@ -280,7 +307,6 @@ fn group_row(
                 } else {
                     theme::c().text_dim
                 }))
-                .frame(false)
                 .min_size(Vec2::new(20.0, 20.0)),
             )
             .on_hover_text(tip);
@@ -297,112 +323,17 @@ fn group_row(
     });
 }
 
-/// 子模块间复用的阻断动作(连接行的目标级阻断;进程级在组头处理)
-enum BlockAct {
-    /// 已由进程级规则阻断,不可在目标级撤销
-    None,
-    /// 删除命中的目标级阻断规则
-    Delete(i64),
-    /// 新建进程 + 目标 IP 规则
-    Add(std::net::Ipv4Addr),
-}
-
-/// 连接明细行:远端(域名/地址):端口 + 协议、累计字节与目标级阻断开关。
-/// 已被进程级规则阻断的连接按钮置灰(撤销进程规则会放大放行范围,不做);
-/// 左列表与右侧 Inspector 的连接明细共用
-pub(crate) fn conn_row(
-    ui: &mut egui::Ui,
-    rules: &mut crate::rules::RuleSet,
-    db: &crate::storage::history::Db,
-    i18n: &crate::i18n::I18n,
-    rdns: &rdns::Rdns,
-    c: &Connection,
-) {
-    ui.horizontal(|ui| {
-        ui.style_mut().spacing.item_spacing.x = 4.0;
-        ui.add_space(20.0);
-        let remote = match rdns.lookup(c.remote_ip) {
-            Some(host) => format!("{host}:{}", c.remote_port),
-            None => c.remote_display(),
-        };
-        let text = format!("{} {}", remote, c.proto.as_str());
-        let bytes_text = format!("{} / {}", fmt_bytes(c.bytes_in), fmt_bytes(c.bytes_out));
-        ui.label(
-            RichText::new(truncate_chars(&text, 18))
-                .size(12.0)
-                .color(theme::c().text),
-        );
-        ui.label(
-            RichText::new(bytes_text)
-                .size(11.0)
-                .color(theme::c().text_dim),
-        );
-
-        // 未知进程:无法限定进程条件,不做目标级阻断(会生成全局 IP 规则)
-        if c.process.is_empty() {
-            return;
-        }
-        let act = match rules.blocking_rule(c, rdns.lookup(c.remote_ip)) {
-            Some(r) if r.remote_kind == RemoteKind::Ip => {
-                let id = r.id;
-                if block_button(ui, icons::BAN, &i18n.t("map-unblock-target"), true, true).clicked()
-                {
-                    BlockAct::Delete(id)
-                } else {
-                    BlockAct::None
-                }
-            }
-            // 命中的是进程级规则:目标级按钮置灰,撤销交给组头的进程开关
-            // (在这里删除进程规则会连带放行该进程的其他目标,超出预期)
-            Some(_) => {
-                block_button(
-                    ui,
-                    icons::BAN,
-                    &i18n.t("map-blocked-by-process"),
-                    true,
-                    false,
-                )
-                .on_disabled_hover_text(i18n.t("map-blocked-by-process"));
-                BlockAct::None
-            }
-            None => {
-                if block_button(ui, icons::X_LG, &i18n.t("map-block-target"), false, true).clicked()
-                {
-                    BlockAct::Add(c.remote_ip)
-                } else {
-                    BlockAct::None
-                }
-            }
-        };
-        match act {
-            BlockAct::None => {}
-            BlockAct::Delete(id) => {
-                let _ = rules.delete(db, id);
-            }
-            BlockAct::Add(ip) => {
-                let _ = rules.insert(db, Rule::block(&c.process, Some(ip)));
-            }
-        }
-    });
-}
-
-/// 小型图标操作按钮(阻断/撤销;danger = 已阻断语义色)
-fn block_button(
-    ui: &mut egui::Ui,
-    glyph: &str,
-    tip: &str,
-    danger: bool,
-    enabled: bool,
-) -> egui::Response {
-    let color = if !enabled {
-        theme::c().text_dim
-    } else if danger {
-        theme::c().danger
-    } else {
-        theme::c().text_dim
-    };
-    let btn = Button::new(RichText::new(glyph).size(12.0).color(color))
-        .frame(false)
-        .min_size(Vec2::new(20.0, 18.0));
-    ui.add_enabled(enabled, btn).on_hover_text(tip)
+/// 连接数徽章(faint 圆角小标签)
+fn badge(ui: &mut egui::Ui, text: &str) {
+    Frame::new()
+        .fill(theme::c().faint)
+        .corner_radius(CornerRadius::same(theme::RADIUS_SM))
+        .inner_margin(Margin::symmetric(5, 1))
+        .show(ui, |ui| {
+            ui.label(
+                RichText::new(text.to_owned())
+                    .size(10.0)
+                    .color(theme::c().text_dim),
+            );
+        });
 }

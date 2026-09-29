@@ -856,7 +856,7 @@ impl eframe::App for NetOwlApp {
             egui::Panel::left("map-list")
                 .resizable(true)
                 .default_size(300.0)
-                .min_size(240.0)
+                .min_size(260.0)
                 .max_size(460.0)
                 .frame(
                     egui::Frame::new()
