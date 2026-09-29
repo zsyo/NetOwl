@@ -7,12 +7,67 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use eframe::egui;
-use egui::{Color32, CornerRadius, FontData, FontDefinitions, Margin, Stroke, Vec2, Visuals};
+use egui::{
+    Color32, CornerRadius, FontData, FontDefinitions, Margin, Shadow, Stroke, Vec2, Visuals,
+};
 
 // ---- 圆角刻度(规范 3,不出现圆角魔法数字)----
 pub const RADIUS_SM: u8 = 4;
 pub const RADIUS_MD: u8 = 8;
 pub const RADIUS_LG: u8 = 12;
+
+// ---- 字号刻度(全局文字尺寸统一入口,页面内不再散布字号魔法数字)----
+pub mod font {
+    /// 页面标题/品牌名
+    pub const H1: f32 = 20.0;
+    /// 卡片大数字/弹窗标题
+    pub const H2: f32 = 17.0;
+    /// 分组标题/导航项/加强按钮
+    pub const H3: f32 = 14.0;
+    /// 正文
+    pub const BODY: f32 = 13.0;
+    /// 次要信息/表头
+    pub const SM: f32 = 12.0;
+    /// 辅助说明/路径
+    pub const XS: f32 = 11.0;
+    /// 徽章/极小提示
+    pub const MICRO: f32 = 10.0;
+}
+
+// ---- 间距刻度(布局留白统一入口)----
+pub mod sp {
+    pub const XS: f32 = 4.0;
+    pub const SM: f32 = 8.0;
+    pub const MD: f32 = 12.0;
+    pub const LG: f32 = 16.0;
+    pub const XL: f32 = 24.0;
+}
+
+// ---- 阴影刻度(浮起层投影:窗口 > 弹层)----
+const WINDOW_SHADOW_DARK: Shadow = Shadow {
+    offset: [0, 8],
+    blur: 24,
+    spread: 0,
+    color: Color32::from_black_alpha(130),
+};
+const POPUP_SHADOW_DARK: Shadow = Shadow {
+    offset: [0, 4],
+    blur: 12,
+    spread: 0,
+    color: Color32::from_black_alpha(100),
+};
+const WINDOW_SHADOW_LIGHT: Shadow = Shadow {
+    offset: [0, 8],
+    blur: 28,
+    spread: 0,
+    color: Color32::from_rgba_unmultiplied_const(31, 36, 48, 40),
+};
+const POPUP_SHADOW_LIGHT: Shadow = Shadow {
+    offset: [0, 4],
+    blur: 14,
+    spread: 0,
+    color: Color32::from_rgba_unmultiplied_const(31, 36, 48, 30),
+};
 
 /// 调色板:界面与地图全部颜色,深浅主题各一套
 pub struct Palette {
@@ -60,6 +115,8 @@ pub struct Palette {
     pub map_south_sea_line: Color32,
     /// 卡片/信息浮层背景
     pub bg_card: Color32,
+    /// 浮起层背景(弹窗/菜单/悬浮控件,比卡片更高一级)
+    pub bg_elevated: Color32,
     /// 信息浮层(带透明度,悬浮于地图之上)
     pub bg_float: Color32,
     /// 条纹行/微弱填充
@@ -67,8 +124,17 @@ pub struct Palette {
     // 前景
     pub text: Color32,
     pub text_dim: Color32,
+    /// 强调色上的文字(强调色填充按钮/徽章内)
+    pub on_accent: Color32,
     /// 常规描边
     pub stroke: Color32,
+    /// 强描边(输入框/卡片边界,弱化描边强调层级时使用)
+    pub stroke_strong: Color32,
+    // 交互态
+    /// 控件悬停底色
+    pub hover_bg: Color32,
+    /// 控件展开底色(下拉菜单打开等)
+    pub open_bg: Color32,
 }
 
 /// 深色主题:绿蓝地图(海洋深蓝、陆地深绿)
@@ -97,11 +163,16 @@ const DARK: Palette = Palette {
     // 十段线:比国界亮的强调青,突出断续主权界
     map_south_sea_line: Color32::from_rgb(214, 226, 138),
     bg_card: Color32::from_rgb(28, 32, 41),
+    bg_elevated: Color32::from_rgb(36, 41, 53),
     bg_float: Color32::from_rgba_unmultiplied_const(28, 32, 41, 240),
     faint: Color32::from_rgb(26, 29, 38),
     text: Color32::from_rgb(222, 226, 235),
     text_dim: Color32::from_rgb(140, 147, 164),
+    on_accent: Color32::from_rgb(255, 255, 255),
     stroke: Color32::from_rgb(48, 53, 66),
+    stroke_strong: Color32::from_rgb(62, 70, 90),
+    hover_bg: Color32::from_rgb(40, 45, 57),
+    open_bg: Color32::from_rgb(36, 41, 53),
 };
 
 /// 浅色主题:LS 式绿蓝地图(海洋浅蓝、陆地浅绿、白色国界)
@@ -130,11 +201,16 @@ const LIGHT: Palette = Palette {
     // 十段线:浅色主题用深金棕,避免与绿色陆地国界混同
     map_south_sea_line: Color32::from_rgb(176, 122, 40),
     bg_card: Color32::from_rgb(255, 255, 255),
+    bg_elevated: Color32::from_rgb(255, 255, 255),
     bg_float: Color32::from_rgba_unmultiplied_const(255, 255, 255, 240),
     faint: Color32::from_rgb(228, 232, 238),
     text: Color32::from_rgb(31, 36, 48),
     text_dim: Color32::from_rgb(90, 98, 114),
+    on_accent: Color32::from_rgb(255, 255, 255),
     stroke: Color32::from_rgb(198, 204, 216),
+    stroke_strong: Color32::from_rgb(172, 181, 198),
+    hover_bg: Color32::from_rgb(222, 228, 236),
+    open_bg: Color32::from_rgb(232, 236, 242),
 };
 
 static THEME: AtomicUsize = AtomicUsize::new(0);
@@ -222,7 +298,7 @@ fn install_fonts(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
 }
 
-/// 深浅主题定制:背景层级、控件交互态、圆角与间距
+/// 深浅主题定制:背景层级、阴影、控件交互态、圆角与间距
 fn apply_visuals(ctx: &egui::Context) {
     let p = c();
     let mut v = if is_dark() {
@@ -231,14 +307,25 @@ fn apply_visuals(ctx: &egui::Context) {
         Visuals::light()
     };
     v.panel_fill = p.bg_panel;
-    v.window_fill = p.bg_base;
+    v.window_fill = p.bg_elevated;
     v.extreme_bg_color = p.bg_base;
     v.faint_bg_color = p.faint;
     v.override_text_color = Some(p.text);
     v.selection.bg_fill = p.accent_soft;
     v.selection.stroke = Stroke::new(1.0, p.accent);
     v.window_corner_radius = CornerRadius::same(RADIUS_LG);
+    v.window_stroke = Stroke::new(1.0, p.stroke);
+    v.window_shadow = if is_dark() {
+        WINDOW_SHADOW_DARK
+    } else {
+        WINDOW_SHADOW_LIGHT
+    };
     v.menu_corner_radius = CornerRadius::same(RADIUS_MD);
+    v.popup_shadow = if is_dark() {
+        POPUP_SHADOW_DARK
+    } else {
+        POPUP_SHADOW_LIGHT
+    };
 
     let widget = |mut w: egui::style::WidgetVisuals, bg: Color32, fg: Color32, r: u8| {
         w.bg_fill = bg;
@@ -246,15 +333,6 @@ fn apply_visuals(ctx: &egui::Context) {
         w.fg_stroke = Stroke::new(1.0, fg);
         w.corner_radius = CornerRadius::same(r);
         w
-    };
-    // 悬停/展开底色随主题分档
-    let (hovered_bg, open_bg) = if is_dark() {
-        (Color32::from_rgb(40, 45, 57), Color32::from_rgb(36, 41, 53))
-    } else {
-        (
-            Color32::from_rgb(222, 228, 236),
-            Color32::from_rgb(232, 236, 242),
-        )
     };
     v.widgets.noninteractive = widget(v.widgets.noninteractive, p.bg_card, p.text, RADIUS_SM);
     v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, p.stroke);
@@ -264,9 +342,9 @@ fn apply_visuals(ctx: &egui::Context) {
         p.text_dim,
         RADIUS_MD,
     );
-    v.widgets.hovered = widget(v.widgets.hovered, hovered_bg, p.text, RADIUS_MD);
+    v.widgets.hovered = widget(v.widgets.hovered, p.hover_bg, p.text, RADIUS_MD);
     v.widgets.active = widget(v.widgets.active, p.accent_soft, p.accent, RADIUS_MD);
-    v.widgets.open = widget(v.widgets.open, open_bg, p.text, RADIUS_MD);
+    v.widgets.open = widget(v.widgets.open, p.open_bg, p.text, RADIUS_MD);
 
     ctx.all_styles_mut(|style| {
         style.visuals = v.clone();
