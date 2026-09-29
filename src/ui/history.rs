@@ -16,11 +16,13 @@ use crate::storage::history_query::{self, Rows, ViewMode};
 use crate::ui::{TOOLBAR_ROW_H, icons, theme, widgets};
 
 /// 历史页;返回是否直接改动了配置(勾选不再提醒/清空还原提醒)
+#[allow(clippy::too_many_arguments)]
 pub fn show(
     ui: &mut egui::Ui,
     state: &mut history_query::PageState,
     i18n: &I18n,
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
+    default_icon_tex: Option<&egui::TextureHandle>,
     db: &Db,
     writer: &history::Writer,
     config: &mut Config,
@@ -40,7 +42,7 @@ pub fn show(
     toolbar(ui, state, i18n, db, writer, config, &mut config_changed);
     ui.add_space(theme::sp::SM);
 
-    rows_table(ui, state, i18n, icon_tex);
+    rows_table(ui, state, i18n, icon_tex, default_icon_tex);
     config_changed
 }
 
@@ -273,6 +275,7 @@ fn rows_table(
     state: &history_query::PageState,
     i18n: &I18n,
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
+    default_icon_tex: Option<&egui::TextureHandle>,
 ) {
     match &state.rows {
         Rows::Detail(rows) => {
@@ -308,6 +311,7 @@ fn rows_table(
                                     Some(r.pid),
                                     r.proc_path.as_deref(),
                                     icon_tex,
+                                    default_icon_tex,
                                     i18n,
                                 );
                                 widgets::badge::badge(
@@ -373,7 +377,15 @@ fn rows_table(
                             ui.end_row();
                             for r in rows {
                                 let row_top = ui.cursor().top();
-                                proc_cell(ui, &r.process, None, None, icon_tex, i18n);
+                                proc_cell(
+                                    ui,
+                                    &r.process,
+                                    None,
+                                    None,
+                                    icon_tex,
+                                    default_icon_tex,
+                                    i18n,
+                                );
                                 widgets::badge::badge(
                                     ui,
                                     r.proto.as_str(),
@@ -449,11 +461,12 @@ fn proc_cell(
     pid: Option<u32>,
     path: Option<&str>,
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
+    default_icon_tex: Option<&egui::TextureHandle>,
     i18n: &I18n,
 ) {
     ui.horizontal(|ui| {
         let tex = path.and_then(|p| icon_tex.get(p)).and_then(|t| t.as_ref());
-        widgets::process::proc_icon(ui, tex, 16.0);
+        widgets::process::proc_icon(ui, tex, default_icon_tex, 16.0);
         let text = match (name.is_empty(), pid) {
             (true, Some(pid)) => {
                 format!("{} (PID {pid})", i18n.t("conn-proc-unknown"))

@@ -92,6 +92,9 @@ pub struct NetOwlApp {
     rate_hist: Vec<(u64, u64)>,
     /// 应用图标纹理(导航栏品牌区);启动时从内嵌 PNG 建一次
     logo_tex: egui::TextureHandle,
+    /// Windows 默认"应用程序"图标纹理(无路径/提取失败进程的兜底);
+    /// None = 尚未提取成功,每轮 poll_icons 重试
+    default_icon_tex: Option<egui::TextureHandle>,
     /// 进程图标纹理(键 = 映像路径);None 表示已提取且无图标
     icon_tex: HashMap<String, Option<egui::TextureHandle>>,
     /// 连接历史写线程(批量落盘 conn_events)
@@ -207,6 +210,7 @@ impl NetOwlApp {
             rates: (0, 0),
             rate_hist: Vec::with_capacity(RATE_HIST_LEN + 1),
             logo_tex,
+            default_icon_tex: None,
             icon_tex: HashMap::new(),
             writer: history::Writer::spawn(config.general.history_days),
             tracker: history::Tracker::new(),
@@ -484,6 +488,20 @@ impl NetOwlApp {
     /// 进程图标:活跃连接的映像路径逐个请求采集器,到位即建纹理缓存。
     /// 纹理键 = 路径,同进程连接共享;提取失败缓存 None 不再重复请求
     fn poll_icons(&mut self, ctx: &egui::Context) {
+        // 默认"应用程序"图标兜底:无路径(服务进程反查受限)或提取失败的
+        // 进程统一显示;SHGFI_USEFILEATTRIBUTES 纯注册表查询,同步可接受
+        if self.default_icon_tex.is_none() {
+            self.default_icon_tex = collector::default_app_icon().map(|i| {
+                ctx.load_texture(
+                    "icon:default-app",
+                    egui::ColorImage::from_rgba_unmultiplied(
+                        [i.width as usize, i.height as usize],
+                        &i.rgba,
+                    ),
+                    egui::TextureOptions::LINEAR,
+                )
+            });
+        }
         let keys: Vec<String> = self
             .conns
             .iter()
@@ -885,6 +903,7 @@ impl eframe::App for NetOwlApp {
             conn_sort: &mut self.conn_sort,
             log_window: &mut self.log_window,
             icon_tex: &self.icon_tex,
+            default_icon_tex: self.default_icon_tex.as_ref(),
             history: &mut self.history,
             history_db: &self.history_db,
             rules: &mut self.rules,

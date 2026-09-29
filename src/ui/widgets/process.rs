@@ -1,11 +1,18 @@
-//! 进程图标单元格:16x16 图标或等尺寸占位(保证行内文字起点对齐)。
+//! 进程图标单元格:图标或默认兜底(保证行内文字起点对齐)。
 
 use eframe::egui;
 use egui::Sense;
 
-/// 进程图标:`tex` 为 None 时占位等尺寸空白(占位保证各行文字对齐不跳动)
-pub fn proc_icon(ui: &mut egui::Ui, tex: Option<&egui::TextureHandle>, size: f32) {
-    match tex {
+/// 进程图标:优先真实图标,无路径/提取失败时用 Windows 默认
+/// "应用程序"图标兜底(`default` 未就绪时占位等尺寸空白)
+pub fn proc_icon(
+    ui: &mut egui::Ui,
+    tex: Option<&egui::TextureHandle>,
+    default: Option<&egui::TextureHandle>,
+    size: f32,
+) {
+    let shown = tex.or(default);
+    match shown {
         Some(t) => {
             ui.add(egui::Image::new(t).fit_to_exact_size(egui::vec2(size, size)));
         }

@@ -24,6 +24,7 @@ use crate::ui::map_panel::MapPanelState;
 use crate::ui::map_panel::collect_groups;
 use crate::ui::map_widgets::{bytes_row, proc_rank_row, section_title, traffic_cards};
 use crate::ui::theme;
+use crate::ui::widgets;
 
 /// 右侧 Inspector 面板:按选中对象切换视图
 pub fn inspector_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
@@ -40,30 +41,60 @@ pub fn inspector_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
     let db = ctx.history_db;
     let rdns = ctx.rdns;
     let icon_tex = ctx.icon_tex;
+    let default_icon_tex = ctx.default_icon_tex;
     let config: &Config = ctx.config;
 
     ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
         let process = panels.process.clone();
         match (panels.place, process) {
             (_, Some(name)) => process_view(
-                ui, panels, rules, db, i18n, rdns, icon_tex, config, conns, &name,
+                ui,
+                panels,
+                rules,
+                db,
+                i18n,
+                rdns,
+                icon_tex,
+                default_icon_tex,
+                config,
+                conns,
+                &name,
             ),
-            (Some(place), None) => {
-                place_view(ui, panels, i18n, rdns, icon_tex, config, conns, place)
-            }
-            (None, None) => summary_view(ui, panels, i18n, rdns, icon_tex, config, conns),
+            (Some(place), None) => place_view(
+                ui,
+                panels,
+                i18n,
+                rdns,
+                icon_tex,
+                default_icon_tex,
+                config,
+                conns,
+                place,
+            ),
+            (None, None) => summary_view(
+                ui,
+                panels,
+                i18n,
+                rdns,
+                icon_tex,
+                default_icon_tex,
+                config,
+                conns,
+            ),
         }
     });
 }
 
 /// 概览:进程/远端计数、总流量与 Top 进程/域名排行(无选中时);
 /// 全部数据与连接列表同口径(本地/局域网远端噪音过滤)
+#[allow(clippy::too_many_arguments)]
 fn summary_view(
     ui: &mut egui::Ui,
     panels: &mut MapPanelState,
     i18n: &crate::i18n::I18n,
     rdns: &rdns::Rdns,
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
+    default_icon_tex: Option<&egui::TextureHandle>,
     config: &Config,
     conns: &[Connection],
 ) {
@@ -96,7 +127,7 @@ fn summary_view(
     }
     let max_total = groups.first().map(|g| g.total).unwrap_or(0);
     for g in groups.iter().take(5) {
-        proc_rank_row(ui, panels, i18n, icon_tex, g, max_total);
+        proc_rank_row(ui, panels, i18n, icon_tex, default_icon_tex, g, max_total);
     }
 
     section_title(ui, &i18n.t("map-inspector-top-domain"));
@@ -115,6 +146,7 @@ fn place_view(
     i18n: &crate::i18n::I18n,
     rdns: &rdns::Rdns,
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
+    default_icon_tex: Option<&egui::TextureHandle>,
     config: &Config,
     conns: &[Connection],
     place: Place,
@@ -146,7 +178,7 @@ fn place_view(
     let groups = collect_groups(conns, config, Some(place), "", rdns);
     let max_total = groups.first().map(|g| g.total).unwrap_or(0);
     for g in &groups {
-        proc_rank_row(ui, panels, i18n, icon_tex, g, max_total);
+        proc_rank_row(ui, panels, i18n, icon_tex, default_icon_tex, g, max_total);
     }
 }
 
@@ -161,6 +193,7 @@ fn process_view(
     i18n: &crate::i18n::I18n,
     rdns: &rdns::Rdns,
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
+    default_icon_tex: Option<&egui::TextureHandle>,
     config: &Config,
     conns: &[Connection],
     name: &str,
@@ -180,7 +213,8 @@ fn process_view(
     let tex = path
         .as_deref()
         .and_then(|p| icon_tex.get(p))
-        .and_then(|t| t.as_ref());
+        .and_then(|t| t.as_ref())
+        .or(default_icon_tex);
     if title_row(ui, &display, tex, i18n.t("map-inspector-clear")) {
         panels.process = None;
         return;
@@ -225,36 +259,41 @@ fn process_view(
         ui.label(theme::dim_text(&i18n.t(key), 11.0));
     });
 
-    // 进程级阻断开关(未知进程不可阻断,避免空进程条件生成全局规则)
+    // 进程级阻断开关(off 绿 = 放行 / on 红 = 阻断,未知进程不可阻断,
+    // 避免空进程条件生成全局规则)
     if !name.is_empty() {
         ui.add_space(2.0);
-        let blocked = rules.process_block_rule(name, path.as_deref()).is_some();
-        let (glyph, tip, color) = if blocked {
-            (icons::BAN, i18n.t("map-unblock-process"), theme::c().danger)
-        } else {
-            (icons::X_LG, i18n.t("map-block-process"), theme::c().text)
-        };
-        let text = RichText::new(format!("{glyph} {tip}"))
-            .size(12.0)
-            .color(color);
-        let btn = Button::new(text)
-            .fill(if blocked {
-                theme::c().danger.gamma_multiply(0.12)
-            } else {
-                theme::c().bg_card
-            })
-            .stroke(Stroke::new(1.0, theme::c().stroke))
-            .corner_radius(CornerRadius::same(theme::RADIUS_SM));
-        if ui.add(btn).clicked() {
-            if blocked {
-                if let Some(r) = rules.process_block_rule(name, path.as_deref()) {
-                    let id = r.id;
+        let existing = rules
+            .process_block_rule(name, path.as_deref())
+            .map(|r| r.id);
+        let mut on = existing.is_some();
+        let resp = widgets::toggle::block_switch(
+            ui,
+            &mut on,
+            true,
+            36.0,
+            20.0,
+            egui::Id::new(("inspector-block-toggle", name.to_owned())),
+        );
+        if resp.changed() {
+            match (on, existing) {
+                (true, None) => {
+                    let _ = rules.insert(db, crate::rules::Rule::block(name, None));
+                }
+                (false, Some(id)) => {
                     let _ = rules.delete(db, id);
                 }
-            } else {
-                let _ = rules.insert(db, crate::rules::Rule::block(name, None));
+                _ => {}
             }
         }
+        ui.label(theme::dim_text(
+            &i18n.t(if on {
+                "map-unblock-process"
+            } else {
+                "map-block-process"
+            }),
+            theme::font::SM,
+        ));
     }
 
     section_title(ui, &i18n.t("map-inspector-conns"));

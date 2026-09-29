@@ -286,6 +286,8 @@ pub struct UiCtx<'a> {
     pub conn_sort: &'a mut ConnSortState,
     /// 进程图标纹理(键 = 映像路径);None 表示已提取且无图标
     pub icon_tex: &'a HashMap<String, Option<egui::TextureHandle>>,
+    /// Windows 默认"应用程序"图标纹理(无路径/提取失败进程的兜底)
+    pub default_icon_tex: Option<&'a egui::TextureHandle>,
     /// 历史页状态
     pub history: &'a mut history_query::PageState,
     /// 历史查询只读连接
@@ -320,6 +322,7 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
                 ctx.map_view,
                 ctx.rdns,
                 ctx.icon_tex,
+                ctx.default_icon_tex,
                 ctx.local_pos,
                 ctx.map_panels.place,
             );
@@ -342,6 +345,7 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
             ctx.history,
             ctx.i18n,
             ctx.icon_tex,
+            ctx.default_icon_tex,
             ctx.history_db,
             ctx.writer,
             ctx.config,

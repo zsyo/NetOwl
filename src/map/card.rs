@@ -40,6 +40,7 @@ fn fit_text(painter: &egui::Painter, text: &str, font: &FontId, max_w: f32) -> S
 }
 
 /// 悬停归属节点的信息卡:节点名、总流量、最多 6 条连接明细
+#[allow(clippy::too_many_arguments)]
 pub(super) fn info_card(
     painter: &egui::Painter,
     canvas: Rect,
@@ -48,6 +49,7 @@ pub(super) fn info_card(
     i18n: &I18n,
     rdns: &rdns::Rdns,
     icon_tex: &HashMap<String, Option<TextureHandle>>,
+    default_icon_tex: Option<&TextureHandle>,
 ) {
     const WIDTH: f32 = 310.0;
     const LINE_H: f32 = 17.0;
@@ -126,6 +128,7 @@ pub(super) fn info_card(
             .as_deref()
             .and_then(|p| icon_tex.get(p))
             .and_then(|t| t.as_ref())
+            .or(default_icon_tex)
         {
             let icon_rect = Rect::from_min_size(
                 Pos2::new(text_x, y + LINE_H / 2.0 - 7.0),

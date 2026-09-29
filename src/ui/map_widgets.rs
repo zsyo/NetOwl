@@ -85,6 +85,7 @@ pub(crate) fn proc_rank_row(
     panels: &mut MapPanelState,
     i18n: &crate::i18n::I18n,
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
+    default_icon_tex: Option<&egui::TextureHandle>,
     g: &ProcGroup,
     max_total: u64,
 ) {
@@ -102,7 +103,7 @@ pub(crate) fn proc_rank_row(
     ui.horizontal(|ui| {
         ui.style_mut().spacing.item_spacing.x = 4.0;
         let tex = path.and_then(|p| icon_tex.get(p)).and_then(|t| t.as_ref());
-        match tex {
+        match tex.or(default_icon_tex) {
             Some(t) => {
                 ui.add(egui::Image::new(t).fit_to_exact_size(egui::vec2(16.0, 16.0)));
             }

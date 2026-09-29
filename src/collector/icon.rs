@@ -2,15 +2,21 @@
 //! GetDIBits 转为 RGBA 像素供 egui 纹理使用。
 //!
 //! 读取文件与 GDI 调用可能阻塞数十毫秒,调用方须在工作线程执行;
-//! 提取失败(无图标资源/文件已消失)返回 None,由调用方缓存避免重复尝试。
+//! 提取链:SHGetFileInfoW → ExtractIconExW(资源型 exe 的兜底)→
+//! 仍失败返回 None,由调用方缓存避免重复尝试。
+//! [`default_app_icon`] 提供 Windows 默认"应用程序"图标兜底
+//! (SHGFI_USEFILEATTRIBUTES 按扩展名查询,不触碰真实文件)。
 
 use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAP, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleDC, DIB_RGB_COLORS, DeleteDC,
     DeleteObject, GetDIBits, GetObjectW, HBITMAP, HDC,
 };
 use windows::Win32::Storage::FileSystem::FILE_ATTRIBUTE_NORMAL;
-use windows::Win32::UI::Shell::{SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGetFileInfoW};
-use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, ICONINFO};
+use windows::Win32::UI::Shell::{
+    ExtractIconExW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_USEFILEATTRIBUTES,
+    SHGetFileInfoW,
+};
+use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, HICON, ICONINFO};
 use windows::core::PCWSTR;
 
 /// 提取出的图标位图(非预乘 alpha)
@@ -20,8 +26,42 @@ pub struct IconImage {
     pub rgba: Vec<u8>,
 }
 
-/// 提取映像文件的关联图标;失败返回 None
+/// 提取映像文件的关联图标;SHGetFileInfoW 失败再试 ExtractIconExW
+/// (个别 exe 的关联图标查询失败但资源可直读),仍失败返回 None
 pub fn extract(path: &str) -> Option<IconImage> {
+    via_shgetfileinfo(path).or_else(|| via_extract_icon(path))
+}
+
+/// Windows 默认"应用程序"图标(通用 exe 样式):按扩展名属性提取,
+/// 不触碰真实文件;用于无路径(服务进程反查受限)或提取失败的进程兜底。
+/// 纯注册表查询,无文件 IO,同步调用可接受
+pub fn default_app_icon() -> Option<IconImage> {
+    shgetfileinfo_hicon(
+        "placeholder.exe",
+        SHGFI_ICON | SHGFI_LARGEICON | SHGFI_USEFILEATTRIBUTES,
+    )
+    .and_then(|hicon| {
+        let img = unsafe { hicon_to_rgba(hicon) };
+        unsafe {
+            let _ = DestroyIcon(hicon);
+        }
+        img
+    })
+}
+
+/// SHGetFileInfoW 路径查询取关联图标
+fn via_shgetfileinfo(path: &str) -> Option<IconImage> {
+    shgetfileinfo_hicon(path, SHGFI_ICON | SHGFI_LARGEICON).and_then(|hicon| {
+        let img = unsafe { hicon_to_rgba(hicon) };
+        unsafe {
+            let _ = DestroyIcon(hicon);
+        }
+        img
+    })
+}
+
+/// SHGetFileInfoW 取 HICON(通用入口;flags 决定是否走文件属性模式)
+fn shgetfileinfo_hicon(path: &str, flags: windows::Win32::UI::Shell::SHGFI_FLAGS) -> Option<HICON> {
     unsafe {
         let mut path_w: Vec<u16> = path.encode_utf16().collect();
         path_w.push(0);
@@ -31,13 +71,24 @@ pub fn extract(path: &str) -> Option<IconImage> {
             FILE_ATTRIBUTE_NORMAL,
             Some(&mut sfi),
             std::mem::size_of::<SHFILEINFOW>() as u32,
-            SHGFI_ICON | SHGFI_LARGEICON,
+            flags,
         );
-        if ok == 0 || sfi.hIcon.is_invalid() {
+        (ok != 0 && !sfi.hIcon.is_invalid()).then_some(sfi.hIcon)
+    }
+}
+
+/// ExtractIconExW 直读 exe 图标资源(第一枚大图标)
+fn via_extract_icon(path: &str) -> Option<IconImage> {
+    unsafe {
+        let mut path_w: Vec<u16> = path.encode_utf16().collect();
+        path_w.push(0);
+        let mut hicon = HICON::default();
+        let n = ExtractIconExW(PCWSTR(path_w.as_ptr()), 0, Some(&mut hicon), None, 1);
+        if n == 0 || hicon.is_invalid() {
             return None;
         }
-        let img = hicon_to_rgba(sfi.hIcon);
-        let _ = DestroyIcon(sfi.hIcon);
+        let img = hicon_to_rgba(hicon);
+        let _ = DestroyIcon(hicon);
         img
     }
 }

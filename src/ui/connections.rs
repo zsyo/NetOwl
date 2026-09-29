@@ -20,6 +20,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         i18n,
         rdns,
         icon_tex,
+        default_icon_tex,
         config,
         rules,
         conn_rates,
@@ -132,7 +133,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                                     .as_deref()
                                     .and_then(|p| icon_tex.get(p))
                                     .and_then(|t| t.as_ref());
-                                widgets::process::proc_icon(ui, tex, 16.0);
+                                widgets::process::proc_icon(ui, tex, *default_icon_tex, 16.0);
                                 ui.add(
                                     Label::new(
                                         RichText::new(process)

@@ -85,6 +85,7 @@ pub fn draw(
     view: &mut View,
     rdns: &rdns::Rdns,
     icon_tex: &HashMap<String, Option<TextureHandle>>,
+    default_icon_tex: Option<&TextureHandle>,
     local_pos: (f32, f32),
     // 选中端点:其余连线/节点淡化,选中节点保持高亮(端点选中联动)
     selected: Option<Place>,
@@ -262,7 +263,16 @@ pub fn draw(
     }
 
     if let Some(place) = hovered_place {
-        card::info_card(&painter, rect, place, conns, i18n, rdns, icon_tex);
+        card::info_card(
+            &painter,
+            rect,
+            place,
+            conns,
+            i18n,
+            rdns,
+            icon_tex,
+            default_icon_tex,
+        );
     }
 
     // 单击空白(未命中任何节点)清除选中;拖拽结束与双击不算单击

@@ -8,7 +8,7 @@ mod query;
 mod signature;
 mod windows_table;
 
-pub use icon::IconImage;
+pub use icon::{IconImage, default_app_icon};
 pub use mock::MockCollector;
 pub use query::query_process_path;
 pub use windows_table::TableCollector;

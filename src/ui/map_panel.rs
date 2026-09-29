@@ -128,6 +128,7 @@ pub fn list_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
     let db = ctx.history_db;
     let rdns = ctx.rdns;
     let icon_tex = ctx.icon_tex;
+    let default_icon_tex = ctx.default_icon_tex;
     let config: &Config = ctx.config;
     let wfp_status = &ctx.wfp_status;
 
@@ -184,7 +185,17 @@ pub fn list_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
         }
         for g in &groups {
             let path = g.conns.iter().find_map(|c| c.proc_path.as_deref());
-            group_row(ui, panels, rules, db, i18n, icon_tex, g, path);
+            group_row(
+                ui,
+                panels,
+                rules,
+                db,
+                i18n,
+                icon_tex,
+                default_icon_tex,
+                g,
+                path,
+            );
             if panels.expanded.contains(&g.name) {
                 for c in &g.conns {
                     conn_row(ui, rules, db, i18n, rdns, c);
@@ -231,6 +242,7 @@ fn group_row(
     db: &crate::storage::history::Db,
     i18n: &crate::i18n::I18n,
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
+    default_icon_tex: Option<&egui::TextureHandle>,
     g: &ProcGroup,
     path: Option<&str>,
 ) {
@@ -264,7 +276,7 @@ fn group_row(
             panels.expanded.insert(g.name.clone());
         }
         let tex = path.and_then(|p| icon_tex.get(p)).and_then(|t| t.as_ref());
-        widgets::process::proc_icon(ui, tex, 16.0);
+        widgets::process::proc_icon(ui, tex, default_icon_tex, 16.0);
         // 名称行:受控选中样式(Button::selected 走 selection 底色,悬停
         // 底色由 widget 五态自动接管);按钮拉满命中区容器,徽章与开关
         // 由此贴到行尾
