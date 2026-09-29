@@ -129,6 +129,7 @@ pub fn show(
     db: &Db,
     rules: &mut RuleSet,
     wfp_status: &wfp::Status,
+    row_hover: &mut widgets::table::RowHover,
 ) {
     widgets::header::page_header(ui, &i18n.t("rules-title"), &i18n.t("rules-subtitle"));
     ui.add_space(theme::sp::XS);
@@ -156,7 +157,7 @@ pub fn show(
     });
     ui.add_space(theme::sp::SM);
 
-    rules_table(ui, state, i18n, db, rules);
+    rules_table(ui, state, i18n, db, rules, row_hover);
     edit_window(ui, state, i18n, db, rules);
 }
 
@@ -286,6 +287,7 @@ fn rules_table(
     i18n: &I18n,
     db: &Db,
     rules: &mut RuleSet,
+    row_hover: &mut widgets::table::RowHover,
 ) {
     if rules.rules.is_empty() {
         ui.add_space(theme::sp::XL);
@@ -299,7 +301,7 @@ fn rules_table(
             let table_right = ui.max_rect().right();
             egui::Grid::new("rules_grid")
                 .num_columns(9)
-                .spacing([14.0, 9.0])
+                .spacing([14.0, widgets::table::ROW_SPACING_Y])
                 .show(ui, |ui| {
                     header_cell(ui, COL_ENABLED, i18n.t("rules-col-enabled"));
                     header_cell(ui, COL_NAME, i18n.t("rules-col-name"));
@@ -318,6 +320,7 @@ fn rules_table(
                     for i in 0..rules.rules.len() {
                         let rule = rules.rules[i].clone();
                         let row_top = ui.cursor().top();
+                        row_hover.begin(ui, table_left, table_right, row_top);
                         let mut enabled = rule.enabled;
                         let toggle = widgets::toggle::toggle_switch(
                             ui,
@@ -432,15 +435,7 @@ fn rules_table(
                             },
                         );
                         ui.end_row();
-                        // 行悬停高亮(与连接页同款)
-                        let row_bottom = ui.cursor().top() - 9.0;
-                        let row_rect = egui::Rect::from_min_max(
-                            egui::pos2(table_left, row_top),
-                            egui::pos2(table_right, row_bottom),
-                        );
-                        if ui.rect_contains_pointer(row_rect) {
-                            widgets::table::row_background(ui, row_rect, theme::c().hover_bg);
-                        }
+                        row_hover.end(ui, row_top);
                         if removed {
                             break;
                         }

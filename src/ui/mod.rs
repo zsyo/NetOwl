@@ -284,6 +284,12 @@ pub struct UiCtx<'a> {
     pub conn_rates: &'a HashMap<u64, (u64, u64)>,
     /// 连接列表表头排序状态(表头点击切换)
     pub conn_sort: &'a mut ConnSortState,
+    /// 连接页行悬停辅助(跨帧行高,行首垫底用)
+    pub conn_row_hover: &'a mut widgets::table::RowHover,
+    /// 历史页行悬停辅助(明细/聚合两视图共用,跨帧行高)
+    pub history_row_hover: &'a mut widgets::table::RowHover,
+    /// 规则页行悬停辅助(跨帧行高)
+    pub rules_row_hover: &'a mut widgets::table::RowHover,
     /// 进程图标纹理(键 = 映像路径);None 表示已提取且无图标
     pub icon_tex: &'a HashMap<String, Option<egui::TextureHandle>>,
     /// Windows 默认"应用程序"图标纹理(无路径/提取失败进程的兜底)
@@ -349,6 +355,7 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
             ctx.history_db,
             ctx.writer,
             ctx.config,
+            ctx.history_row_hover,
         ),
         Page::Rules => {
             rules::show(
@@ -358,6 +365,7 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
                 ctx.history_db,
                 ctx.rules,
                 &ctx.wfp_status,
+                ctx.rules_row_hover,
             );
             false
         }

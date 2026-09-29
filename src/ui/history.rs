@@ -26,6 +26,7 @@ pub fn show(
     db: &Db,
     writer: &history::Writer,
     config: &mut Config,
+    row_hover: &mut widgets::table::RowHover,
 ) -> bool {
     state.refresh_if_needed(db, config.general.hide_local, config.general.hide_lan);
     let mut config_changed = false;
@@ -42,7 +43,7 @@ pub fn show(
     toolbar(ui, state, i18n, db, writer, config, &mut config_changed);
     ui.add_space(theme::sp::SM);
 
-    rows_table(ui, state, i18n, icon_tex, default_icon_tex);
+    rows_table(ui, state, i18n, icon_tex, default_icon_tex, row_hover);
     config_changed
 }
 
@@ -276,6 +277,7 @@ fn rows_table(
     i18n: &I18n,
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
     default_icon_tex: Option<&egui::TextureHandle>,
+    row_hover: &mut widgets::table::RowHover,
 ) {
     match &state.rows {
         Rows::Detail(rows) => {
@@ -290,7 +292,7 @@ fn rows_table(
                     let table_right = ui.max_rect().right();
                     egui::Grid::new("history_detail")
                         .num_columns(6)
-                        .spacing([24.0, 9.0])
+                        .spacing([24.0, widgets::table::ROW_SPACING_Y])
                         .show(ui, |ui| {
                             for key in [
                                 "history-col-process",
@@ -305,6 +307,7 @@ fn rows_table(
                             ui.end_row();
                             for r in rows {
                                 let row_top = ui.cursor().top();
+                                row_hover.begin(ui, table_left, table_right, row_top);
                                 proc_cell(
                                     ui,
                                     &r.process,
@@ -343,7 +346,7 @@ fn rows_table(
                                     theme::font::BODY,
                                 ));
                                 ui.end_row();
-                                paint_row_hover(ui, table_left, table_right, row_top);
+                                row_hover.end(ui, row_top);
                             }
                         });
                     truncated_hint(ui, rows.len(), i18n);
@@ -361,7 +364,7 @@ fn rows_table(
                     let table_right = ui.max_rect().right();
                     egui::Grid::new("history_aggregate")
                         .num_columns(7)
-                        .spacing([24.0, 9.0])
+                        .spacing([24.0, widgets::table::ROW_SPACING_Y])
                         .show(ui, |ui| {
                             for key in [
                                 "history-col-process",
@@ -377,6 +380,7 @@ fn rows_table(
                             ui.end_row();
                             for r in rows {
                                 let row_top = ui.cursor().top();
+                                row_hover.begin(ui, table_left, table_right, row_top);
                                 proc_cell(
                                     ui,
                                     &r.process,
@@ -418,21 +422,12 @@ fn rows_table(
                                     theme::font::BODY,
                                 ));
                                 ui.end_row();
-                                paint_row_hover(ui, table_left, table_right, row_top);
+                                row_hover.end(ui, row_top);
                             }
                         });
                     truncated_hint(ui, rows.len(), i18n);
                 });
         }
-    }
-}
-
-/// 行悬停高亮:横跨表格全宽的底色(与连接页同款)
-fn paint_row_hover(ui: &egui::Ui, left: f32, right: f32, top: f32) {
-    let bottom = ui.cursor().top() - 9.0;
-    let rect = egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, bottom));
-    if ui.rect_contains_pointer(rect) {
-        widgets::table::row_background(ui, rect, theme::c().hover_bg);
     }
 }
 

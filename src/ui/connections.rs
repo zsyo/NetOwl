@@ -25,10 +25,12 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         rules,
         conn_rates,
         conn_sort,
+        conn_row_hover,
         ..
     } = ctx;
     // &mut UiCtx 解构出的引用字段带两层 &mut,借类型注解 coerce 回单层
     let conn_sort: &mut ConnSortState = conn_sort;
+    let conn_row_hover: &mut widgets::table::RowHover = conn_row_hover;
     widgets::header::page_header(ui, &i18n.t("conns-title"), &i18n.t("conns-subtitle"));
     ui.add_space(theme::sp::SM);
 
@@ -71,7 +73,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
             let table_right = ui.max_rect().right();
             egui::Grid::new("connections_grid")
                 .num_columns(9)
-                .spacing([24.0, 9.0])
+                .spacing([24.0, widgets::table::ROW_SPACING_Y])
                 .show(ui, |ui| {
                     // 表头:可排序列可点击(当前排序列高亮并带方向三角),
                     // 协议/远端/动作为纯展示列
@@ -119,6 +121,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
 
                     for conn in shown {
                         let row_top = ui.cursor().top();
+                        conn_row_hover.begin(ui, table_left, table_right, row_top);
                         let process = if conn.process.is_empty() {
                             format!("{} (PID {})", i18n.t("conn-proc-unknown"), conn.pid)
                         } else {
@@ -233,16 +236,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                             }
                         }
                         ui.end_row();
-                        // 行悬停高亮:横跨表格全宽的底色,盖在内容上为半透明,
-                        // 行内文字与徽章透出(同层无法垫底,见 table::row_background)
-                        let row_bottom = ui.cursor().top() - 9.0;
-                        let row_rect = egui::Rect::from_min_max(
-                            egui::pos2(table_left, row_top),
-                            egui::pos2(table_right, row_bottom),
-                        );
-                        if ui.rect_contains_pointer(row_rect) {
-                            widgets::table::row_background(ui, row_rect, theme::c().hover_bg);
-                        }
+                        conn_row_hover.end(ui, row_top);
                     }
                 });
         });
