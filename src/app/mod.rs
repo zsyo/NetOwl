@@ -28,6 +28,7 @@ use crate::net::geoip;
 use crate::net::local_ip;
 use crate::net::rdns;
 use crate::net::traffic;
+use crate::platform::resize::{self, DragResize};
 use crate::platform::single_instance;
 use crate::platform::tray::{self, Tray};
 use crate::rules;
@@ -58,6 +59,8 @@ const TRAFFIC_INTERVAL_ACTIVE: Duration = Duration::from_secs(1);
 const TRAFFIC_INTERVAL_HIDDEN: Duration = Duration::from_secs(5);
 /// 速率历史采样点数(约 1 分钟窗口,迷你走势图用)
 const RATE_HIST_LEN: usize = 60;
+/// 主窗口最小逻辑尺寸(main.rs 视口 min_inner_size 与无边框缩放钳制同源)
+pub const MIN_WINDOW_SIZE: (f32, f32) = (1280.0, 720.0);
 /// WFP 过滤器目标集合同步间隔(与采集同频:进程路径出现/消失的生效延迟上限)
 const WFP_SYNC_INTERVAL: Duration = Duration::from_secs(1);
 /// ETW 流量事件合并间隔(与表快照采集同频)
@@ -143,6 +146,8 @@ pub struct NetOwlApp {
     window_visible: bool,
     /// 主窗口 HWND(启动时按标题缓存,0 = 未找到);用于感知外部 ShowWindow
     main_hwnd: isize,
+    /// 无边框窗口拖拽缩放状态(winit 对 undecorated 窗口无边缘 hit-test)
+    window_resize: DragResize,
     /// 首帧窗口几何恢复目标;发送命令后转为 restore_active 等待生效
     pending_restore: Option<WindowRect>,
     /// 恢复命令已发送,几何生效前跳过捕获(防止默认位置覆盖配置)
@@ -233,6 +238,7 @@ impl NetOwlApp {
             should_exit: false,
             window_visible: true,
             main_hwnd: single_instance::main_hwnd(crate::APP_NAME),
+            window_resize: DragResize::default(),
             pending_restore,
             restore_active: false,
             restore_started: Instant::now(),
@@ -953,6 +959,32 @@ impl eframe::App for NetOwlApp {
             }
         };
         ui.ctx().request_repaint_after(repaint);
+
+        // 无边框窗口边缘缩放热区(winit 对 undecorated 窗口无 hit-test):
+        // 命中即设置缩放光标并驱动拖拽缩放;放帧末使光标覆盖页面控件设置
+        let maximized = ui.ctx().input(|i| i.viewport().maximized).unwrap_or(false);
+        let hit = if maximized {
+            None
+        } else {
+            let screen = ui.ctx().input(|i| i.viewport_rect());
+            ui.ctx()
+                .pointer_latest_pos()
+                .and_then(|pos| resize::edge_hit_test(pos, screen))
+        };
+        let press = ui.ctx().input(|i| i.pointer.primary_pressed());
+        let held = ui.ctx().input(|i| i.pointer.primary_down());
+        self.window_resize.update(
+            self.main_hwnd,
+            hit,
+            press,
+            held,
+            MIN_WINDOW_SIZE,
+            ui.ctx().pixels_per_point(),
+        );
+        let cursor_hit = self.window_resize.active().or(hit);
+        if let Some(h) = cursor_hit {
+            ui.ctx().set_cursor_icon(h.cursor_icon());
+        }
 
         // 新连接询问弹窗(独立 viewport);决策即时生效
         let decision = self

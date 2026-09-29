@@ -41,6 +41,9 @@ pub fn show(ui: &mut egui::Ui, app_name: &str) -> TitleAction {
     );
 
     ui.horizontal(|ui| {
+        // 行内间距清零:拖动区按"剩余宽 - 窗控按钮"精确分配,
+        // 默认 item_spacing 会在行尾累积出溢出,把关闭钮挤出窗口
+        ui.spacing_mut().item_spacing.x = 0.0;
         ui.add_space(theme::sp::LG);
         ui.set_min_height(HEIGHT);
         ui.label(
@@ -52,9 +55,16 @@ pub fn show(ui: &mut egui::Ui, app_name: &str) -> TitleAction {
 
         // 拖动区:占据品牌名与窗控按钮之间的全部空间
         let drag_w = (ui.available_width() - 3.0 * BUTTON_W).max(0.0);
-        let (_, drag) = ui.allocate_exact_size(egui::vec2(drag_w, HEIGHT), Sense::click_and_drag());
+        let (drag_rect, drag) =
+            ui.allocate_exact_size(egui::vec2(drag_w, HEIGHT), Sense::click_and_drag());
         if drag.drag_started() {
-            ctx.send_viewport_cmd(ViewportCommand::StartDrag);
+            // 顶部边缘热区留给窗口缩放(platform::resize),不触发拖动
+            let in_top_edge = drag
+                .interact_pointer_pos()
+                .is_some_and(|p| p.y - drag_rect.top() <= crate::platform::resize::EDGE_PX);
+            if !in_top_edge {
+                ctx.send_viewport_cmd(ViewportCommand::StartDrag);
+            }
         }
         if drag.double_clicked() {
             action = TitleAction::ToggleMaximize;
