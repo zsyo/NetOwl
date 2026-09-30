@@ -339,6 +339,14 @@ fn apply_visuals(ctx: &egui::Context) {
     v.widgets.hovered = widget(v.widgets.hovered, p.hover_bg, p.text, RADIUS_MD);
     v.widgets.active = widget(v.widgets.active, p.accent_soft, p.accent, RADIUS_MD);
     v.widgets.open = widget(v.widgets.open, p.open_bg, p.text, RADIUS_MD);
+    // egui 0.36 的 button_style 按状态用 bg_stroke 宽度回缩按钮内边距
+    // (inner_margin = button_padding - bg_stroke.width):inactive 宽 0 而
+    // hovered/active/open 默认宽 1,按钮悬停瞬间会缩小 2px 造成抖动。
+    // 与 egui menu_style 同思路统一清空,各状态尺寸恒定,
+    // 悬停反馈由 hover_bg 背景承担,不再依赖描边
+    v.widgets.hovered.bg_stroke = Stroke::NONE;
+    v.widgets.active.bg_stroke = Stroke::NONE;
+    v.widgets.open.bg_stroke = Stroke::NONE;
 
     ctx.all_styles_mut(|style| {
         style.visuals = v.clone();
