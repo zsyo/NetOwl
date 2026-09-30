@@ -26,14 +26,16 @@ pub(crate) fn section_title(ui: &mut egui::Ui, text: &str) {
     );
 }
 
-/// 排行小节标题 + 右侧排序切换(总量/上传/下载,进程与域名排行共用)
+/// 排行小节标题 + 右侧排序切换(总量/上传/下载);
+/// 返回用户新选的排序键(None = 未变),由调用方写回对应排行的状态
 pub(crate) fn rank_header(
     ui: &mut egui::Ui,
     text: &str,
-    panels: &mut MapPanelState,
+    sort: RankSort,
     i18n: &crate::i18n::I18n,
-) {
+) -> Option<RankSort> {
     ui.add_space(theme::sp::SM);
+    let mut picked = None;
     ui.horizontal(|ui| {
         ui.label(
             RichText::new(text.to_owned())
@@ -52,20 +54,21 @@ pub(crate) fn rank_header(
                 .map(|(key, glyph)| (i18n.t(key), *glyph))
                 .collect();
             let view: Vec<(&str, &str)> = texts.iter().map(|(t, g)| (t.as_str(), *g)).collect();
-            let idx = match panels.rank_sort {
+            let idx = match sort {
                 RankSort::Total => 0,
                 RankSort::Out => 1,
                 RankSort::In => 2,
             };
             if let Some(i) = widgets::segmented::segmented(ui, &view, idx) {
-                panels.rank_sort = match i {
+                picked = Some(match i {
                     1 => RankSort::Out,
                     2 => RankSort::In,
                     _ => RankSort::Total,
-                };
+                });
             }
         });
     });
+    picked
 }
 
 /// 下载/上传双卡片(方向图标 + 语义色大数字,样式仿历史页卡片)

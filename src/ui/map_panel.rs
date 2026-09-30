@@ -41,8 +41,10 @@ pub struct MapPanelState {
     pub expanded: HashSet<String>,
     /// 左列表搜索词(过滤进程名/远端 IP/域名)
     pub search: String,
-    /// 概览排行排序键(进程/域名排行共用)
-    pub rank_sort: RankSort,
+    /// 概览进程排行排序键(与域名排行相互独立)
+    pub proc_rank_sort: RankSort,
+    /// 概览域名排行排序键
+    pub domain_rank_sort: RankSort,
 }
 
 impl Default for MapPanelState {
@@ -54,7 +56,8 @@ impl Default for MapPanelState {
             process: None,
             expanded: HashSet::new(),
             search: String::new(),
-            rank_sort: RankSort::Total,
+            proc_rank_sort: RankSort::Total,
+            domain_rank_sort: RankSort::Total,
         }
     }
 }

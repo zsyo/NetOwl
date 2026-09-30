@@ -122,14 +122,21 @@ fn summary_view(
         visible.iter().map(|c| c.bytes_out).sum(),
         i18n,
     );
-    rank_header(ui, &i18n.t("map-inspector-top-proc"), panels, i18n);
+    if let Some(s) = rank_header(
+        ui,
+        &i18n.t("map-inspector-top-proc"),
+        panels.proc_rank_sort,
+        i18n,
+    ) {
+        panels.proc_rank_sort = s;
+    }
     let mut groups = collect_groups(conns, config, None, "", rdns);
     if groups.is_empty() {
         ui.label(theme::dim_text(&i18n.t("map-panel-empty"), 12.0));
     }
     // 排行按用户选择的排序键重排(累计总量/上传/下载),
     // 占比条与名次同键;次级键按名称稳定序(未提权时字节恒 0)
-    let sort = panels.rank_sort;
+    let sort = panels.proc_rank_sort;
     let rank_value = |g: &ProcGroup| match sort {
         RankSort::Total => g.total,
         RankSort::Out => g.conns.iter().map(|c| c.bytes_out).sum::<u64>(),
@@ -150,15 +157,23 @@ fn summary_view(
         proc_rank_row(ui, panels, i18n, icon_tex, default_icon_tex, g, ratio);
     }
 
-    rank_header(ui, &i18n.t("map-inspector-top-domain"), panels, i18n);
-    let domains = top_domains(conns, config, rdns, sort, 5);
+    if let Some(s) = rank_header(
+        ui,
+        &i18n.t("map-inspector-top-domain"),
+        panels.domain_rank_sort,
+        i18n,
+    ) {
+        panels.domain_rank_sort = s;
+    }
+    let domain_sort = panels.domain_rank_sort;
+    let domains = top_domains(conns, config, rdns, domain_sort, 5);
     let max_rank = domains
         .first()
-        .map(|(_, i, o)| rank_bytes(*i, *o, sort))
+        .map(|(_, i, o)| rank_bytes(*i, *o, domain_sort))
         .unwrap_or(0);
     for (host, bytes_in, bytes_out) in &domains {
         let ratio = if max_rank > 0 {
-            rank_bytes(*bytes_in, *bytes_out, sort) as f32 / max_rank as f32
+            rank_bytes(*bytes_in, *bytes_out, domain_sort) as f32 / max_rank as f32
         } else {
             0.0
         };

@@ -129,7 +129,7 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   map_panel.rs/map_inspector.rs/map_widgets.rs/map_conn.rs:地图页左右面板
   (左列表按进程分组:名称+会话累计上/下行副行+连接数徽章+进程级阻断
   开关,展开见连接明细;右 Inspector 三态:概览[流量卡+进程/域名排行,
-  总量/上传/下载排序切换,上传占优行警示色]、端点详情、进程详情;
+  各自独立的总量/上传/下载排序切换,上传占优行警示色]、端点详情、进程详情;
   行内变长文本统一"固定宽度容器 + Truncate"防面板宽度记忆膨胀);
   icons.rs:Bootstrap Icons 码点常量表(glyph 名注释即契约);theme.rs:主题
   (深/浅两套 Palette 调色板 + AtomicUsize 主题索引,theme::c() 统一取色;
