@@ -109,9 +109,13 @@ settings-tray-pin-hint = Writes the system tray setting; takes effect next sessi
 
 settings-log = Logging
 settings-log-level = Log level
+settings-log-level-hint = Applies immediately to console and file; the log window has its own shown level
 settings-log-file-on = Write to log file
+settings-log-file-hint = Write to the logs directory next to the exe, old files rotate by timestamp
 settings-log-view = View logs
-settings-log-hint = Level applies immediately; file logs go to the logs directory next to the exe with rotation; "View logs" opens the log browser
+settings-log-view-hint = Locate the log file in Explorer, or open the browser window for live logs
+settings-log-locate = Locate log file
+settings-log-open = Open window
 
 settings-section-appearance = Appearance
 settings-section-monitoring = Monitoring

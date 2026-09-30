@@ -109,9 +109,13 @@ settings-tray-pin-hint = 写入系统托盘设置,新会话生效;失败时保�
 
 settings-log = 运行日志
 settings-log-level = 日志级别
+settings-log-level-hint = 立即生效,作用于控制台与日志文件;浏览窗口内可独立调整显示级别
 settings-log-file-on = 写入日志文件
+settings-log-file-hint = 写入 exe 同级 logs 目录,旧文件按时间戳自动轮转
 settings-log-view = 查看日志
-settings-log-hint = 级别立即生效;文件日志写入 exe 同级 logs 目录,旧文件自动轮转;查看日志打开浏览窗口
+settings-log-view-hint = 在文件管理器中定位日志文件,或打开浏览窗口实时查看
+settings-log-locate = 定位日志文件
+settings-log-open = 打开窗口
 
 settings-section-appearance = 外观
 settings-section-monitoring = 监控

@@ -168,46 +168,35 @@ pub(super) fn settings_ui(
     );
     ui.add_space(theme::sp::MD);
 
-    // ---- 日志:级别 / 文件开关 / 查看 ----
+    // ---- 日志:文件开关 / 级别 / 查看入口,每行语义单一 ----
     section_card(
         ui,
         icons::TERMINAL,
         &i18n.t("settings-section-logging"),
         |ui| {
-            ui.horizontal(|ui| {
-                // 右侧控件更宽(下拉 + 开关 + 按钮),左列相应多留空间
-                let left_w = (ui.available_width() - 390.0).max(120.0);
-                ui.allocate_ui(egui::vec2(left_w, 0.0), |ui| {
-                    ui.vertical(|ui| {
-                        ui.label(
-                            RichText::new(i18n.t("settings-log"))
-                                .size(theme::font::BODY)
-                                .strong()
-                                .color(theme::c().text),
-                        );
-                        ui.add(
-                            egui::Label::new(theme::dim_text(
-                                &i18n.t("settings-log-hint"),
-                                theme::font::XS,
-                            ))
-                            .wrap_mode(egui::TextWrapMode::Truncate),
-                        );
-                    });
-                });
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui.button(i18n.t("settings-log-view")).clicked() {
-                        log_window::open(log_window);
-                    }
-                    if ui
-                        .checkbox(
-                            &mut config.general.log_to_file,
-                            i18n.t("settings-log-file-on"),
-                        )
-                        .changed()
+            setting_row(
+                ui,
+                &i18n.t("settings-log-file-on"),
+                &i18n.t("settings-log-file-hint"),
+                |ui| {
+                    if widgets::toggle::toggle_switch(
+                        ui,
+                        &mut config.general.log_to_file,
+                        egui::Id::new("settings-log-file-toggle"),
+                    )
+                    .changed()
                     {
                         crate::logging::set_file_enabled(config.general.log_to_file);
                         changed = true;
                     }
+                },
+            );
+            ui.add_space(theme::sp::SM);
+            setting_row(
+                ui,
+                &i18n.t("settings-log-level"),
+                &i18n.t("settings-log-level-hint"),
+                |ui| {
                     let current = LogLevel::parse(&config.general.log_level);
                     egui::ComboBox::from_id_salt("settings-log-level")
                         .width(110.0)
@@ -228,8 +217,22 @@ pub(super) fn settings_ui(
                                 }
                             }
                         });
-                });
-            });
+                },
+            );
+            ui.add_space(theme::sp::SM);
+            setting_row(
+                ui,
+                &i18n.t("settings-log-view"),
+                &i18n.t("settings-log-view-hint"),
+                |ui| {
+                    if ui.button(i18n.t("settings-log-open")).clicked() {
+                        log_window::open(log_window);
+                    }
+                    if ui.button(i18n.t("settings-log-locate")).clicked() {
+                        locate_log_file();
+                    }
+                },
+            );
         },
     );
 
@@ -295,3 +298,29 @@ fn setting_row<R>(
 
 /// 右侧控件区预留宽度(最宽控件为 180 宽下拉,含余量)
 const CTRL_AREA_W: f32 = 260.0;
+
+/// 资源管理器定位日志:latest.log 存在则选中,否则打开日志目录。
+/// 工作目录在启动时已切到数据根,拼 LOGS_DIR 即为目标目录
+fn locate_log_file() {
+    use std::os::windows::process::CommandExt;
+
+    let dir = std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join(crate::platform::paths::LOGS_DIR);
+    let latest = dir.join("latest.log");
+    if latest.exists() {
+        // /select, 与路径间不能有空格;路径含空格须整体加引号,普通 arg
+        // 会对含空格参数自动加引号导致 /select, 被拆开,须 raw_arg
+        if let Err(e) = std::process::Command::new("explorer")
+            .raw_arg(format!("/select,\"{}\"", latest.display()))
+            .spawn()
+        {
+            tracing::warn!("[Settings] 定位日志文件失败: {e}");
+        }
+    } else {
+        let _ = std::fs::create_dir_all(&dir);
+        if let Err(e) = std::process::Command::new("explorer").arg(&dir).spawn() {
+            tracing::warn!("[Settings] 打开日志目录失败: {e}");
+        }
+    }
+}
