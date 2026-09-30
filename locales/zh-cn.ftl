@@ -42,6 +42,9 @@ map-inspector-conns = 连接明细
 map-inspector-path = 路径
 map-inspector-top-proc = 流量排行 · 进程
 map-inspector-top-domain = 流量排行 · 域名
+map-rank-total = 总量
+map-rank-up = 上传
+map-rank-down = 下载
 map-inspector-processes = { $count } 进程,{ $remotes } 远端
 map-inspector-empty = 点击地图端点或左侧进程查看详情
 

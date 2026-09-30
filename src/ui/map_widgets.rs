@@ -10,9 +10,10 @@ use egui::{Button, Color32, CornerRadius, Frame, Label, Margin, RichText, Stroke
 
 use crate::model::fmt_bytes;
 use crate::ui::icons;
-use crate::ui::map_panel::{MapPanelState, ProcGroup};
+use crate::ui::map_panel::{MapPanelState, ProcGroup, RankSort};
 use crate::ui::text_width;
 use crate::ui::theme;
+use crate::ui::widgets;
 
 /// 小节标题(排行/列表段)
 pub(crate) fn section_title(ui: &mut egui::Ui, text: &str) {
@@ -23,6 +24,48 @@ pub(crate) fn section_title(ui: &mut egui::Ui, text: &str) {
             .strong()
             .color(theme::c().text_dim),
     );
+}
+
+/// 排行小节标题 + 右侧排序切换(总量/上传/下载,进程与域名排行共用)
+pub(crate) fn rank_header(
+    ui: &mut egui::Ui,
+    text: &str,
+    panels: &mut MapPanelState,
+    i18n: &crate::i18n::I18n,
+) {
+    ui.add_space(theme::sp::SM);
+    ui.horizontal(|ui| {
+        ui.label(
+            RichText::new(text.to_owned())
+                .size(theme::font::SM)
+                .strong()
+                .color(theme::c().text_dim),
+        );
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let items = [
+                ("map-rank-total", icons::ARROW_DOWN_UP),
+                ("map-rank-up", icons::ARROW_UP),
+                ("map-rank-down", icons::ARROW_DOWN),
+            ];
+            let texts: Vec<(String, &str)> = items
+                .iter()
+                .map(|(key, glyph)| (i18n.t(key), *glyph))
+                .collect();
+            let view: Vec<(&str, &str)> = texts.iter().map(|(t, g)| (t.as_str(), *g)).collect();
+            let idx = match panels.rank_sort {
+                RankSort::Total => 0,
+                RankSort::Out => 1,
+                RankSort::In => 2,
+            };
+            if let Some(i) = widgets::segmented::segmented(ui, &view, idx) {
+                panels.rank_sort = match i {
+                    1 => RankSort::Out,
+                    2 => RankSort::In,
+                    _ => RankSort::Total,
+                };
+            }
+        });
+    });
 }
 
 /// 下载/上传双卡片(方向图标 + 语义色大数字,样式仿历史页卡片)
@@ -79,7 +122,8 @@ fn traffic_card(ui: &mut egui::Ui, w: f32, glyph: &str, label: &str, value: &str
 }
 
 /// Top 进程行:图标 + 名称(点击选中联动进程详情,Truncate 自适应)+
-/// 右侧下载/上传分色字节 + 下方流量占比条(相对排行第一名)
+/// 右侧下载/上传分色字节(上传超过下载时以警示色提示)+
+/// 下方流量占比条(相对当前排序键的第一名,占比由调用方传入)
 pub(crate) fn proc_rank_row(
     ui: &mut egui::Ui,
     panels: &mut MapPanelState,
@@ -87,7 +131,7 @@ pub(crate) fn proc_rank_row(
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
     default_icon_tex: Option<&egui::TextureHandle>,
     g: &ProcGroup,
-    max_total: u64,
+    bar_ratio: f32,
 ) {
     let selected = panels.process.as_deref() == Some(g.name.as_str());
     let display = if g.name.is_empty() {
@@ -96,8 +140,10 @@ pub(crate) fn proc_rank_row(
         g.name.clone()
     };
     let path = g.conns.iter().find_map(|c| c.proc_path.as_deref());
-    let in_text = fmt_bytes(g.conns.iter().map(|c| c.bytes_in).sum());
-    let out_text = fmt_bytes(g.conns.iter().map(|c| c.bytes_out).sum());
+    let in_sum: u64 = g.conns.iter().map(|c| c.bytes_in).sum();
+    let out_sum: u64 = g.conns.iter().map(|c| c.bytes_out).sum();
+    let in_text = fmt_bytes(in_sum);
+    let out_text = fmt_bytes(out_sum);
     let in_w = text_width(ui, &in_text, theme::font::XS);
     let out_w = text_width(ui, &out_text, theme::font::XS);
     ui.horizontal(|ui| {
@@ -128,13 +174,19 @@ pub(crate) fn proc_rank_row(
                 panels.process = Some(g.name.clone());
             }
         });
-        // 右侧区从右往左排:上传、下载
+        // 右侧区从右往左排:上传、下载;上传占优视为可疑(可能是
+        // 未经用户预期的外发流量),用警示色代替常规方向色
+        let out_color = if out_sum > in_sum {
+            theme::c().status_warn
+        } else {
+            theme::c().outbound
+        };
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.style_mut().spacing.item_spacing.x = 6.0;
             ui.label(
                 RichText::new(&out_text)
                     .size(theme::font::XS)
-                    .color(theme::c().outbound),
+                    .color(out_color),
             );
             ui.label(
                 RichText::new(&in_text)
@@ -143,25 +195,17 @@ pub(crate) fn proc_rank_row(
             );
         });
     });
-    let total = g.total;
-    rank_bar(
-        ui,
-        if max_total > 0 {
-            total as f32 / max_total as f32
-        } else {
-            0.0
-        },
-    );
+    rank_bar(ui, bar_ratio);
 }
 
-/// 排行的域名行:名称(Truncate 自适应)+ 右侧下载/上传分色字节 +
-/// 流量占比条(相对排行第一名)
+/// 排行的域名行:名称(Truncate 自适应)+ 右侧下载/上传分色字节
+/// (上传超过下载时以警示色提示)+ 流量占比条(由调用方传入)
 pub(crate) fn bytes_row(
     ui: &mut egui::Ui,
     title: &str,
     bytes_in: u64,
     bytes_out: u64,
-    max_total: u64,
+    bar_ratio: f32,
 ) {
     let in_text = fmt_bytes(bytes_in);
     let out_text = fmt_bytes(bytes_out);
@@ -181,21 +225,18 @@ pub(crate) fn bytes_row(
                 .truncate(),
             );
         });
+        let out_color = if bytes_out > bytes_in {
+            theme::c().status_warn
+        } else {
+            theme::c().outbound
+        };
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.style_mut().spacing.item_spacing.x = 3.0;
-            rate_pair(ui, &out_text, theme::c().outbound, icons::ARROW_UP);
+            rate_pair(ui, &out_text, out_color, icons::ARROW_UP);
             rate_pair(ui, &in_text, theme::c().inbound, icons::ARROW_DOWN);
         });
     });
-    let total = bytes_in + bytes_out;
-    rank_bar(
-        ui,
-        if max_total > 0 {
-            total as f32 / max_total as f32
-        } else {
-            0.0
-        },
-    );
+    rank_bar(ui, bar_ratio);
 }
 
 /// 一组方向速率:方向箭头 + 数值(同色,避免仅靠颜色区分上传/下载)。

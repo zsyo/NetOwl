@@ -42,6 +42,9 @@ map-inspector-conns = Connection details
 map-inspector-path = Path
 map-inspector-top-proc = Top Processes
 map-inspector-top-domain = Top Domains
+map-rank-total = Total
+map-rank-up = Up
+map-rank-down = Down
 map-inspector-processes = { $count } processes, { $remotes } remotes
 map-inspector-empty = Click a map endpoint or a process on the left to see details
 

@@ -21,8 +21,10 @@ use crate::ui::conn_visible;
 use crate::ui::icons;
 use crate::ui::map_conn::conn_row;
 use crate::ui::map_panel::MapPanelState;
+use crate::ui::map_panel::ProcGroup;
+use crate::ui::map_panel::RankSort;
 use crate::ui::map_panel::collect_groups;
-use crate::ui::map_widgets::{bytes_row, proc_rank_row, section_title, traffic_cards};
+use crate::ui::map_widgets::{bytes_row, proc_rank_row, rank_header, section_title, traffic_cards};
 use crate::ui::theme;
 use crate::ui::widgets;
 
@@ -120,21 +122,56 @@ fn summary_view(
         visible.iter().map(|c| c.bytes_out).sum(),
         i18n,
     );
-    section_title(ui, &i18n.t("map-inspector-top-proc"));
-    let groups = collect_groups(conns, config, None, "", rdns);
+    rank_header(ui, &i18n.t("map-inspector-top-proc"), panels, i18n);
+    let mut groups = collect_groups(conns, config, None, "", rdns);
     if groups.is_empty() {
         ui.label(theme::dim_text(&i18n.t("map-panel-empty"), 12.0));
     }
-    let max_total = groups.first().map(|g| g.total).unwrap_or(0);
+    // 排行按用户选择的排序键重排(累计总量/上传/下载),
+    // 占比条与名次同键;次级键按名称稳定序(未提权时字节恒 0)
+    let sort = panels.rank_sort;
+    let rank_value = |g: &ProcGroup| match sort {
+        RankSort::Total => g.total,
+        RankSort::Out => g.conns.iter().map(|c| c.bytes_out).sum::<u64>(),
+        RankSort::In => g.conns.iter().map(|c| c.bytes_in).sum::<u64>(),
+    };
+    groups.sort_by(|a, b| {
+        rank_value(b)
+            .cmp(&rank_value(a))
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    let max_rank = groups.first().map(&rank_value).unwrap_or(0);
     for g in groups.iter().take(5) {
-        proc_rank_row(ui, panels, i18n, icon_tex, default_icon_tex, g, max_total);
+        let ratio = if max_rank > 0 {
+            rank_value(g) as f32 / max_rank as f32
+        } else {
+            0.0
+        };
+        proc_rank_row(ui, panels, i18n, icon_tex, default_icon_tex, g, ratio);
     }
 
-    section_title(ui, &i18n.t("map-inspector-top-domain"));
-    let domains = top_domains(conns, config, rdns, 5);
-    let max_domain = domains.first().map(|(_, i, o)| i + o).unwrap_or(0);
+    rank_header(ui, &i18n.t("map-inspector-top-domain"), panels, i18n);
+    let domains = top_domains(conns, config, rdns, sort, 5);
+    let max_rank = domains
+        .first()
+        .map(|(_, i, o)| rank_bytes(*i, *o, sort))
+        .unwrap_or(0);
     for (host, bytes_in, bytes_out) in &domains {
-        bytes_row(ui, host, *bytes_in, *bytes_out, max_domain);
+        let ratio = if max_rank > 0 {
+            rank_bytes(*bytes_in, *bytes_out, sort) as f32 / max_rank as f32
+        } else {
+            0.0
+        };
+        bytes_row(ui, host, *bytes_in, *bytes_out, ratio);
+    }
+}
+
+/// 排行排序键的字节值(下载/上传二元组按当前排序键取值)
+fn rank_bytes(bytes_in: u64, bytes_out: u64, sort: RankSort) -> u64 {
+    match sort {
+        RankSort::Total => bytes_in + bytes_out,
+        RankSort::Out => bytes_out,
+        RankSort::In => bytes_in,
     }
 }
 
@@ -178,7 +215,12 @@ fn place_view(
     let groups = collect_groups(conns, config, Some(place), "", rdns);
     let max_total = groups.first().map(|g| g.total).unwrap_or(0);
     for g in &groups {
-        proc_rank_row(ui, panels, i18n, icon_tex, default_icon_tex, g, max_total);
+        let ratio = if max_total > 0 {
+            g.total as f32 / max_total as f32
+        } else {
+            0.0
+        };
+        proc_rank_row(ui, panels, i18n, icon_tex, default_icon_tex, g, ratio);
     }
 }
 
@@ -342,11 +384,12 @@ fn title_row(
     .inner
 }
 
-/// 域名/IP 聚合的流量排行(前 n,双向字节降序);UDP 无远端不计
+/// 域名/IP 聚合的流量排行(前 n,按排序键降序);UDP 无远端不计
 fn top_domains(
     conns: &[Connection],
     config: &Config,
     rdns: &rdns::Rdns,
+    sort: RankSort,
     n: usize,
 ) -> Vec<(String, u64, u64)> {
     let mut map: HashMap<String, (u64, u64)> = HashMap::new();
@@ -363,9 +406,13 @@ fn top_domains(
         entry.1 += c.bytes_out;
     }
     let mut rows: Vec<(String, u64, u64)> = map.into_iter().map(|(k, (i, o))| (k, i, o)).collect();
-    // 次级键按名称:未提权时字节恒 0,total 相同的行若不加稳定键,
+    // 次级键按名称:未提权时字节恒 0,排序键相同的行若不加稳定键,
     // HashMap 迭代序随机导致排行每帧跳动
-    rows.sort_by(|a, b| (b.1 + b.2).cmp(&(a.1 + a.2)).then_with(|| a.0.cmp(&b.0)));
+    rows.sort_by(|a, b| {
+        rank_bytes(b.1, b.2, sort)
+            .cmp(&rank_bytes(a.1, a.2, sort))
+            .then_with(|| a.0.cmp(&b.0))
+    });
     rows.truncate(n);
     rows
 }

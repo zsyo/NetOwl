@@ -41,6 +41,8 @@ pub struct MapPanelState {
     pub expanded: HashSet<String>,
     /// 左列表搜索词(过滤进程名/远端 IP/域名)
     pub search: String,
+    /// 概览排行排序键(进程/域名排行共用)
+    pub rank_sort: RankSort,
 }
 
 impl Default for MapPanelState {
@@ -52,8 +54,17 @@ impl Default for MapPanelState {
             process: None,
             expanded: HashSet::new(),
             search: String::new(),
+            rank_sort: RankSort::Total,
         }
     }
+}
+
+/// 概览排行排序键
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum RankSort {
+    Total,
+    Out,
+    In,
 }
 
 /// 按映像名分组的进程连接(组名空串 = 未知进程);左列表与右侧
