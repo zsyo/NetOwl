@@ -129,9 +129,8 @@ pub struct NetOwlApp {
     udp_last_remote: HashMap<(u32, u16), (Ipv4Addr, u16)>,
     /// 连接列表表头排序状态(会话内,不持久化)
     conn_sort: ui::ConnSortState,
-    /// 表格行悬停辅助(连接/历史/规则页,跨帧行高供行首垫底判定)
+    /// 表格行悬停辅助(连接/规则页,跨帧行高供行首垫底判定)
     conn_row_hover: ui::widgets::table::RowHover,
-    history_row_hover: ui::widgets::table::RowHover,
     rules_row_hover: ui::widgets::table::RowHover,
     /// 日志浏览窗口状态(内存层日志展示,参照 wallwarp)
     log_window: ui::log_window::PageState,
@@ -235,7 +234,6 @@ impl NetOwlApp {
             udp_last_remote: HashMap::new(),
             conn_sort: None,
             conn_row_hover: Default::default(),
-            history_row_hover: Default::default(),
             rules_row_hover: Default::default(),
             log_window: ui::log_window::PageState::new(),
             conn_prev_bytes: HashMap::new(),
@@ -917,7 +915,6 @@ impl eframe::App for NetOwlApp {
             conn_rates: &self.conn_rates,
             conn_sort: &mut self.conn_sort,
             conn_row_hover: &mut self.conn_row_hover,
-            history_row_hover: &mut self.history_row_hover,
             rules_row_hover: &mut self.rules_row_hover,
             log_window: &mut self.log_window,
             icon_tex: &self.icon_tex,

@@ -258,14 +258,11 @@ fn wfp_status_line(ui: &mut egui::Ui, i18n: &I18n, status: &wfp::Status) {
 }
 
 /// 表格列宽(逻辑点);表头与数据列同宽,add_sized 居中。
-/// 定宽列合计约 1160(含列间距),1440 最小窗口中央区(~1200)基本占满
+/// 定宽列 + 名称/进程/远端三列弹性均分剩余宽:窗口放大时表格铺满中央区
 const COL_ENABLED: f32 = 44.0;
-const COL_NAME: f32 = 220.0;
 const COL_ACTION: f32 = 56.0;
 const COL_DIRECTION: f32 = 64.0;
 const COL_PROTO: f32 = 56.0;
-const COL_PROCESS: f32 = 220.0;
-const COL_REMOTE: f32 = 220.0;
 const COL_PORT: f32 = 44.0;
 const COL_OPS: f32 = 120.0;
 
@@ -300,18 +297,26 @@ fn rules_table(
         .show(ui, |ui| {
             let table_left = ui.max_rect().left();
             let table_right = ui.max_rect().right();
+            // 表格总宽必须在 Grid 之外取:Grid 闭包内 available_width 被
+            // grid 布局器接管,返回当前列宽(上帧值)而非总宽
+            let table_w = ui.available_width();
+            let flex_w = ((table_w
+                - 14.0 * 8.0
+                - (COL_ENABLED + COL_ACTION + COL_DIRECTION + COL_PROTO + COL_PORT + COL_OPS))
+                / 3.0)
+                .max(220.0);
             egui::Grid::new("rules_grid")
                 .num_columns(9)
                 .striped(true)
                 .spacing([14.0, widgets::table::ROW_SPACING_Y])
                 .show(ui, |ui| {
                     header_cell(ui, COL_ENABLED, i18n.t("rules-col-enabled"));
-                    header_cell(ui, COL_NAME, i18n.t("rules-col-name"));
+                    header_cell(ui, flex_w, i18n.t("rules-col-name"));
                     header_cell(ui, COL_ACTION, i18n.t("rules-col-action"));
                     header_cell(ui, COL_DIRECTION, i18n.t("rules-col-direction"));
                     header_cell(ui, COL_PROTO, i18n.t("col-proto"));
-                    header_cell(ui, COL_PROCESS, i18n.t("col-process"));
-                    header_cell(ui, COL_REMOTE, i18n.t("rules-col-remote"));
+                    header_cell(ui, flex_w, i18n.t("col-process"));
+                    header_cell(ui, flex_w, i18n.t("rules-col-remote"));
                     header_cell(ui, COL_PORT, i18n.t("col-port"));
                     header_cell(ui, COL_OPS, i18n.t("rules-col-ops"));
                     ui.end_row();
@@ -340,7 +345,7 @@ fn rules_table(
                             rule.name.clone()
                         };
                         ui.add_sized(
-                            [COL_NAME, 18.0],
+                            [flex_w, 18.0],
                             egui::Label::new(
                                 RichText::new(name_text).size(theme::font::BODY).color(
                                     if is_temp {
@@ -386,7 +391,7 @@ fn rules_table(
                             },
                         );
                         ui.add_sized(
-                            [COL_PROCESS, 18.0],
+                            [flex_w, 18.0],
                             egui::Label::new(theme::dim_text(
                                 &process_display(&rule),
                                 theme::font::BODY,
@@ -394,7 +399,7 @@ fn rules_table(
                             .wrap_mode(egui::TextWrapMode::Truncate),
                         );
                         ui.add_sized(
-                            [COL_REMOTE, 18.0],
+                            [flex_w, 18.0],
                             egui::Label::new(theme::dim_text(
                                 &remote_display(&rule),
                                 theme::font::BODY,

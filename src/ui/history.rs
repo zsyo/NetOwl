@@ -26,7 +26,6 @@ pub fn show(
     db: &Db,
     writer: &history::Writer,
     config: &mut Config,
-    row_hover: &mut widgets::table::RowHover,
 ) -> bool {
     state.refresh_if_needed(db, config.general.hide_local, config.general.hide_lan);
     let mut config_changed = false;
@@ -43,7 +42,7 @@ pub fn show(
     toolbar(ui, state, i18n, db, writer, config, &mut config_changed);
     ui.add_space(theme::sp::SM);
 
-    rows_table(ui, state, i18n, icon_tex, default_icon_tex, row_hover);
+    rows_table(ui, state, i18n, icon_tex, default_icon_tex);
     config_changed
 }
 
@@ -272,14 +271,16 @@ fn proto_name(i18n: &I18n, proto: Option<Protocol>) -> String {
     }
 }
 
-/// 结果表:明细(6 列)/ 聚合(7 列)/ 汇总(5 列,表头可排序)
+/// 结果表:明细(8 列)/ 聚合(9 列)/ 汇总(5 列,表头可排序)
+/// 三视图均行虚拟化(show_rows 只布局可见行):查询上限 500 行,
+/// 窗口缩放/滚动每帧全量重排会卡顿;行高恒定 18,行色手动垫底
+/// (虚拟化后 Grid striped 的奇偶不再对应全局行号)
 fn rows_table(
     ui: &mut egui::Ui,
     state: &mut history_query::PageState,
     i18n: &I18n,
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
     default_icon_tex: Option<&egui::TextureHandle>,
-    row_hover: &mut widgets::table::RowHover,
 ) {
     match &state.rows {
         Rows::Detail(rows) => {
@@ -287,17 +288,19 @@ fn rows_table(
                 empty_hint(ui, i18n);
                 return;
             }
-            egui::ScrollArea::vertical()
-                .auto_shrink(false)
-                .show(ui, |ui| {
+            egui::ScrollArea::vertical().auto_shrink(false).show_rows(
+                ui,
+                18.0,
+                rows.len(),
+                |ui, row_range| {
                     let table_left = ui.max_rect().left();
                     let table_right = ui.max_rect().right();
                     // 表格总宽必须在 Grid 之外取:Grid 闭包内 available_width
                     // 被 grid 布局器接管,返回当前列宽(上帧值)而非总宽
                     let table_w = ui.available_width();
                     egui::Grid::new("history_detail")
-                        .num_columns(9)
-                        .striped(true)
+                        .num_columns(8)
+                        .striped(false)
                         .spacing([24.0, widgets::table::ROW_SPACING_Y])
                         .show(ui, |ui| {
                             // 定宽列(容纳表头与内容上限)+ 进程/远端弹性列:
@@ -308,7 +311,7 @@ fn rows_table(
                             const D_DUR_W: f32 = 80.0;
                             const D_BYTES_W: f32 = 90.0;
                             let flex_total = (table_w
-                                - 24.0 * 8.0
+                                - 24.0 * 7.0
                                 - (D_PROTO_W + D_LOC_W + D_SEEN_W + D_DUR_W + D_BYTES_W * 2.0))
                                 .max(320.0);
                             let flex_w = flex_total * 0.5;
@@ -325,9 +328,10 @@ fn rows_table(
                                 widgets::table::header_cell(ui, &i18n.t(key));
                             }
                             ui.end_row();
-                            for r in rows {
+                            for r_idx in row_range {
+                                let r = &rows[r_idx];
                                 let row_top = ui.cursor().top();
-                                row_hover.begin(ui, table_left, table_right, row_top);
+                                row_background(ui, table_left, table_right, row_top, r_idx);
                                 widgets::table::fixed_cell(ui, flex_w, 18.0, |ui| {
                                     proc_cell(
                                         ui,
@@ -386,13 +390,12 @@ fn rows_table(
                                 widgets::table::fixed_num_cell(ui, D_BYTES_W, |ui| {
                                     bytes_cell(ui, r.bytes_out, true);
                                 });
-                                ui.label("");
                                 ui.end_row();
-                                row_hover.end(ui, row_top);
                             }
                         });
-                    truncated_hint(ui, rows.len(), i18n);
-                });
+                },
+            );
+            truncated_hint(ui, rows.len(), i18n);
         }
         Rows::Aggregate(rows) => {
             if rows.is_empty() {
@@ -400,17 +403,19 @@ fn rows_table(
                 return;
             }
             let aggregate_sort = &mut state.aggregate_sort;
-            egui::ScrollArea::vertical()
-                .auto_shrink(false)
-                .show(ui, |ui| {
+            egui::ScrollArea::vertical().auto_shrink(false).show_rows(
+                ui,
+                18.0,
+                rows.len(),
+                |ui, row_range| {
                     let table_left = ui.max_rect().left();
                     let table_right = ui.max_rect().right();
                     // 表格总宽必须在 Grid 之外取:Grid 闭包内 available_width
                     // 被 grid 布局器接管,返回当前列宽(上帧值)而非总宽
                     let table_w = ui.available_width();
                     egui::Grid::new("history_aggregate")
-                        .num_columns(10)
-                        .striped(true)
+                        .num_columns(9)
+                        .striped(false)
                         .spacing([24.0, widgets::table::ROW_SPACING_Y])
                         .show(ui, |ui| {
                             // 定宽列(容纳表头与内容上限)+ 进程/远端弹性列:
@@ -422,7 +427,7 @@ fn rows_table(
                             const A_LAST_W: f32 = 105.0;
                             const A_BYTES_W: f32 = 90.0;
                             let flex_total = (table_w
-                                - 24.0 * 9.0
+                                - 24.0 * 8.0
                                 - (A_PROTO_W
                                     + A_LOC_W
                                     + A_CNT_W
@@ -432,7 +437,7 @@ fn rows_table(
                                 .max(320.0);
                             let flex_w = flex_total * 0.5;
                             // 进程/协议/远端/位置纯展示;
-                            // 次数/时长/最近活动/下载总量/上传总量可排序(末列空占位同汇总表)
+                            // 次数/时长/最近活动/下载总量/上传总量可排序
                             for key in [
                                 "history-col-process",
                                 "col-proto",
@@ -477,11 +482,11 @@ fn rows_table(
                             if sort_clicked {
                                 state.dirty = true;
                             }
-                            ui.label("");
                             ui.end_row();
-                            for r in rows {
+                            for r_idx in row_range {
+                                let r = &rows[r_idx];
                                 let row_top = ui.cursor().top();
-                                row_hover.begin(ui, table_left, table_right, row_top);
+                                row_background(ui, table_left, table_right, row_top, r_idx);
                                 widgets::table::fixed_cell(ui, flex_w, 18.0, |ui| {
                                     proc_cell(
                                         ui,
@@ -542,13 +547,12 @@ fn rows_table(
                                 widgets::table::fixed_num_cell(ui, A_BYTES_W, |ui| {
                                     bytes_cell(ui, r.bytes_out, true);
                                 });
-                                ui.label("");
                                 ui.end_row();
-                                row_hover.end(ui, row_top);
                             }
                         });
                     truncated_hint(ui, rows.len(), i18n);
-                });
+                },
+            );
         }
         Rows::Summary(rows) => {
             if rows.is_empty() {
@@ -562,23 +566,23 @@ fn rows_table(
             ));
             ui.add_space(theme::sp::XS);
             let summary_sort = &mut state.summary_sort;
-            egui::ScrollArea::vertical()
-                .auto_shrink(false)
-                .show(ui, |ui| {
+            egui::ScrollArea::vertical().auto_shrink(false).show_rows(
+                ui,
+                18.0,
+                rows.len(),
+                |ui, row_range| {
                     let table_left = ui.max_rect().left();
                     let table_right = ui.max_rect().right();
                     // 表格总宽必须在 Grid 之外取:Grid 闭包内 available_width
                     // 被 grid 布局器接管,返回当前列宽(上帧值)而非总宽
                     let table_w = ui.available_width();
                     egui::Grid::new("history_summary")
-                        .num_columns(6)
-                        .striped(true)
+                        .num_columns(5)
+                        .striped(false)
                         .spacing([24.0, widgets::table::ROW_SPACING_Y])
                         .show(ui, |ui| {
                             // 进程列纯展示;上传/下载/次数/时长可排序,
                             // 异键点击默认降序,同键翻转(汇总看 Top 异常,降序优先)。
-                            // 末列是空占位:num_cell 右对齐占满可用宽,
-                            // 作为末列时会横跨到表格右缘,须由空列兜住
                             // 数字列定宽(容纳表头与内容),进程列吃剩余宽度:
                             // 汇总仅 5 列,全按内容自适应时右侧留白过大;
                             // 定宽贴近内容上限,避免表头(贴左)与数据(右对齐)错位过大
@@ -587,7 +591,7 @@ fn rows_table(
                             const SUM_CNT_W: f32 = 65.0;
                             const SUM_DUR_W: f32 = 85.0;
                             let flex_w = (table_w
-                                - 24.0 * 5.0
+                                - 24.0 * 4.0
                                 - (SUM_UP_W + SUM_DOWN_W + SUM_CNT_W + SUM_DUR_W))
                                 .max(240.0);
                             widgets::table::header_cell(ui, &i18n.t("history-col-process"));
@@ -624,12 +628,12 @@ fn rows_table(
                             if sort_clicked {
                                 state.dirty = true;
                             }
-                            ui.label("");
                             ui.end_row();
 
-                            for r in rows {
+                            for r_idx in row_range {
+                                let r = &rows[r_idx];
                                 let row_top = ui.cursor().top();
-                                row_hover.begin(ui, table_left, table_right, row_top);
+                                row_background(ui, table_left, table_right, row_top, r_idx);
                                 widgets::table::fixed_cell(ui, flex_w, 18.0, |ui| {
                                     proc_cell(
                                         ui,
@@ -661,13 +665,12 @@ fn rows_table(
                                         theme::c().text,
                                     );
                                 });
-                                ui.label("");
                                 ui.end_row();
-                                row_hover.end(ui, row_top);
                             }
                         });
                     truncated_hint(ui, rows.len(), i18n);
-                });
+                },
+            );
         }
     }
 }
@@ -675,6 +678,21 @@ fn rows_table(
 fn empty_hint(ui: &mut egui::Ui, i18n: &I18n) {
     ui.add_space(theme::sp::XL);
     ui.label(theme::dim_text(&i18n.t("history-empty"), theme::font::H3));
+}
+
+/// 行底色(虚拟化表格手动斑马):行首调用,悬停高亮优先于奇数行条纹;
+/// 色块上下各含半个行距,与 Grid striped 的观感一致,判定区同样含行距
+fn row_background(ui: &egui::Ui, left: f32, right: f32, top: f32, idx: usize) {
+    let rect = egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, top + 18.0))
+        .expand2(egui::vec2(0.0, widgets::table::ROW_SPACING_Y * 0.5));
+    let bg = if ui.rect_contains_pointer(rect) {
+        theme::c().hover_bg
+    } else if idx % 2 == 1 {
+        theme::c().faint
+    } else {
+        return;
+    };
+    ui.painter().rect_filled(rect, 0.0, bg);
 }
 
 fn truncated_hint(ui: &mut egui::Ui, len: usize, i18n: &I18n) {
