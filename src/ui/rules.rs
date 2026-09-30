@@ -276,9 +276,8 @@ fn header_cell(ui: &mut egui::Ui, w: f32, text: String) {
     // 用定宽占位 + 缩进子区域承载
     let pad = widgets::table::CELL_PAD_X;
     let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 16.0), egui::Sense::hover());
-    let mut child = ui.new_child(
-        egui::UiBuilder::new().max_rect(rect.shrink2(egui::vec2(pad, 0.0))),
-    );
+    let mut child =
+        ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(egui::vec2(pad, 0.0))));
     // add_sized(居中布局)实测表头稳定居中于列;徽章列的数据格用
     // 手动 add_space 居中(见下),两者同心
     child.add_sized(
