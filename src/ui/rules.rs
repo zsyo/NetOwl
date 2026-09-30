@@ -357,9 +357,11 @@ fn rules_table(
                                 ("rule-action-block", widgets::badge::BadgeKind::Danger)
                             }
                         };
+                        // 徽章为自适应宽 Frame,不能走 add_sized 的 justify
+                        // (会被拉伸成通栏);固定格内水平居中与表头对齐
                         ui.allocate_ui_with_layout(
                             egui::vec2(COL_ACTION, 18.0),
-                            egui::Layout::left_to_right(egui::Align::Center),
+                            egui::Layout::top_down(egui::Align::Center),
                             |ui| {
                                 widgets::badge::badge(ui, &i18n.t(action_key), action_kind);
                             },
@@ -373,7 +375,7 @@ fn rules_table(
                         );
                         ui.allocate_ui_with_layout(
                             egui::vec2(COL_PROTO, 18.0),
-                            egui::Layout::left_to_right(egui::Align::Center),
+                            egui::Layout::top_down(egui::Align::Center),
                             |ui| {
                                 widgets::badge::badge(
                                     ui,
