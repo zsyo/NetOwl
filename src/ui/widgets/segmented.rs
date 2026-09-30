@@ -39,7 +39,9 @@ pub fn segmented(ui: &mut egui::Ui, items: &[(&str, &str)], selected: usize) -> 
                         .stroke(if active {
                             Stroke::new(1.0, p.stroke_strong)
                         } else {
-                            Stroke::NONE
+                            // Frame 的 stroke 宽度计入总尺寸:非激活用同宽透明
+                            // 描边占位,否则选中切换时按钮差 2px,推挤相邻按钮
+                            Stroke::new(1.0, egui::Color32::TRANSPARENT)
                         })
                         .corner_radius(CornerRadius::same(theme::RADIUS_SM)),
                 );
