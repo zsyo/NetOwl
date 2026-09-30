@@ -12,7 +12,7 @@ use crate::model::{Place, Protocol, fmt_bytes};
 use crate::net::geoip;
 use crate::storage::config::Config;
 use crate::storage::history;
-use crate::storage::history_query::{self, Rows, SummarySort, ViewMode};
+use crate::storage::history_query::{self, AggregateSort, Rows, SummarySort, ViewMode};
 use crate::ui::{TOOLBAR_ROW_H, icons, theme, widgets};
 
 /// 历史页;返回是否直接改动了配置(勾选不再提醒/清空还原提醒)
@@ -293,7 +293,7 @@ fn rows_table(
                     let table_left = ui.max_rect().left();
                     let table_right = ui.max_rect().right();
                     egui::Grid::new("history_detail")
-                        .num_columns(6)
+                        .num_columns(9)
                         .striped(true)
                         .spacing([24.0, widgets::table::ROW_SPACING_Y])
                         .show(ui, |ui| {
@@ -304,6 +304,8 @@ fn rows_table(
                                 "col-location",
                                 "history-col-first",
                                 "history-col-duration",
+                                "col-down-total",
+                                "col-up-total",
                             ] {
                                 widgets::table::header_cell(ui, &i18n.t(key));
                             }
@@ -348,6 +350,9 @@ fn rows_table(
                                     ),
                                     theme::font::BODY,
                                 ));
+                                bytes_cell(ui, r.bytes_in, false);
+                                bytes_cell(ui, r.bytes_out, true);
+                                ui.label("");
                                 ui.end_row();
                                 row_hover.end(ui, row_top);
                             }
@@ -360,27 +365,61 @@ fn rows_table(
                 empty_hint(ui, i18n);
                 return;
             }
+            let aggregate_sort = &mut state.aggregate_sort;
             egui::ScrollArea::vertical()
                 .auto_shrink(false)
                 .show(ui, |ui| {
                     let table_left = ui.max_rect().left();
                     let table_right = ui.max_rect().right();
                     egui::Grid::new("history_aggregate")
-                        .num_columns(7)
+                        .num_columns(10)
                         .striped(true)
                         .spacing([24.0, widgets::table::ROW_SPACING_Y])
                         .show(ui, |ui| {
+                            // 进程/协议/远端/位置纯展示;
+                            // 次数/时长/最近活动/下载总量/上传总量可排序(末列空占位同汇总表)
                             for key in [
                                 "history-col-process",
                                 "col-proto",
                                 "col-remote",
                                 "col-location",
-                                "history-col-count",
-                                "history-col-total",
-                                "history-col-last",
                             ] {
                                 widgets::table::header_cell(ui, &i18n.t(key));
                             }
+                            let mut sort_clicked = false;
+                            let mut sort_header =
+                                |ui: &mut egui::Ui, key: &str, sort: AggregateSort| {
+                                    let (cur, asc) = *aggregate_sort;
+                                    let r = widgets::table::header_sort_cell(
+                                        ui,
+                                        &i18n.t(key),
+                                        cur == sort,
+                                        asc,
+                                    );
+                                    if r.clicked() {
+                                        *aggregate_sort = if cur == sort {
+                                            (sort, !asc)
+                                        } else {
+                                            (sort, false)
+                                        };
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                };
+                            for (key, sort) in [
+                                ("history-col-count", AggregateSort::Count),
+                                ("history-col-total", AggregateSort::TotalSecs),
+                                ("history-col-last", AggregateSort::LastActive),
+                                ("col-down-total", AggregateSort::BytesIn),
+                                ("col-up-total", AggregateSort::BytesOut),
+                            ] {
+                                sort_clicked |= sort_header(ui, key, sort);
+                            }
+                            if sort_clicked {
+                                state.dirty = true;
+                            }
+                            ui.label("");
                             ui.end_row();
                             for r in rows {
                                 let row_top = ui.cursor().top();
@@ -425,6 +464,9 @@ fn rows_table(
                                     &history_query::fmt_local(r.last_active),
                                     theme::font::BODY,
                                 ));
+                                bytes_cell(ui, r.bytes_in, false);
+                                bytes_cell(ui, r.bytes_out, true);
+                                ui.label("");
                                 ui.end_row();
                                 row_hover.end(ui, row_top);
                             }
@@ -506,16 +548,8 @@ fn rows_table(
                                     default_icon_tex,
                                     i18n,
                                 );
-                                widgets::table::num_cell(
-                                    ui,
-                                    fmt_bytes(r.bytes_out),
-                                    theme::c().outbound,
-                                );
-                                widgets::table::num_cell(
-                                    ui,
-                                    fmt_bytes(r.bytes_in),
-                                    theme::c().inbound,
-                                );
+                                bytes_cell(ui, r.bytes_out, true);
+                                bytes_cell(ui, r.bytes_in, false);
                                 widgets::table::num_cell(ui, r.count.to_string(), theme::c().text);
                                 widgets::table::num_cell(
                                     ui,
@@ -549,6 +583,19 @@ fn truncated_hint(ui: &mut egui::Ui, len: usize, i18n: &I18n) {
             theme::font::SM,
         ));
     }
+}
+
+/// 字节总量单元格:0 弱化为灰(空载噪音),有值按方向语义色
+fn bytes_cell(ui: &mut egui::Ui, bytes: u64, outbound: bool) {
+    let c = theme::c();
+    let color = if bytes == 0 {
+        c.text_dim
+    } else if outbound {
+        c.outbound
+    } else {
+        c.inbound
+    };
+    widgets::table::num_cell(ui, fmt_bytes(bytes), color);
 }
 
 /// 进程单元格:图标 + 名称(未知进程占位),聚合行无 PID

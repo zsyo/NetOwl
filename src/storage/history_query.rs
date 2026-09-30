@@ -78,6 +78,8 @@ pub struct DetailRow {
     pub proto: Protocol,
     pub remote_ip: Ipv4Addr,
     pub remote_port: u16,
+    pub bytes_in: u64,
+    pub bytes_out: u64,
 }
 
 /// 聚合行(进程 x 协议 x 远端)
@@ -88,6 +90,31 @@ pub struct AggregateRow {
     pub count: u64,
     pub total_secs: u64,
     pub last_active: u64,
+    pub bytes_out: u64,
+    pub bytes_in: u64,
+}
+
+/// 聚合视图排序键
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum AggregateSort {
+    LastActive,
+    BytesOut,
+    BytesIn,
+    Count,
+    TotalSecs,
+}
+
+impl AggregateSort {
+    /// SQL ORDER BY 列名映射(白名单常量,非外部输入)
+    fn order_col(self) -> &'static str {
+        match self {
+            AggregateSort::LastActive => "last_active",
+            AggregateSort::BytesOut => "out_total",
+            AggregateSort::BytesIn => "in_total",
+            AggregateSort::Count => "n",
+            AggregateSort::TotalSecs => "total",
+        }
+    }
 }
 
 /// 汇总行(按进程聚合;同一进程名的多路径/PID 合并,路径取代表用于图标)
@@ -124,7 +151,8 @@ impl SummarySort {
 /// 明细查询:按最后活动倒序,最多 QUERY_LIMIT 行
 pub fn query_detail(db: &Db, f: &Filter) -> rusqlite::Result<Vec<DetailRow>> {
     let sql = format!(
-        "SELECT first_seen, last_seen, pid, process, proc_path, proto, remote_ip, remote_port
+        "SELECT first_seen, last_seen, pid, process, proc_path, proto, remote_ip, remote_port,
+                bytes_in, bytes_out
          FROM conn_events {} ORDER BY last_seen DESC LIMIT {QUERY_LIMIT}",
         Filter::where_clause()
     );
@@ -139,19 +167,30 @@ pub fn query_detail(db: &Db, f: &Filter) -> rusqlite::Result<Vec<DetailRow>> {
             proto: parse_proto(&row.get::<_, String>(5)?),
             remote_ip: Ipv4Addr::from(row.get::<_, i64>(6)? as u32),
             remote_port: row.get::<_, i64>(7)? as u16,
+            bytes_in: row.get::<_, i64>(8)?.max(0) as u64,
+            bytes_out: row.get::<_, i64>(9)?.max(0) as u64,
         })
     })?;
     rows.collect()
 }
 
-/// 聚合查询:按进程 x 协议 x 远端汇总(次数/累计时长/最近活动)
-pub fn query_aggregate(db: &Db, f: &Filter) -> rusqlite::Result<Vec<AggregateRow>> {
+/// 聚合查询:按进程 x 协议 x 远端汇总(次数/累计时长/最近活动/字节总量)。
+/// ORDER BY 列与方向来自排序枚举的白名单映射,不含外部输入
+pub fn query_aggregate(
+    db: &Db,
+    f: &Filter,
+    sort: AggregateSort,
+    ascending: bool,
+) -> rusqlite::Result<Vec<AggregateRow>> {
+    let dir = if ascending { "ASC" } else { "DESC" };
     let sql = format!(
         "SELECT process, proto, remote_ip, COUNT(*) AS n,
-                SUM(last_seen - first_seen) AS total, MAX(last_seen) AS last_active
+                SUM(last_seen - first_seen) AS total, MAX(last_seen) AS last_active,
+                SUM(bytes_out) AS out_total, SUM(bytes_in) AS in_total
          FROM conn_events {} GROUP BY process, proto, remote_ip
-         ORDER BY last_active DESC LIMIT {QUERY_LIMIT}",
-        Filter::where_clause()
+         ORDER BY {} {dir} LIMIT {QUERY_LIMIT}",
+        Filter::where_clause(),
+        sort.order_col()
     );
     let mut stmt = db.prepare_cached(&sql)?;
     let rows = stmt.query_map(rusqlite::params_from_iter(f.bind()), |row| {
@@ -162,6 +201,8 @@ pub fn query_aggregate(db: &Db, f: &Filter) -> rusqlite::Result<Vec<AggregateRow
             count: row.get::<_, i64>(3)? as u64,
             total_secs: row.get::<_, i64>(4)?.max(0) as u64,
             last_active: row.get::<_, i64>(5)? as u64,
+            bytes_out: row.get::<_, i64>(6)?.max(0) as u64,
+            bytes_in: row.get::<_, i64>(7)?.max(0) as u64,
         })
     })?;
     rows.collect()
@@ -326,6 +367,8 @@ pub struct PageState {
     /// 远端 IP 前缀筛选文本
     pub remote: String,
     pub proto: Option<Protocol>,
+    /// 聚合视图排序键与方向(默认最近活动降序)
+    pub aggregate_sort: (AggregateSort, bool),
     /// 汇总视图排序键与方向(默认上传总量降序)
     pub summary_sort: (SummarySort, bool),
     pub rows: Rows,
@@ -344,6 +387,7 @@ impl PageState {
             process: String::new(),
             remote: String::new(),
             proto: None,
+            aggregate_sort: (AggregateSort::LastActive, false),
             summary_sort: (SummarySort::BytesOut, false),
             rows: Rows::Detail(Vec::new()),
             dirty: true,
@@ -382,7 +426,8 @@ impl PageState {
         self.rows = match self.view {
             ViewMode::Detail => Rows::Detail(query_detail(db, &filter).unwrap_or_default()),
             ViewMode::Aggregate => {
-                Rows::Aggregate(query_aggregate(db, &filter).unwrap_or_default())
+                let (sort, asc) = self.aggregate_sort;
+                Rows::Aggregate(query_aggregate(db, &filter, sort, asc).unwrap_or_default())
             }
             ViewMode::Summary => {
                 let (sort, asc) = self.summary_sort;
