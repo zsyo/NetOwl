@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use eframe::egui;
-use egui::{Align, Color32, Label, Layout, RichText};
+use egui::{Label, RichText};
 
 use super::{ConnSort, ConnSortState, UiCtx, conn_visible, icons, theme, widgets};
 use crate::i18n::I18n;
@@ -192,21 +192,33 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                         // 下载/上传列显示实时速率(ETW 字节差值),悬停显示累计字节;
                         // 未提权时 ETW 未启动,速率恒 0
                         let (rin, rout) = conn_rates.get(&conn.id).copied().unwrap_or((0, 0));
-                        rate_cell(ui, format!("{}/s", fmt_bytes(rin)), theme::c().inbound)
-                            .on_hover_text(format!(
-                                "{} {}",
-                                i18n.t("conn-total-bytes"),
-                                fmt_bytes(conn.bytes_in)
-                            ));
-                        rate_cell(ui, format!("{}/s", fmt_bytes(rout)), theme::c().outbound)
-                            .on_hover_text(format!(
-                                "{} {}",
-                                i18n.t("conn-total-bytes"),
-                                fmt_bytes(conn.bytes_out)
-                            ));
+                        widgets::table::num_cell(
+                            ui,
+                            format!("{}/s", fmt_bytes(rin)),
+                            theme::c().inbound,
+                        )
+                        .on_hover_text(format!(
+                            "{} {}",
+                            i18n.t("conn-total-bytes"),
+                            fmt_bytes(conn.bytes_in)
+                        ));
+                        widgets::table::num_cell(
+                            ui,
+                            format!("{}/s", fmt_bytes(rout)),
+                            theme::c().outbound,
+                        )
+                        .on_hover_text(format!(
+                            "{} {}",
+                            i18n.t("conn-total-bytes"),
+                            fmt_bytes(conn.bytes_out)
+                        ));
                         // 累计字节列(速率列的悬停信息在此显式展示)
-                        rate_cell(ui, fmt_bytes(conn.bytes_in), theme::c().inbound);
-                        rate_cell(ui, fmt_bytes(conn.bytes_out), theme::c().outbound);
+                        widgets::table::num_cell(ui, fmt_bytes(conn.bytes_in), theme::c().inbound);
+                        widgets::table::num_cell(
+                            ui,
+                            fmt_bytes(conn.bytes_out),
+                            theme::c().outbound,
+                        );
                         // 规则求值:命中规则的连接标注动作徽章,未命中默认放行不标注
                         match rules.evaluate(&rules_engine::MatchReq::from_conn(
                             conn,
@@ -233,14 +245,6 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                 });
         });
     changed
-}
-
-/// 速率/累计字节单元格:右对齐语义色数字
-fn rate_cell(ui: &mut egui::Ui, text: String, color: Color32) -> egui::Response {
-    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-        ui.label(RichText::new(text).size(theme::font::BODY).color(color))
-    })
-    .inner
 }
 
 /// 按表头排序状态排列连接(None = 表快照原序);文本键大小写不敏感,

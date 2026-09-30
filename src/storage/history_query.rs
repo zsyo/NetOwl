@@ -90,6 +90,37 @@ pub struct AggregateRow {
     pub last_active: u64,
 }
 
+/// 汇总行(按进程聚合;同一进程名的多路径/PID 合并,路径取代表用于图标)
+pub struct SummaryRow {
+    pub process: String,
+    pub proc_path: Option<String>,
+    pub bytes_out: u64,
+    pub bytes_in: u64,
+    pub count: u64,
+    pub total_secs: u64,
+}
+
+/// 汇总视图排序键
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum SummarySort {
+    BytesOut,
+    BytesIn,
+    Count,
+    TotalSecs,
+}
+
+impl SummarySort {
+    /// SQL ORDER BY 列名映射(白名单常量,非外部输入)
+    fn order_col(self) -> &'static str {
+        match self {
+            SummarySort::BytesOut => "bytes_out",
+            SummarySort::BytesIn => "bytes_in",
+            SummarySort::Count => "n",
+            SummarySort::TotalSecs => "total",
+        }
+    }
+}
+
 /// 明细查询:按最后活动倒序,最多 QUERY_LIMIT 行
 pub fn query_detail(db: &Db, f: &Filter) -> rusqlite::Result<Vec<DetailRow>> {
     let sql = format!(
@@ -131,6 +162,38 @@ pub fn query_aggregate(db: &Db, f: &Filter) -> rusqlite::Result<Vec<AggregateRow
             count: row.get::<_, i64>(3)? as u64,
             total_secs: row.get::<_, i64>(4)?.max(0) as u64,
             last_active: row.get::<_, i64>(5)? as u64,
+        })
+    })?;
+    rows.collect()
+}
+
+/// 汇总查询:按进程聚合(上/下行总量、次数、累计时长)。
+/// ORDER BY 列与方向来自排序枚举的白名单映射,不含外部输入
+pub fn query_summary(
+    db: &Db,
+    f: &Filter,
+    sort: SummarySort,
+    ascending: bool,
+) -> rusqlite::Result<Vec<SummaryRow>> {
+    let dir = if ascending { "ASC" } else { "DESC" };
+    let sql = format!(
+        "SELECT process, MAX(proc_path) AS proc_path,
+                SUM(bytes_out) AS out_total, SUM(bytes_in) AS in_total,
+                COUNT(*) AS n, SUM(last_seen - first_seen) AS total
+         FROM conn_events {} GROUP BY process
+         ORDER BY {} {dir} LIMIT {QUERY_LIMIT}",
+        Filter::where_clause(),
+        sort.order_col()
+    );
+    let mut stmt = db.prepare_cached(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(f.bind()), |row| {
+        Ok(SummaryRow {
+            process: row.get(0)?,
+            proc_path: row.get(1)?,
+            bytes_out: row.get::<_, i64>(2)?.max(0) as u64,
+            bytes_in: row.get::<_, i64>(3)?.max(0) as u64,
+            count: row.get::<_, i64>(4)? as u64,
+            total_secs: row.get::<_, i64>(5)?.max(0) as u64,
         })
     })?;
     rows.collect()
@@ -221,6 +284,7 @@ pub fn fmt_local(unix: u64) -> String {
 pub enum ViewMode {
     Detail,
     Aggregate,
+    Summary,
 }
 
 /// 时间范围档位
@@ -250,6 +314,7 @@ impl Range {
 pub enum Rows {
     Detail(Vec<DetailRow>),
     Aggregate(Vec<AggregateRow>),
+    Summary(Vec<SummaryRow>),
 }
 
 /// 历史页状态:视图、筛选、结果与维护操作
@@ -261,6 +326,8 @@ pub struct PageState {
     /// 远端 IP 前缀筛选文本
     pub remote: String,
     pub proto: Option<Protocol>,
+    /// 汇总视图排序键与方向(默认上传总量降序)
+    pub summary_sort: (SummarySort, bool),
     pub rows: Rows,
     /// 结果或库大小需要重新加载
     pub dirty: bool,
@@ -277,6 +344,7 @@ impl PageState {
             process: String::new(),
             remote: String::new(),
             proto: None,
+            summary_sort: (SummarySort::BytesOut, false),
             rows: Rows::Detail(Vec::new()),
             dirty: true,
             db_size: 0,
@@ -315,6 +383,10 @@ impl PageState {
             ViewMode::Detail => Rows::Detail(query_detail(db, &filter).unwrap_or_default()),
             ViewMode::Aggregate => {
                 Rows::Aggregate(query_aggregate(db, &filter).unwrap_or_default())
+            }
+            ViewMode::Summary => {
+                let (sort, asc) = self.summary_sort;
+                Rows::Summary(query_summary(db, &filter, sort, asc).unwrap_or_default())
             }
         };
         self.db_size = db_size();

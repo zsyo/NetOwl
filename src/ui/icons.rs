@@ -115,3 +115,5 @@ pub const FLASK: &str = "\u{f90a}";
 pub const VIEW_LIST: &str = "\u{f605}";
 /// glyph: view-stacked(聚合视图)
 pub const VIEW_STACKED: &str = "\u{f606}";
+/// glyph: bar-chart-line(进程汇总视图)
+pub const BAR_CHART_LINE: &str = "\u{f17c}";

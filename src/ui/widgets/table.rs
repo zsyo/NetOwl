@@ -5,12 +5,20 @@
 //! 行底色画在行内容之前,与行悬停垫底同为垫底层,悬停整体覆盖。
 
 use eframe::egui;
-use egui::{Color32, FontId, Label, RichText, Stroke};
+use egui::{Align, Color32, FontId, Label, Layout, RichText, Stroke};
 
 use super::super::{theme, widgets};
 
 /// 表头单元格垂直内边距:决定表头行高手感(与旧按钮 padding.y 一致)
 const HEADER_PAD_Y: f32 = 3.0;
+
+/// 数字单元格:右对齐 + 语义色(速率/字节等可比大小数值列统一入口)
+pub fn num_cell(ui: &mut egui::Ui, text: String, color: Color32) -> egui::Response {
+    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+        ui.label(RichText::new(text).size(theme::font::BODY).color(color))
+    })
+    .inner
+}
 
 /// 表头单元格(纯展示列):小号加粗弱化文字
 pub fn header_cell(ui: &mut egui::Ui, text: &str) {
