@@ -4,7 +4,7 @@
 use std::time::{Duration, Instant};
 
 use eframe::egui;
-use egui::{Align2, CornerRadius, FontId, RichText};
+use egui::{Align2, CornerRadius, FontId, Label, RichText};
 use rusqlite::Connection as Db;
 
 use crate::i18n::I18n;
@@ -269,9 +269,11 @@ const COL_PORT: f32 = 44.0;
 const COL_OPS: f32 = 120.0;
 
 fn header_cell(ui: &mut egui::Ui, w: f32, text: String) {
+    // add_sized(居中布局)实测表头稳定居中于列;徽章列的数据格用
+    // 手动 add_space 居中(见下),两者同心
     ui.add_sized(
         [w, 16.0],
-        egui::Label::new(
+        Label::new(
             RichText::new(text)
                 .size(theme::font::SM)
                 .strong()
@@ -365,10 +367,15 @@ fn rules_table(
                                 ("rule-action-block", widgets::badge::BadgeKind::Danger)
                             }
                         };
-                        // 徽章为自适应宽 Frame:定宽格内水平、垂直双居中
-                        // (格高 26 与行高一致,胶囊随行居中)
-                        widgets::table::fixed_center_cell(ui, COL_ACTION, 26.0, |ui| {
-                            widgets::badge::badge(ui, &i18n.t(action_key), action_kind);
+                        // 徽章为自适应宽 Frame:格内手动 add_space 水平居中
+                        // (egui main Center 对 Frame 不生效,实测贴格左;
+                        // 垂直居中由格 26=行高承担)。徽章宽 = 文字宽 +
+                        // 水平内边距 16(Margin::symmetric(8, ..))
+                        let badge_text = i18n.t(action_key);
+                        let badge_w = super::text_width(ui, &badge_text, theme::font::MICRO) + 16.0;
+                        widgets::table::fixed_cell(ui, COL_ACTION, 26.0, |ui| {
+                            ui.add_space(((COL_ACTION - badge_w) / 2.0).max(0.0));
+                            widgets::badge::badge(ui, &badge_text, action_kind);
                         });
                         ui.add_sized(
                             [COL_DIRECTION, 18.0],
@@ -377,10 +384,13 @@ fn rules_table(
                                 theme::font::BODY,
                             )),
                         );
-                        widgets::table::fixed_center_cell(ui, COL_PROTO, 26.0, |ui| {
+                        let proto_text = proto_name(i18n, rule.proto);
+                        let proto_w = super::text_width(ui, &proto_text, theme::font::MICRO) + 16.0;
+                        widgets::table::fixed_cell(ui, COL_PROTO, 26.0, |ui| {
+                            ui.add_space(((COL_PROTO - proto_w) / 2.0).max(0.0));
                             widgets::badge::badge(
                                 ui,
-                                &proto_name(i18n, rule.proto),
+                                &proto_text,
                                 widgets::badge::BadgeKind::Neutral,
                             );
                         });

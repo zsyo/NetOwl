@@ -149,8 +149,8 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                         };
                         // 进程列两行:映像名(带图标)+ 弱化的签名状态与路径。
                         // 无图标的进程也占位,保证各行文字起点对齐不跳动;
-                        // 定宽容器内长文本 Truncate,窗口放大后逐步展示
-                        widgets::table::fixed_cell(ui, flex_w, 38.0, |ui| {
+                        // 格高 36 与两行内容同高(顶对齐无缝),长文本 Truncate
+                        widgets::table::fixed_cell(ui, flex_w, 36.0, |ui| {
                             ui.vertical(|ui| {
                                 ui.horizontal(|ui| {
                                     let tex = conn
@@ -186,30 +186,33 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                         widgets::table::fixed_cell(ui, C_PROTO_W, 22.0, |ui| {
                             widgets::badge::badge(ui, conn.proto.as_str(), proto_kind);
                         });
-                        // rDNS 域名优先,域名下方弱化显示裸 IP;无 PTR 回退地址:端口。
-                        // 定宽容器内 Truncate,窗口放大后逐步展示
-                        widgets::table::fixed_cell(ui, flex_w, 38.0, |ui| {
-                            ui.vertical(|ui| match rdns.lookup(conn.remote_ip) {
+                        // rDNS 域名优先:两行(域名 + 弱化的裸 IP),格高 36
+                        // 与两行内容同高;无 PTR 时内容本就是 ip:port,单行
+                        // 直接由格的垂直居中承载,不再套两行结构
+                        widgets::table::fixed_cell(ui, flex_w, 36.0, |ui| {
+                            match rdns.lookup(conn.remote_ip) {
                                 Some(host) => {
-                                    ui.add(
-                                        Label::new(
-                                            RichText::new(rdns::display(
-                                                host,
-                                                conn.remote_port,
-                                                36,
+                                    ui.vertical(|ui| {
+                                        ui.add(
+                                            Label::new(
+                                                RichText::new(rdns::display(
+                                                    host,
+                                                    conn.remote_port,
+                                                    36,
+                                                ))
+                                                .size(theme::font::BODY)
+                                                .color(theme::c().text),
+                                            )
+                                            .wrap_mode(egui::TextWrapMode::Truncate),
+                                        );
+                                        ui.add(
+                                            Label::new(theme::dim_text(
+                                                &conn.remote_ip.to_string(),
+                                                theme::font::XS,
                                             ))
-                                            .size(theme::font::BODY)
-                                            .color(theme::c().text),
-                                        )
-                                        .wrap_mode(egui::TextWrapMode::Truncate),
-                                    );
-                                    ui.add(
-                                        Label::new(theme::dim_text(
-                                            &conn.remote_ip.to_string(),
-                                            theme::font::XS,
-                                        ))
-                                        .wrap_mode(egui::TextWrapMode::Truncate),
-                                    );
+                                            .wrap_mode(egui::TextWrapMode::Truncate),
+                                        );
+                                    });
                                 }
                                 None => {
                                     ui.add(
@@ -221,7 +224,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                                         .wrap_mode(egui::TextWrapMode::Truncate),
                                     );
                                 }
-                            });
+                            }
                         });
                         let location = match conn.city {
                             Some(place) => geoip::place_label(place, i18n),
