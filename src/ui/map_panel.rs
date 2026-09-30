@@ -13,7 +13,7 @@ use egui::{
     Button, CornerRadius, Frame, Label, Margin, RichText, ScrollArea, Stroke, TextEdit, Vec2,
 };
 
-use crate::model::{Connection, Place};
+use crate::model::{Connection, Place, fmt_bytes};
 use crate::net::geoip;
 use crate::net::rdns;
 use crate::rules::Rule;
@@ -243,8 +243,8 @@ pub fn list_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
 }
 
 /// 进程组头行:展开箭头、图标、名称(点击选中联动右侧详情,命中区
-/// 拉满剩余宽)、连接数徽章与行尾进程级阻断开关(未知进程不可阻断,
-/// 避免空进程条件生成全局规则);行高加宽松散排布
+/// 拉满剩余宽)与下方会话累计上/下行小字、连接数徽章与行尾进程级
+/// 阻断开关(未知进程不可阻断,避免空进程条件生成全局规则)
 #[allow(clippy::too_many_arguments)]
 fn group_row(
     ui: &mut egui::Ui,
@@ -257,7 +257,7 @@ fn group_row(
     g: &ProcGroup,
     path: Option<&str>,
 ) {
-    const ROW_H: f32 = 28.0;
+    const ROW_H: f32 = 40.0;
     const SWITCH_W: f32 = 36.0;
     const SWITCH_H: f32 = 20.0;
     let unknown = g.name.is_empty();
@@ -268,6 +268,8 @@ fn group_row(
     };
     let selected = panels.process.as_deref() == Some(g.name.as_str());
     let expanded = panels.expanded.contains(&g.name);
+    let in_sum: u64 = g.conns.iter().map(|c| c.bytes_in).sum();
+    let out_sum: u64 = g.conns.iter().map(|c| c.bytes_out).sum();
 
     ui.horizontal(|ui| {
         ui.style_mut().spacing.item_spacing.x = 4.0;
@@ -288,35 +290,62 @@ fn group_row(
         }
         let tex = path.and_then(|p| icon_tex.get(p)).and_then(|t| t.as_ref());
         widgets::process::proc_icon(ui, tex, default_icon_tex, 16.0);
-        // 名称行:受控选中样式(Button::selected 走 selection 底色,悬停
-        // 底色由 widget 五态自动接管);按钮拉满命中区容器,徽章与开关
-        // 由此贴到行尾
+        // 名称行 + 会话累计副行:受控选中样式(Button::selected 走
+        // selection 底色,悬停底色由 widget 五态自动接管);按钮拉满
+        // 命中区容器,徽章与开关由此贴到行尾
         let count_text = g.conns.len().to_string();
         let badge_w = text_width(ui, &count_text, theme::font::MICRO) + 18.0;
         let block_w = if unknown { 0.0 } else { SWITCH_W + 4.0 };
         let name_w = (ui.available_width() - badge_w - block_w - 4.0 * 2.0 - 4.0).max(60.0);
         ui.allocate_ui(egui::vec2(name_w, ROW_H), |ui| {
-            let text = RichText::new(display.clone())
-                .size(theme::font::BODY)
-                .color(if selected {
-                    theme::c().text
-                } else {
-                    theme::c().text_dim
-                });
-            let btn = Button::new(text)
-                .truncate()
-                .selected(selected)
-                .corner_radius(CornerRadius::same(theme::RADIUS_SM))
-                .min_size(Vec2::new(ui.available_width(), ROW_H));
-            let resp = ui.add(btn);
-            if resp.clicked() {
-                if selected {
-                    panels.process = None;
-                } else {
-                    panels.process = Some(g.name.clone());
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = 1.0;
+                let text = RichText::new(display.clone())
+                    .size(theme::font::BODY)
+                    .color(if selected {
+                        theme::c().text
+                    } else {
+                        theme::c().text_dim
+                    });
+                let btn = Button::new(text)
+                    .truncate()
+                    .selected(selected)
+                    .corner_radius(CornerRadius::same(theme::RADIUS_SM))
+                    .min_size(Vec2::new(ui.available_width(), 20.0));
+                let resp = ui.add(btn);
+                if resp.clicked() {
+                    if selected {
+                        panels.process = None;
+                    } else {
+                        panels.process = Some(g.name.clone());
+                    }
                 }
-            }
-            resp.on_hover_text(display);
+                resp.on_hover_text(display);
+                // 会话累计(活跃连接字节聚合):随连接增减实时收敛
+                ui.horizontal(|ui| {
+                    ui.style_mut().spacing.item_spacing.x = 3.0;
+                    ui.label(
+                        RichText::new(icons::ARROW_DOWN)
+                            .size(theme::font::XS)
+                            .color(theme::c().inbound),
+                    );
+                    ui.label(
+                        RichText::new(fmt_bytes(in_sum))
+                            .size(theme::font::XS)
+                            .color(theme::c().text_dim),
+                    );
+                    ui.label(
+                        RichText::new(icons::ARROW_UP)
+                            .size(theme::font::XS)
+                            .color(theme::c().outbound),
+                    );
+                    ui.label(
+                        RichText::new(fmt_bytes(out_sum))
+                            .size(theme::font::XS)
+                            .color(theme::c().text_dim),
+                    );
+                });
+            });
         });
         widgets::badge::badge(ui, &count_text, widgets::badge::BadgeKind::Neutral);
         if unknown {
