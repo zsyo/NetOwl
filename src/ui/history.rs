@@ -96,8 +96,10 @@ fn toolbar(
     config: &mut Config,
     config_changed: &mut bool,
 ) {
-    ui.style_mut().spacing.interact_size.y = TOOLBAR_ROW_H;
     ui.horizontal(|ui| {
+        // 行高抬升只作用于本工具栏行(style_mut 泄漏到整页会把表格
+        // Grid 的最小行高一并抬到 26,行内容与色带错位)
+        ui.style_mut().spacing.interact_size.y = TOOLBAR_ROW_H;
         // 视图切换(segmented:明细/聚合/汇总)
         let view_items = [
             (&*i18n.t("history-view-detail"), icons::VIEW_LIST),

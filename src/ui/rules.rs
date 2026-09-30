@@ -136,8 +136,10 @@ pub fn show(
     wfp_status_line(ui, i18n, wfp_status);
     ui.add_space(theme::sp::SM);
 
-    ui.style_mut().spacing.interact_size.y = TOOLBAR_ROW_H;
     ui.horizontal(|ui| {
+        // 行高抬升只作用于本工具栏行(style_mut 泄漏到整页会把表格
+        // Grid 的最小行高一并抬到 26)
+        ui.style_mut().spacing.interact_size.y = TOOLBAR_ROW_H;
         if primary_btn(ui, format!("{}  {}", icons::PLUS_LG, i18n.t("rules-new"))).clicked() {
             state.draft = Some(Draft::new_rule());
         }
@@ -363,16 +365,11 @@ fn rules_table(
                                 ("rule-action-block", widgets::badge::BadgeKind::Danger)
                             }
                         };
-                        // 徽章为自适应宽 Frame,不能走 add_sized 的 justify
-                        // (会被拉伸成通栏);固定格内水平居中与表头对齐,
-                        // 格高 22 容纳加高后的胶囊
-                        ui.allocate_ui_with_layout(
-                            egui::vec2(COL_ACTION, 22.0),
-                            egui::Layout::top_down(egui::Align::Center),
-                            |ui| {
-                                widgets::badge::badge(ui, &i18n.t(action_key), action_kind);
-                            },
-                        );
+                        // 徽章为自适应宽 Frame:定宽格内水平、垂直双居中
+                        // (格高 26 与行高一致,胶囊随行居中)
+                        widgets::table::fixed_center_cell(ui, COL_ACTION, 26.0, |ui| {
+                            widgets::badge::badge(ui, &i18n.t(action_key), action_kind);
+                        });
                         ui.add_sized(
                             [COL_DIRECTION, 18.0],
                             egui::Label::new(theme::dim_text(
@@ -380,17 +377,13 @@ fn rules_table(
                                 theme::font::BODY,
                             )),
                         );
-                        ui.allocate_ui_with_layout(
-                            egui::vec2(COL_PROTO, 22.0),
-                            egui::Layout::top_down(egui::Align::Center),
-                            |ui| {
-                                widgets::badge::badge(
-                                    ui,
-                                    &proto_name(i18n, rule.proto),
-                                    widgets::badge::BadgeKind::Neutral,
-                                );
-                            },
-                        );
+                        widgets::table::fixed_center_cell(ui, COL_PROTO, 26.0, |ui| {
+                            widgets::badge::badge(
+                                ui,
+                                &proto_name(i18n, rule.proto),
+                                widgets::badge::BadgeKind::Neutral,
+                            );
+                        });
                         ui.add_sized(
                             [flex_w, 18.0],
                             egui::Label::new(theme::dim_text(

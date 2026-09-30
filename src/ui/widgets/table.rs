@@ -36,6 +36,16 @@ pub fn fixed_num_cell(ui: &mut egui::Ui, w: f32, add: impl FnOnce(&mut egui::Ui)
     child.with_layout(Layout::right_to_left(Align::Center), add);
 }
 
+/// 定宽居中单元格(徽章等自适应宽内容):水平与垂直均居中于格
+pub fn fixed_center_cell(ui: &mut egui::Ui, w: f32, h: f32, add: impl FnOnce(&mut egui::Ui)) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(w, h), egui::Sense::hover());
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+    child.with_layout(
+        Layout::left_to_right(Align::Center).with_main_align(Align::Center),
+        add,
+    );
+}
+
 /// 表头单元格(纯展示列):小号加粗弱化文字,内容自适应宽
 /// (用于数据同 Grid 的表头,列宽由数据列决定)
 pub fn header_cell(ui: &mut egui::Ui, text: &str) {

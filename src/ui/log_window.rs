@@ -108,9 +108,10 @@ pub fn show(ctx: &egui::Context, state: &mut PageState, i18n: &I18n) {
 
 /// 顶栏:展示级别下拉、自动滚动、过滤输入、清空按钮
 fn toolbar(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n) {
-    // 历史页工具栏同款修正:行高从 interact_size.y 起步会导致混排错位
-    ui.style_mut().spacing.interact_size.y = TOOLBAR_ROW_H;
     ui.horizontal(|ui| {
+        // 行高抬升只作用于本工具栏行(style_mut 泄漏到整页会改变
+        // 后续所有布局的最小交互高度)
+        ui.style_mut().spacing.interact_size.y = TOOLBAR_ROW_H;
         ui.label(theme::dim_text(
             &i18n.t("log-window-level"),
             theme::font::BODY,
