@@ -9,10 +9,6 @@ use crate::i18n::I18n;
 use crate::logging::LogLevel;
 use crate::storage::config::Config;
 
-/// 设置卡片最大宽度:1440 最小窗口下基本撑满中央区,
-/// 超宽屏(最大化)时以此封顶防行控件散布过远
-const CARD_MAX_W: f32 = 1200.0;
-
 /// 设置页:语言切换(词条即时生效)、主题、数据源;返回是否直接改动了配置。
 /// 日志区:级别下拉与文件开关立即生效(直接调 logging),窗口入口只置位状态
 pub(super) fn settings_ui(
@@ -240,7 +236,8 @@ pub(super) fn settings_ui(
     changed
 }
 
-/// 设置分组卡片:标题行(图标 + 标题)+ 内容
+/// 设置分组卡片:标题行(图标 + 标题)+ 内容;
+/// 卡片宽度随内容行自然撑满中央区可用宽(行内左右两端布局)
 fn section_card<R>(
     ui: &mut egui::Ui,
     icon: &str,
@@ -248,7 +245,6 @@ fn section_card<R>(
     add: impl FnOnce(&mut egui::Ui) -> R,
 ) {
     widgets::card::card(ui, |ui| {
-        ui.set_max_width(CARD_MAX_W);
         ui.horizontal(|ui| {
             ui.label(
                 RichText::new(icon)

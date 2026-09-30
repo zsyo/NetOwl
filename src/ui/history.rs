@@ -491,6 +491,9 @@ fn rows_table(
                 .show(ui, |ui| {
                     let table_left = ui.max_rect().left();
                     let table_right = ui.max_rect().right();
+                    // 表格总宽必须在 Grid 之外取:Grid 闭包内 available_width
+                    // 被 grid 布局器接管,返回当前列宽(上帧值)而非总宽
+                    let table_w = ui.available_width();
                     egui::Grid::new("history_summary")
                         .num_columns(6)
                         .striped(true)
@@ -500,6 +503,17 @@ fn rows_table(
                             // 异键点击默认降序,同键翻转(汇总看 Top 异常,降序优先)。
                             // 末列是空占位:num_cell 右对齐占满可用宽,
                             // 作为末列时会横跨到表格右缘,须由空列兜住
+                            // 数字列定宽(容纳表头与内容),进程列吃剩余宽度:
+                            // 汇总仅 5 列,全按内容自适应时右侧留白过大;
+                            // 定宽贴近内容上限,避免表头(贴左)与数据(右对齐)错位过大
+                            const SUM_UP_W: f32 = 85.0;
+                            const SUM_DOWN_W: f32 = 85.0;
+                            const SUM_CNT_W: f32 = 65.0;
+                            const SUM_DUR_W: f32 = 85.0;
+                            let flex_w = (table_w
+                                - 24.0 * 5.0
+                                - (SUM_UP_W + SUM_DOWN_W + SUM_CNT_W + SUM_DUR_W))
+                                .max(240.0);
                             widgets::table::header_cell(ui, &i18n.t("history-col-process"));
                             let mut sort_clicked = false;
                             let mut sort_header =
@@ -539,23 +553,37 @@ fn rows_table(
                             for r in rows {
                                 let row_top = ui.cursor().top();
                                 row_hover.begin(ui, table_left, table_right, row_top);
-                                proc_cell(
-                                    ui,
-                                    &r.process,
-                                    None,
-                                    r.proc_path.as_deref(),
-                                    icon_tex,
-                                    default_icon_tex,
-                                    i18n,
-                                );
-                                bytes_cell(ui, r.bytes_out, true);
-                                bytes_cell(ui, r.bytes_in, false);
-                                widgets::table::num_cell(ui, r.count.to_string(), theme::c().text);
-                                widgets::table::num_cell(
-                                    ui,
-                                    history_query::fmt_duration(r.total_secs),
-                                    theme::c().text,
-                                );
+                                fixed_cell(ui, flex_w, |ui| {
+                                    proc_cell(
+                                        ui,
+                                        &r.process,
+                                        None,
+                                        r.proc_path.as_deref(),
+                                        icon_tex,
+                                        default_icon_tex,
+                                        i18n,
+                                    );
+                                });
+                                fixed_num_cell(ui, SUM_UP_W, |ui| {
+                                    bytes_cell(ui, r.bytes_out, true)
+                                });
+                                fixed_num_cell(ui, SUM_DOWN_W, |ui| {
+                                    bytes_cell(ui, r.bytes_in, false)
+                                });
+                                fixed_num_cell(ui, SUM_CNT_W, |ui| {
+                                    widgets::table::num_cell(
+                                        ui,
+                                        r.count.to_string(),
+                                        theme::c().text,
+                                    );
+                                });
+                                fixed_num_cell(ui, SUM_DUR_W, |ui| {
+                                    widgets::table::num_cell(
+                                        ui,
+                                        history_query::fmt_duration(r.total_secs),
+                                        theme::c().text,
+                                    );
+                                });
                                 ui.label("");
                                 ui.end_row();
                                 row_hover.end(ui, row_top);
@@ -596,6 +624,22 @@ fn bytes_cell(ui: &mut egui::Ui, bytes: u64, outbound: bool) {
         c.inbound
     };
     widgets::table::num_cell(ui, fmt_bytes(bytes), color);
+}
+
+/// 定宽单元格容器:先在父布局精确占位(推进光标、参与 Grid 列宽测量),
+/// 子 UI 画进该矩形。allocate_ui_with_layout 的尺寸是上限、内容小会收缩,
+/// 不能用于定宽列
+fn fixed_cell(ui: &mut egui::Ui, w: f32, add: impl FnOnce(&mut egui::Ui)) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 18.0), egui::Sense::hover());
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+    child.with_layout(egui::Layout::left_to_right(egui::Align::Center), add);
+}
+
+/// 定宽右对齐单元格容器:列宽固定时把右对齐数字限制在列宽内
+fn fixed_num_cell(ui: &mut egui::Ui, w: f32, add: impl FnOnce(&mut egui::Ui)) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 18.0), egui::Sense::hover());
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+    child.with_layout(egui::Layout::right_to_left(egui::Align::Center), add);
 }
 
 /// 进程单元格:图标 + 名称(未知进程占位),聚合行无 PID
