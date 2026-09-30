@@ -29,14 +29,15 @@ pub fn fixed_cell(ui: &mut egui::Ui, w: f32, h: f32, add: impl FnOnce(&mut egui:
     child.with_layout(Layout::left_to_right(Align::Center), add);
 }
 
-/// 定宽右对齐单元格(数字列):行高取表格单行标准 18
+/// 定宽右对齐单元格(数字列):行高取虚拟化表格标准行 22
 pub fn fixed_num_cell(ui: &mut egui::Ui, w: f32, add: impl FnOnce(&mut egui::Ui)) {
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 18.0), egui::Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 22.0), egui::Sense::hover());
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
     child.with_layout(Layout::right_to_left(Align::Center), add);
 }
 
-/// 表头单元格(纯展示列):小号加粗弱化文字
+/// 表头单元格(纯展示列):小号加粗弱化文字,内容自适应宽
+/// (用于数据同 Grid 的表头,列宽由数据列决定)
 pub fn header_cell(ui: &mut egui::Ui, text: &str) {
     ui.add(
         Label::new(
@@ -47,6 +48,29 @@ pub fn header_cell(ui: &mut egui::Ui, text: &str) {
         )
         .wrap_mode(egui::TextWrapMode::Extend),
     );
+}
+
+/// 定宽表头单元格(纯展示列):显式列宽,用于独立表头 Grid 与数据 Grid
+/// 列宽对齐;文字贴列缘与数据对齐(`right_align` 供数据右对齐的数字列)
+pub fn header_cell_w(ui: &mut egui::Ui, w: f32, text: &str, right_align: bool) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 16.0), egui::Sense::hover());
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+    let layout = if right_align {
+        Layout::right_to_left(Align::Center)
+    } else {
+        Layout::left_to_right(Align::Center)
+    };
+    child.with_layout(layout, |ui| {
+        ui.add(
+            Label::new(
+                RichText::new(text)
+                    .size(theme::font::SM)
+                    .strong()
+                    .color(theme::c().text_dim),
+            )
+            .wrap_mode(egui::TextWrapMode::Extend),
+        );
+    });
 }
 
 /// galley 首行基线(相对行顶):不同字体 galley 拼接时按基线对齐
@@ -63,14 +87,15 @@ fn first_baseline(galley: &egui::Galley) -> f32 {
 /// 方向三角始终参与测量,非激活时以全透明字形占位:列宽在非激活时即含三角位,
 /// 点击排序不会因列宽变化引起页面抖动;文字贴列缘,与数据列缘一致
 /// (`right_align` 供数据右对齐的数字列:文字与三角整体贴列右缘)。
-/// 占位测量按内容宽度推进(列宽可随数据收缩),点击/高亮区经 interact 扩到
-/// 整格宽度,不参与 Grid 列宽测量。
+/// `cell_w` = 本列宽(与数据列定宽一致,独立表头 Grid 亦能对齐);
+/// 内容宽超过列宽时以内容宽兜底
 pub fn header_sort_cell(
     ui: &mut egui::Ui,
     text: &str,
     active: bool,
     ascending: bool,
     right_align: bool,
+    cell_w: f32,
 ) -> egui::Response {
     let p = theme::c();
     let painter = ui.painter().clone();
@@ -89,11 +114,10 @@ pub fn header_sort_cell(
     );
     let content_w = text_galley.size().x + caret_galley.size().x;
     let row_h = (text_galley.size().y + 2.0 * HEADER_PAD_Y).max(ui.spacing().interact_size.y);
-    // available_width = 上一帧列宽(首帧未知时偏小,以内容宽兜底)
-    let cell_w = ui.available_width().max(content_w);
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(content_w, row_h), egui::Sense::click());
+    let w = cell_w.max(content_w);
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(w, row_h), egui::Sense::click());
     let resp = ui.interact(
-        egui::Rect::from_min_size(rect.min, egui::vec2(cell_w, row_h)),
+        rect,
         ui.id().with(("sort-header-cell", text)),
         egui::Sense::click(),
     );
@@ -113,7 +137,7 @@ pub fn header_sort_cell(
     // 文字贴列缘(左右随数据对齐)、行内垂直居中;三角与文字按基线对齐
     // (图标字体行高不同)
     let x = if right_align {
-        rect.left() + cell_w - content_w
+        rect.left() + w - content_w
     } else {
         rect.left()
     };

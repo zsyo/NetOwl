@@ -28,7 +28,7 @@ pub fn badge(ui: &mut egui::Ui, text: &str, kind: BadgeKind) -> egui::Response {
     egui::Frame::new()
         .fill(fg.gamma_multiply(0.16))
         .corner_radius(CornerRadius::same(theme::RADIUS_PILL))
-        .inner_margin(Margin::symmetric(8, 2))
+        .inner_margin(Margin::symmetric(8, 3))
         .show(ui, |ui| {
             ui.label(
                 RichText::new(text)

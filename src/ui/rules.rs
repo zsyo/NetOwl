@@ -364,9 +364,10 @@ fn rules_table(
                             }
                         };
                         // 徽章为自适应宽 Frame,不能走 add_sized 的 justify
-                        // (会被拉伸成通栏);固定格内水平居中与表头对齐
+                        // (会被拉伸成通栏);固定格内水平居中与表头对齐,
+                        // 格高 22 容纳加高后的胶囊
                         ui.allocate_ui_with_layout(
-                            egui::vec2(COL_ACTION, 18.0),
+                            egui::vec2(COL_ACTION, 22.0),
                             egui::Layout::top_down(egui::Align::Center),
                             |ui| {
                                 widgets::badge::badge(ui, &i18n.t(action_key), action_kind);
@@ -380,7 +381,7 @@ fn rules_table(
                             )),
                         );
                         ui.allocate_ui_with_layout(
-                            egui::vec2(COL_PROTO, 18.0),
+                            egui::vec2(COL_PROTO, 22.0),
                             egui::Layout::top_down(egui::Align::Center),
                             |ui| {
                                 widgets::badge::badge(

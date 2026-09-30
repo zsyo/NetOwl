@@ -93,40 +93,50 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                     let flex_w = flex_total * 0.5;
                     // 表头:可排序列整格可点击(当前排序列高亮并带方向三角),
                     // 协议/远端/动作为纯展示列,不给手型光标(不可点);
-                    // 数字列数据右对齐,表头同步贴列右缘
-                    let mut header =
-                        |ui: &mut egui::Ui, key: &str, sort: Option<ConnSort>, right: bool| {
-                            let active = conn_sort.is_some_and(|(k, _)| Some(k) == sort);
-                            match sort {
-                                Some(s) => {
-                                    let ascending = conn_sort.is_some_and(|(_, asc)| asc);
-                                    let r = widgets::table::header_sort_cell(
-                                        ui,
-                                        &i18n.t(key),
-                                        active,
-                                        ascending,
-                                        right,
-                                    );
-                                    if r.clicked() {
-                                        let current: ConnSortState = *conn_sort;
-                                        *conn_sort = Some(match current {
-                                            Some((k, asc)) if k == s => (s, !asc),
-                                            _ => (s, true),
-                                        });
-                                    }
+                    // 数字列数据右对齐,表头同步贴列右缘(列宽与数据定宽一致)
+                    let mut header = |ui: &mut egui::Ui,
+                                      key: &str,
+                                      sort: Option<ConnSort>,
+                                      right: bool,
+                                      w: f32| {
+                        let active = conn_sort.is_some_and(|(k, _)| Some(k) == sort);
+                        match sort {
+                            Some(s) => {
+                                let ascending = conn_sort.is_some_and(|(_, asc)| asc);
+                                let r = widgets::table::header_sort_cell(
+                                    ui,
+                                    &i18n.t(key),
+                                    active,
+                                    ascending,
+                                    right,
+                                    w,
+                                );
+                                if r.clicked() {
+                                    let current: ConnSortState = *conn_sort;
+                                    *conn_sort = Some(match current {
+                                        Some((k, asc)) if k == s => (s, !asc),
+                                        _ => (s, true),
+                                    });
                                 }
-                                None => widgets::table::header_cell(ui, &i18n.t(key)),
                             }
-                        };
-                    header(ui, "col-process", Some(ConnSort::Process), false);
-                    header(ui, "col-proto", None, false);
-                    header(ui, "col-remote", None, false);
-                    header(ui, "col-location", Some(ConnSort::Location), false);
-                    header(ui, "col-down", Some(ConnSort::RateDown), true);
-                    header(ui, "col-up", Some(ConnSort::RateUp), true);
-                    header(ui, "col-down-total", Some(ConnSort::TotalDown), true);
-                    header(ui, "col-up-total", Some(ConnSort::TotalUp), true);
-                    header(ui, "col-action", None, false);
+                            None => widgets::table::header_cell(ui, &i18n.t(key)),
+                        }
+                    };
+                    header(ui, "col-process", Some(ConnSort::Process), false, flex_w);
+                    header(ui, "col-proto", None, false, C_PROTO_W);
+                    header(ui, "col-remote", None, false, flex_w);
+                    header(ui, "col-location", Some(ConnSort::Location), false, C_LOC_W);
+                    header(ui, "col-down", Some(ConnSort::RateDown), true, C_RATE_W);
+                    header(ui, "col-up", Some(ConnSort::RateUp), true, C_RATE_W);
+                    header(
+                        ui,
+                        "col-down-total",
+                        Some(ConnSort::TotalDown),
+                        true,
+                        C_TOTAL_W,
+                    );
+                    header(ui, "col-up-total", Some(ConnSort::TotalUp), true, C_TOTAL_W);
+                    header(ui, "col-action", None, false, C_ACTION_W);
                     ui.end_row();
 
                     for conn in shown {
@@ -173,7 +183,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                         } else {
                             widgets::badge::BadgeKind::Neutral
                         };
-                        widgets::table::fixed_cell(ui, C_PROTO_W, 18.0, |ui| {
+                        widgets::table::fixed_cell(ui, C_PROTO_W, 22.0, |ui| {
                             widgets::badge::badge(ui, conn.proto.as_str(), proto_kind);
                         });
                         // rDNS 域名优先,域名下方弱化显示裸 IP;无 PTR 回退地址:端口。
@@ -266,7 +276,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                             );
                         });
                         // 规则求值:命中规则的连接标注动作徽章,未命中默认放行不标注
-                        widgets::table::fixed_cell(ui, C_ACTION_W, 18.0, |ui| {
+                        widgets::table::fixed_cell(ui, C_ACTION_W, 22.0, |ui| {
                             match rules.evaluate(&rules_engine::MatchReq::from_conn(
                                 conn,
                                 rdns.lookup(conn.remote_ip),
