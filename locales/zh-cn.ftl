@@ -16,6 +16,7 @@ status-conn-count = { $count } 条连接
 
 nav-rate-down = 下载
 nav-rate-up = 上传
+nav-session-total = 本次会话
 
 map-title = 流量地图
 map-subtitle = 实时网络连接可视化

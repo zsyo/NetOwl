@@ -112,7 +112,13 @@ pub fn nav_ui(
 
     // 底部:监控状态在其上,速率卡贴底(bottom_up 先绘制者在底部)
     ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-        rate_card(ui, ctx.i18n, ctx.rates, ctx.rate_hist);
+        // 会话累计 = 当前活跃连接字节总和(程序启动起算,重启归零;
+        // 完结连接的字节转入历史库,由历史页统计)
+        let totals = (
+            ctx.conns.iter().map(|c| c.bytes_in).sum::<u64>(),
+            ctx.conns.iter().map(|c| c.bytes_out).sum::<u64>(),
+        );
+        rate_card(ui, ctx.i18n, ctx.rates, ctx.rate_hist, totals);
         ui.add_space(theme::sp::MD);
         status_rows(ui, ctx.conns, ctx.i18n, collector_kind);
     });
@@ -172,8 +178,14 @@ fn nav_item(ui: &mut egui::Ui, page: &mut Page, target: Page, label: &str, icon:
     }
 }
 
-/// 底部速率卡:一分钟双色走势 + 当前速率
-fn rate_card(ui: &mut egui::Ui, i18n: &I18n, rates: (u64, u64), hist: &[(u64, u64)]) {
+/// 底部速率卡:一分钟双色走势 + 当前速率 + 会话累计
+fn rate_card(
+    ui: &mut egui::Ui,
+    i18n: &I18n,
+    rates: (u64, u64),
+    hist: &[(u64, u64)],
+    totals: (u64, u64),
+) {
     let p = theme::c();
     egui::Frame::new()
         .fill(p.bg_card)
@@ -206,7 +218,41 @@ fn rate_card(ui: &mut egui::Ui, i18n: &I18n, rates: (u64, u64), hist: &[(u64, u6
                 p.outbound,
                 icons::ARROW_UP,
             );
+            ui.add_space(theme::sp::XS);
+            session_row(ui, i18n, totals);
         });
+}
+
+/// 会话累计行:标签 + 双向字节小字
+fn session_row(ui: &mut egui::Ui, i18n: &I18n, totals: (u64, u64)) {
+    let p = theme::c();
+    ui.horizontal(|ui| {
+        ui.style_mut().spacing.item_spacing.x = 3.0;
+        ui.label(theme::dim_text(
+            &i18n.t("nav-session-total"),
+            theme::font::XS,
+        ));
+        ui.label(
+            RichText::new(icons::ARROW_DOWN)
+                .size(theme::font::XS)
+                .color(p.inbound),
+        );
+        ui.label(
+            RichText::new(fmt_bytes(totals.0))
+                .size(theme::font::XS)
+                .color(p.text_dim),
+        );
+        ui.label(
+            RichText::new(icons::ARROW_UP)
+                .size(theme::font::XS)
+                .color(p.outbound),
+        );
+        ui.label(
+            RichText::new(fmt_bytes(totals.1))
+                .size(theme::font::XS)
+                .color(p.text_dim),
+        );
+    });
 }
 
 /// 一行速率:方向图标 + 标签 + 数值

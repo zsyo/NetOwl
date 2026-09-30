@@ -16,6 +16,7 @@ status-conn-count = { $count } connections
 
 nav-rate-down = Down
 nav-rate-up = Up
+nav-session-total = Session
 
 map-title = Traffic Map
 map-subtitle = Live network connections visualization
