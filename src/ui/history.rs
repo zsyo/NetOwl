@@ -292,11 +292,26 @@ fn rows_table(
                 .show(ui, |ui| {
                     let table_left = ui.max_rect().left();
                     let table_right = ui.max_rect().right();
+                    // 表格总宽必须在 Grid 之外取:Grid 闭包内 available_width
+                    // 被 grid 布局器接管,返回当前列宽(上帧值)而非总宽
+                    let table_w = ui.available_width();
                     egui::Grid::new("history_detail")
                         .num_columns(9)
                         .striped(true)
                         .spacing([24.0, widgets::table::ROW_SPACING_Y])
                         .show(ui, |ui| {
+                            // 定宽列(容纳表头与内容上限)+ 进程/远端弹性列:
+                            // 窗口放大时表格铺满中央区(口径同连接页/汇总表)
+                            const D_PROTO_W: f32 = 56.0;
+                            const D_LOC_W: f32 = 112.0;
+                            const D_SEEN_W: f32 = 105.0;
+                            const D_DUR_W: f32 = 80.0;
+                            const D_BYTES_W: f32 = 90.0;
+                            let flex_total = (table_w
+                                - 24.0 * 8.0
+                                - (D_PROTO_W + D_LOC_W + D_SEEN_W + D_DUR_W + D_BYTES_W * 2.0))
+                                .max(320.0);
+                            let flex_w = flex_total * 0.5;
                             for key in [
                                 "history-col-process",
                                 "col-proto",
@@ -313,45 +328,64 @@ fn rows_table(
                             for r in rows {
                                 let row_top = ui.cursor().top();
                                 row_hover.begin(ui, table_left, table_right, row_top);
-                                proc_cell(
-                                    ui,
-                                    &r.process,
-                                    Some(r.pid),
-                                    r.proc_path.as_deref(),
-                                    icon_tex,
-                                    default_icon_tex,
-                                    i18n,
-                                );
-                                widgets::badge::badge(
-                                    ui,
-                                    r.proto.as_str(),
-                                    if r.proto.as_str() == "TCP" {
-                                        widgets::badge::BadgeKind::Accent
-                                    } else {
-                                        widgets::badge::BadgeKind::Neutral
-                                    },
-                                );
-                                ui.add(
-                                    Label::new(
-                                        RichText::new(format!("{}:{}", r.remote_ip, r.remote_port))
+                                widgets::table::fixed_cell(ui, flex_w, 18.0, |ui| {
+                                    proc_cell(
+                                        ui,
+                                        &r.process,
+                                        Some(r.pid),
+                                        r.proc_path.as_deref(),
+                                        icon_tex,
+                                        default_icon_tex,
+                                        i18n,
+                                    );
+                                });
+                                widgets::table::fixed_cell(ui, D_PROTO_W, 18.0, |ui| {
+                                    widgets::badge::badge(
+                                        ui,
+                                        r.proto.as_str(),
+                                        if r.proto.as_str() == "TCP" {
+                                            widgets::badge::BadgeKind::Accent
+                                        } else {
+                                            widgets::badge::BadgeKind::Neutral
+                                        },
+                                    );
+                                });
+                                widgets::table::fixed_cell(ui, flex_w, 18.0, |ui| {
+                                    ui.add(
+                                        Label::new(
+                                            RichText::new(format!(
+                                                "{}:{}",
+                                                r.remote_ip, r.remote_port
+                                            ))
                                             .size(theme::font::BODY)
                                             .color(theme::c().text),
-                                    )
-                                    .wrap_mode(egui::TextWrapMode::Extend),
-                                );
-                                location_cell(ui, i18n, r.remote_ip);
-                                ui.label(theme::dim_text(
-                                    &history_query::fmt_local(r.first_seen),
-                                    theme::font::BODY,
-                                ));
-                                ui.label(theme::dim_text(
-                                    &history_query::fmt_duration(
-                                        r.last_seen.saturating_sub(r.first_seen),
-                                    ),
-                                    theme::font::BODY,
-                                ));
-                                bytes_cell(ui, r.bytes_in, false);
-                                bytes_cell(ui, r.bytes_out, true);
+                                        )
+                                        .wrap_mode(egui::TextWrapMode::Truncate),
+                                    );
+                                });
+                                widgets::table::fixed_cell(ui, D_LOC_W, 18.0, |ui| {
+                                    location_cell(ui, i18n, r.remote_ip);
+                                });
+                                widgets::table::fixed_cell(ui, D_SEEN_W, 18.0, |ui| {
+                                    ui.label(theme::dim_text(
+                                        &history_query::fmt_local(r.first_seen),
+                                        theme::font::BODY,
+                                    ));
+                                });
+                                widgets::table::fixed_cell(ui, D_DUR_W, 18.0, |ui| {
+                                    ui.label(theme::dim_text(
+                                        &history_query::fmt_duration(
+                                            r.last_seen.saturating_sub(r.first_seen),
+                                        ),
+                                        theme::font::BODY,
+                                    ));
+                                });
+                                widgets::table::fixed_num_cell(ui, D_BYTES_W, |ui| {
+                                    bytes_cell(ui, r.bytes_in, false);
+                                });
+                                widgets::table::fixed_num_cell(ui, D_BYTES_W, |ui| {
+                                    bytes_cell(ui, r.bytes_out, true);
+                                });
                                 ui.label("");
                                 ui.end_row();
                                 row_hover.end(ui, row_top);
@@ -371,11 +405,32 @@ fn rows_table(
                 .show(ui, |ui| {
                     let table_left = ui.max_rect().left();
                     let table_right = ui.max_rect().right();
+                    // 表格总宽必须在 Grid 之外取:Grid 闭包内 available_width
+                    // 被 grid 布局器接管,返回当前列宽(上帧值)而非总宽
+                    let table_w = ui.available_width();
                     egui::Grid::new("history_aggregate")
                         .num_columns(10)
                         .striped(true)
                         .spacing([24.0, widgets::table::ROW_SPACING_Y])
                         .show(ui, |ui| {
+                            // 定宽列(容纳表头与内容上限)+ 进程/远端弹性列:
+                            // 窗口放大时表格铺满中央区(口径同连接页/汇总表)
+                            const A_PROTO_W: f32 = 56.0;
+                            const A_LOC_W: f32 = 112.0;
+                            const A_CNT_W: f32 = 65.0;
+                            const A_DUR_W: f32 = 80.0;
+                            const A_LAST_W: f32 = 105.0;
+                            const A_BYTES_W: f32 = 90.0;
+                            let flex_total = (table_w
+                                - 24.0 * 9.0
+                                - (A_PROTO_W
+                                    + A_LOC_W
+                                    + A_CNT_W
+                                    + A_DUR_W
+                                    + A_LAST_W
+                                    + A_BYTES_W * 2.0))
+                                .max(320.0);
+                            let flex_w = flex_total * 0.5;
                             // 进程/协议/远端/位置纯展示;
                             // 次数/时长/最近活动/下载总量/上传总量可排序(末列空占位同汇总表)
                             for key in [
@@ -388,13 +443,14 @@ fn rows_table(
                             }
                             let mut sort_clicked = false;
                             let mut sort_header =
-                                |ui: &mut egui::Ui, key: &str, sort: AggregateSort| {
+                                |ui: &mut egui::Ui, key: &str, sort: AggregateSort, right: bool| {
                                     let (cur, asc) = *aggregate_sort;
                                     let r = widgets::table::header_sort_cell(
                                         ui,
                                         &i18n.t(key),
                                         cur == sort,
                                         asc,
+                                        right,
                                     );
                                     if r.clicked() {
                                         *aggregate_sort = if cur == sort {
@@ -407,14 +463,16 @@ fn rows_table(
                                         false
                                     }
                                 };
-                            for (key, sort) in [
-                                ("history-col-count", AggregateSort::Count),
-                                ("history-col-total", AggregateSort::TotalSecs),
-                                ("history-col-last", AggregateSort::LastActive),
-                                ("col-down-total", AggregateSort::BytesIn),
-                                ("col-up-total", AggregateSort::BytesOut),
+                            // 次数/时长/最近活动数据左对齐,表头贴左;
+                            // 下载/上传总量数据右对齐,表头贴右
+                            for (key, sort, right) in [
+                                ("history-col-count", AggregateSort::Count, false),
+                                ("history-col-total", AggregateSort::TotalSecs, false),
+                                ("history-col-last", AggregateSort::LastActive, false),
+                                ("col-down-total", AggregateSort::BytesIn, true),
+                                ("col-up-total", AggregateSort::BytesOut, true),
                             ] {
-                                sort_clicked |= sort_header(ui, key, sort);
+                                sort_clicked |= sort_header(ui, key, sort, right);
                             }
                             if sort_clicked {
                                 state.dirty = true;
@@ -424,48 +482,66 @@ fn rows_table(
                             for r in rows {
                                 let row_top = ui.cursor().top();
                                 row_hover.begin(ui, table_left, table_right, row_top);
-                                proc_cell(
-                                    ui,
-                                    &r.process,
-                                    None,
-                                    None,
-                                    icon_tex,
-                                    default_icon_tex,
-                                    i18n,
-                                );
-                                widgets::badge::badge(
-                                    ui,
-                                    r.proto.as_str(),
-                                    if r.proto.as_str() == "TCP" {
-                                        widgets::badge::BadgeKind::Accent
-                                    } else {
-                                        widgets::badge::BadgeKind::Neutral
-                                    },
-                                );
-                                ui.add(
-                                    Label::new(
-                                        RichText::new(r.remote_ip.to_string())
+                                widgets::table::fixed_cell(ui, flex_w, 18.0, |ui| {
+                                    proc_cell(
+                                        ui,
+                                        &r.process,
+                                        None,
+                                        None,
+                                        icon_tex,
+                                        default_icon_tex,
+                                        i18n,
+                                    );
+                                });
+                                widgets::table::fixed_cell(ui, A_PROTO_W, 18.0, |ui| {
+                                    widgets::badge::badge(
+                                        ui,
+                                        r.proto.as_str(),
+                                        if r.proto.as_str() == "TCP" {
+                                            widgets::badge::BadgeKind::Accent
+                                        } else {
+                                            widgets::badge::BadgeKind::Neutral
+                                        },
+                                    );
+                                });
+                                widgets::table::fixed_cell(ui, flex_w, 18.0, |ui| {
+                                    ui.add(
+                                        Label::new(
+                                            RichText::new(r.remote_ip.to_string())
+                                                .size(theme::font::BODY)
+                                                .color(theme::c().text),
+                                        )
+                                        .wrap_mode(egui::TextWrapMode::Truncate),
+                                    );
+                                });
+                                widgets::table::fixed_cell(ui, A_LOC_W, 18.0, |ui| {
+                                    location_cell(ui, i18n, r.remote_ip);
+                                });
+                                widgets::table::fixed_cell(ui, A_CNT_W, 18.0, |ui| {
+                                    ui.label(
+                                        RichText::new(r.count.to_string())
                                             .size(theme::font::BODY)
                                             .color(theme::c().text),
-                                    )
-                                    .wrap_mode(egui::TextWrapMode::Extend),
-                                );
-                                location_cell(ui, i18n, r.remote_ip);
-                                ui.label(
-                                    RichText::new(r.count.to_string())
-                                        .size(theme::font::BODY)
-                                        .color(theme::c().text),
-                                );
-                                ui.label(theme::dim_text(
-                                    &history_query::fmt_duration(r.total_secs),
-                                    theme::font::BODY,
-                                ));
-                                ui.label(theme::dim_text(
-                                    &history_query::fmt_local(r.last_active),
-                                    theme::font::BODY,
-                                ));
-                                bytes_cell(ui, r.bytes_in, false);
-                                bytes_cell(ui, r.bytes_out, true);
+                                    );
+                                });
+                                widgets::table::fixed_cell(ui, A_DUR_W, 18.0, |ui| {
+                                    ui.label(theme::dim_text(
+                                        &history_query::fmt_duration(r.total_secs),
+                                        theme::font::BODY,
+                                    ));
+                                });
+                                widgets::table::fixed_cell(ui, A_LAST_W, 18.0, |ui| {
+                                    ui.label(theme::dim_text(
+                                        &history_query::fmt_local(r.last_active),
+                                        theme::font::BODY,
+                                    ));
+                                });
+                                widgets::table::fixed_num_cell(ui, A_BYTES_W, |ui| {
+                                    bytes_cell(ui, r.bytes_in, false);
+                                });
+                                widgets::table::fixed_num_cell(ui, A_BYTES_W, |ui| {
+                                    bytes_cell(ui, r.bytes_out, true);
+                                });
                                 ui.label("");
                                 ui.end_row();
                                 row_hover.end(ui, row_top);
@@ -524,6 +600,7 @@ fn rows_table(
                                         &i18n.t(key),
                                         cur == sort,
                                         asc,
+                                        true,
                                     );
                                     if r.clicked() {
                                         *summary_sort = if cur == sort {
@@ -553,7 +630,7 @@ fn rows_table(
                             for r in rows {
                                 let row_top = ui.cursor().top();
                                 row_hover.begin(ui, table_left, table_right, row_top);
-                                fixed_cell(ui, flex_w, |ui| {
+                                widgets::table::fixed_cell(ui, flex_w, 18.0, |ui| {
                                     proc_cell(
                                         ui,
                                         &r.process,
@@ -564,20 +641,20 @@ fn rows_table(
                                         i18n,
                                     );
                                 });
-                                fixed_num_cell(ui, SUM_UP_W, |ui| {
-                                    bytes_cell(ui, r.bytes_out, true)
+                                widgets::table::fixed_num_cell(ui, SUM_UP_W, |ui| {
+                                    bytes_cell(ui, r.bytes_out, true);
                                 });
-                                fixed_num_cell(ui, SUM_DOWN_W, |ui| {
-                                    bytes_cell(ui, r.bytes_in, false)
+                                widgets::table::fixed_num_cell(ui, SUM_DOWN_W, |ui| {
+                                    bytes_cell(ui, r.bytes_in, false);
                                 });
-                                fixed_num_cell(ui, SUM_CNT_W, |ui| {
+                                widgets::table::fixed_num_cell(ui, SUM_CNT_W, |ui| {
                                     widgets::table::num_cell(
                                         ui,
                                         r.count.to_string(),
                                         theme::c().text,
                                     );
                                 });
-                                fixed_num_cell(ui, SUM_DUR_W, |ui| {
+                                widgets::table::fixed_num_cell(ui, SUM_DUR_W, |ui| {
                                     widgets::table::num_cell(
                                         ui,
                                         history_query::fmt_duration(r.total_secs),
@@ -626,22 +703,6 @@ fn bytes_cell(ui: &mut egui::Ui, bytes: u64, outbound: bool) {
     widgets::table::num_cell(ui, fmt_bytes(bytes), color);
 }
 
-/// 定宽单元格容器:先在父布局精确占位(推进光标、参与 Grid 列宽测量),
-/// 子 UI 画进该矩形。allocate_ui_with_layout 的尺寸是上限、内容小会收缩,
-/// 不能用于定宽列
-fn fixed_cell(ui: &mut egui::Ui, w: f32, add: impl FnOnce(&mut egui::Ui)) {
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 18.0), egui::Sense::hover());
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
-    child.with_layout(egui::Layout::left_to_right(egui::Align::Center), add);
-}
-
-/// 定宽右对齐单元格容器:列宽固定时把右对齐数字限制在列宽内
-fn fixed_num_cell(ui: &mut egui::Ui, w: f32, add: impl FnOnce(&mut egui::Ui)) {
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 18.0), egui::Sense::hover());
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
-    child.with_layout(egui::Layout::right_to_left(egui::Align::Center), add);
-}
-
 /// 进程单元格:图标 + 名称(未知进程占位),聚合行无 PID
 fn proc_cell(
     ui: &mut egui::Ui,
@@ -669,7 +730,7 @@ fn proc_cell(
                     .size(theme::font::BODY)
                     .color(theme::c().text),
             )
-            .wrap_mode(egui::TextWrapMode::Extend),
+            .wrap_mode(egui::TextWrapMode::Truncate),
         );
     });
 }
@@ -680,5 +741,8 @@ fn location_cell(ui: &mut egui::Ui, i18n: &I18n, ip: std::net::Ipv4Addr) {
         Some(p) => geoip::place_label(p, i18n),
         None => i18n.t("conn-loc-unknown"),
     };
-    ui.label(theme::dim_text(&text, theme::font::BODY));
+    ui.add(
+        Label::new(theme::dim_text(&text, theme::font::BODY))
+            .wrap_mode(egui::TextWrapMode::Truncate),
+    );
 }

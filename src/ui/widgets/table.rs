@@ -20,6 +20,22 @@ pub fn num_cell(ui: &mut egui::Ui, text: String, color: Color32) -> egui::Respon
     .inner
 }
 
+/// 定宽左对齐单元格:先在父布局精确占位(推进光标、参与 Grid 列宽测量),
+/// 子 UI 画进该矩形。allocate_ui_with_layout 的尺寸是上限、内容小会收缩,
+/// 不能用于定宽列;长文本配 TextWrapMode::Truncate 防撑破列宽
+pub fn fixed_cell(ui: &mut egui::Ui, w: f32, h: f32, add: impl FnOnce(&mut egui::Ui)) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(w, h), egui::Sense::hover());
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+    child.with_layout(Layout::left_to_right(Align::Center), add);
+}
+
+/// 定宽右对齐单元格(数字列):行高取表格单行标准 18
+pub fn fixed_num_cell(ui: &mut egui::Ui, w: f32, add: impl FnOnce(&mut egui::Ui)) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 18.0), egui::Sense::hover());
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+    child.with_layout(Layout::right_to_left(Align::Center), add);
+}
+
 /// 表头单元格(纯展示列):小号加粗弱化文字
 pub fn header_cell(ui: &mut egui::Ui, text: &str) {
     ui.add(
@@ -45,7 +61,8 @@ fn first_baseline(galley: &egui::Galley) -> f32 {
 /// 可排序表头单元格:整个单元格可点(点击区 = 本列宽 x 表头行高),激活列
 /// 整格高亮并带方向三角,点击返回(由调用方更新排序状态)。
 /// 方向三角始终参与测量,非激活时以全透明字形占位:列宽在非激活时即含三角位,
-/// 点击排序不会因列宽变化引起页面抖动;文字贴列缘左对齐,与数据列缘一致。
+/// 点击排序不会因列宽变化引起页面抖动;文字贴列缘,与数据列缘一致
+/// (`right_align` 供数据右对齐的数字列:文字与三角整体贴列右缘)。
 /// 占位测量按内容宽度推进(列宽可随数据收缩),点击/高亮区经 interact 扩到
 /// 整格宽度,不参与 Grid 列宽测量。
 pub fn header_sort_cell(
@@ -53,6 +70,7 @@ pub fn header_sort_cell(
     text: &str,
     active: bool,
     ascending: bool,
+    right_align: bool,
 ) -> egui::Response {
     let p = theme::c();
     let painter = ui.painter().clone();
@@ -92,11 +110,17 @@ pub fn header_sort_cell(
         painter.rect_filled(resp.rect, theme::RADIUS_SM, p.hover_bg);
     }
 
-    // 文字贴列缘、行内垂直居中;三角与文字按基线对齐(图标字体行高不同)
+    // 文字贴列缘(左右随数据对齐)、行内垂直居中;三角与文字按基线对齐
+    // (图标字体行高不同)
+    let x = if right_align {
+        rect.left() + cell_w - content_w
+    } else {
+        rect.left()
+    };
     let y = rect.center().y - text_galley.size().y * 0.5;
     let dy = first_baseline(&text_galley) - first_baseline(&caret_galley);
-    let caret_x = rect.left() + text_galley.size().x;
-    painter.galley(egui::pos2(rect.left(), y), text_galley, text_color);
+    let caret_x = x + text_galley.size().x;
+    painter.galley(egui::pos2(x, y), text_galley, text_color);
     painter.galley(egui::pos2(caret_x, y + dy), caret_galley, text_color);
     resp.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
