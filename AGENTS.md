@@ -58,14 +58,16 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   单子层 weight 0 低于系统防火墙,过滤器 weight 由优先级派生(15 上限),
   非提权回落 NoAdmin 只读)
 - src/storage/ - 持久化(config.rs:应用配置(config.toml,serde TOML + 防抖
-  写盘);db.rs:SQLite 连接与结构迁移;history.rs:历史落盘(conn_events
-  事件表,每条已完结连接一行整行 INSERT;Tracker 对比前后快照生成事件,mock
-  不入库;后台写线程批量事务,托盘退出 flush 并 join;自动清理小时级节流,
-  天数 0 = 不清理;归属地不落库);history_query.rs:历史查询与页面状态
-  (明细/聚合 SQL 全参数绑定,LIMIT 500;远端前缀解析为网段 BETWEEN;proto
-  None 绑空串而非 NULL——SQL 侧 ?5 = '' 判定,NULL 比较恒假会过滤全部行;
-  本地/私网过滤在 SQL 内位运算判定;本月起点/时间格式化走 Win32 SystemTime;
-  PageState 含视图/筛选/结果/清空))
+  写盘);db.rs:SQLite 连接与结构迁移(v5 = conn_events 补 bytes_in/out 列);
+  history.rs:历史落盘(conn_events 事件表,每条已完结连接一行整行 INSERT,
+  含收发字节——Tracker 每轮随快照刷新、短命连接取 FlowAgg;Tracker 对比
+  前后快照生成事件,mock 不入库;后台写线程批量事务,托盘退出 flush 并
+  join;自动清理小时级节流,天数 0 = 不清理;归属地不落库);
+  history_query.rs:历史查询与页面状态(明细/聚合/按进程汇总 SQL 全参数
+  绑定,LIMIT 500;聚合/汇总排序键走白名单列名映射拼 ORDER BY,远端前缀
+  解析为网段 BETWEEN;proto None 绑空串而非 NULL——SQL 侧 ?5 = '' 判定,
+  NULL 比较恒假会过滤全部行;本地/私网过滤在 SQL 内位运算判定;本月起点/
+  时间格式化走 Win32 SystemTime;PageState 含视图/筛选/排序/结果/清空))
 - src/net/ - 网络信息(geoip.rs:GeoIP 归属定位(assets/geoip.bin 编译期内嵌,
   首用解析一次;IPv4 区间表 LEB128 delta 编码二分查询;城市级粒度:中国含港澳台
   到地级市、外国按城市名匹配 GeoNames,未命中回退省/国家级;place_pos/place_label
@@ -102,24 +104,33 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   50m 放大,zoom>=3 切换;海岸线/国界按邻国共享边分类;labels 三种 kind +
   十段线段节 + 河流折线节两档))
 - src/ui/ - 界面(mod.rs:主窗口布局与页面(标题栏、导航栏[品牌区/选中指示条
-  动画/底部速率走势卡]、UiCtx、TOOLBAR_ROW_H 工具栏行高共用常量;
+  动画/底部速率走势卡+会话累计]、UiCtx、TOOLBAR_ROW_H 工具栏行高共用常量;
   conn_visible 为连接列表与地图页左右面板共用的本地/局域网远端
   过滤口径[hide_local/hide_lan]);
   titlebar.rs:自绘无边框标题栏(拖动 StartDrag/双击最大化/窗控三钮,关闭走
   隐藏到托盘同路径,app 层处理 TitleAction);connections.rs:连接页(统一
-  表头可排序、行悬停高亮[Order::Background 垫底]、协议/动作徽章、数字列
-  右对齐);settings.rs:设置页(分组卡片:外观/监控/日志,行式布局左标签
+  表头可排序[header_sort_cell 整格可点,方向三角非激活透明占位防列宽抖动]、
+  行悬停高亮[Order::Background 垫底]、协议/动作徽章、数字列右对齐[num_cell]);
+  settings.rs:设置页(分组卡片:外观/监控/日志,行式布局左标签
   右控件,主题分段切换);widgets/:公共组件库(header 页头/badge 胶囊徽章/
-  segmented 分段选择/toggle 滑动开关/table 统一表头与行底色/process 进程
+  segmented 分段选择/toggle 滑动开关/table 统一表头与行底色[num_cell 数字
+  右对齐单元格,Grid 末列须空占位防右对齐横跨]/process 进程
   图标占位/card 卡片/sparkline 多序列迷你走势图,新页面禁止重复实现);
   ask.rs:新连接询问弹窗(右下角无标题栏 toast,盾形图标标题,范围下拉 +
   允许[accent 填充 on_accent 字]/拒绝[danger 描边],进度条内嵌剩余秒数);
-  history.rs:历史页(双视图 segmented 切换、档位筛选、库大小显示、
-  超 1 GiB 提醒卡[warn 低透明底 + 警示图标,勾选不再提醒=一票否决持久化,
-  手动清空还原]、清理下拉菜单;位置列实时反查 geoip;表格口径与连接页
-  一致);rules.rs:规则页(toggle 启停、动作/协议徽章、图标操作钮[删除
+  history.rs:历史页(三视图 segmented 切换:明细/聚合/进程汇总[按进程
+  聚合字节总量/次数/时长,默认上传降序,口径注记"仅已完结连接"];明细 8 列
+  聚合 9 列含字节,聚合与汇总表头可排序[字节 0 弱化显示];档位筛选、库
+  大小显示、超 1 GiB 提醒卡[warn 低透明底 + 警示图标,勾选不再提醒=一票
+  否决持久化,手动清空还原]、清理下拉菜单;位置列实时反查 geoip;表格口径
+  与连接页一致);rules.rs:规则页(toggle 启停、动作/协议徽章、图标操作钮[删除
   悬停警示]、新建/保存走 accent 主按钮、编辑弹窗带校验、WFP 拦截状态行
   带盾形图标);log_window.rs:日志浏览窗口(样式与主窗口刻度对齐);
+  map_panel.rs/map_inspector.rs/map_widgets.rs/map_conn.rs:地图页左右面板
+  (左列表按进程分组:名称+会话累计上/下行副行+连接数徽章+进程级阻断
+  开关,展开见连接明细;右 Inspector 三态:概览[流量卡+进程/域名排行,
+  总量/上传/下载排序切换,上传占优行警示色]、端点详情、进程详情;
+  行内变长文本统一"固定宽度容器 + Truncate"防面板宽度记忆膨胀);
   icons.rs:Bootstrap Icons 码点常量表(glyph 名注释即契约);theme.rs:主题
   (深/浅两套 Palette 调色板 + AtomicUsize 主题索引,theme::c() 统一取色;
   设计刻度:font 字号/sp 间距/圆角三档+PILL/window_shadow+popup_shadow;
