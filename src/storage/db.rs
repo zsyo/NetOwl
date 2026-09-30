@@ -48,7 +48,7 @@ fn migrate(conn: &Connection) {
     if current < 2 {
         // 版本 2:连接历史事件表(每条已完结连接一行,写入见 history.rs)。
         // remote_ip 存主机序 u32 便于网段 BETWEEN;归属地不落库(geoip 数据
-        // 会随重建漂移,渲染时实时反查);流量字节待 ETW 后加列
+        // 会随重建漂移,渲染时实时反查);流量字节由版本 5 迁移补列
         conn.execute(
             "CREATE TABLE IF NOT EXISTS conn_events (
                 event_id INTEGER NOT NULL,
@@ -112,6 +112,22 @@ fn migrate(conn: &Connection) {
         )
         .unwrap_or_else(|e| panic!("[Db] 创建 rules 表失败: {e}"));
         conn.execute("INSERT INTO schema_version (version) VALUES (4)", [])
+            .unwrap_or_else(|e| panic!("[Db] 写入 schema 版本失败: {e}"));
+    }
+    if current < 5 {
+        // 版本 5:conn_events 补流量字节列(ETW 合并的连接级收发字节,
+        // 连接完结时定稿)。存量行为 0:升级前无字节语义,显示按 0 B 处理
+        conn.execute(
+            "ALTER TABLE conn_events ADD COLUMN bytes_in INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .unwrap_or_else(|e| panic!("[Db] conn_events 补 bytes_in 列失败: {e}"));
+        conn.execute(
+            "ALTER TABLE conn_events ADD COLUMN bytes_out INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .unwrap_or_else(|e| panic!("[Db] conn_events 补 bytes_out 列失败: {e}"));
+        conn.execute("INSERT INTO schema_version (version) VALUES (5)", [])
             .unwrap_or_else(|e| panic!("[Db] 写入 schema 版本失败: {e}"));
     }
 }

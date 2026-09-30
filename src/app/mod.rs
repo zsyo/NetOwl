@@ -818,6 +818,8 @@ fn short_lived_event(f: &etw::FlowAgg) -> history::ClosedConn {
         proto: f.key.proto,
         remote_ip: f.key.remote_ip,
         remote_port: f.key.remote_port,
+        bytes_in: f.down_bytes,
+        bytes_out: f.up_bytes,
     }
 }
 

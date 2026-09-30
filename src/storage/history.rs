@@ -42,6 +42,9 @@ pub struct ClosedConn {
     pub proto: Protocol,
     pub remote_ip: Ipv4Addr,
     pub remote_port: u16,
+    /// 收发字节(ETW 合并的连接级累计,完结时定稿)
+    pub bytes_in: u64,
+    pub bytes_out: u64,
 }
 
 /// 连接快照对比器:跟踪活跃连接,消失时生成完结事件。
@@ -58,9 +61,9 @@ impl Tracker {
     }
 
     /// 对比当前活跃快照,返回本轮完结的连接。
-    /// 首见登记 first_seen;远端字段每轮随快照行刷新——UDP 行首见时可能
-    /// 尚无流量(远端回填发生在后续轮的 ETW 合并),不刷新会以 0.0.0.0 落库;
-    /// TCP 行远端稳定,刷新无影响
+    /// 首见登记 first_seen;远端与字节每轮随快照行刷新——UDP 行首见时可能
+    /// 尚无流量(远端回填/字节合并发生在后续轮的 ETW 处理),不刷新会以
+    /// 0.0.0.0/0 字节落库;TCP 行远端稳定,刷新无影响
     pub fn diff(&mut self, real: bool, conns: &[Connection], now: u64) -> Vec<ClosedConn> {
         if !real {
             self.index.clear();
@@ -80,10 +83,15 @@ impl Tracker {
                 proto: c.proto,
                 remote_ip: c.remote_ip,
                 remote_port: c.remote_port,
+                bytes_in: c.bytes_in,
+                bytes_out: c.bytes_out,
             });
-            // 首见登记 first_seen,远端每轮刷新(见函数注释)
+            // 首见登记 first_seen,远端与字节每轮刷新(见函数注释):
+            // 字节随 ETW 合并逐轮增长,只登记首见会以 0 落库
             e.remote_ip = c.remote_ip;
             e.remote_port = c.remote_port;
+            e.bytes_in = c.bytes_in;
+            e.bytes_out = c.bytes_out;
         }
         let gone: Vec<u64> = self
             .index
@@ -224,8 +232,8 @@ fn write_batch(conn: &mut Db, events: &[ClosedConn]) {
     };
     for e in events {
         if let Err(e) = tx.execute(
-            "INSERT INTO conn_events (event_id, first_seen, last_seen, pid, process, proc_path, signed, proto, remote_ip, remote_port)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            "INSERT INTO conn_events (event_id, first_seen, last_seen, pid, process, proc_path, signed, proto, remote_ip, remote_port, bytes_in, bytes_out)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 e.event_id as i64,
                 e.first_seen as i64,
@@ -236,7 +244,9 @@ fn write_batch(conn: &mut Db, events: &[ClosedConn]) {
                 e.signed.as_str(),
                 e.proto.as_str(),
                 u32::from(e.remote_ip),
-                e.remote_port
+                e.remote_port,
+                e.bytes_in as i64,
+                e.bytes_out as i64
             ],
         ) {
             tracing::warn!("[History] 写入连接历史失败: {e}");
