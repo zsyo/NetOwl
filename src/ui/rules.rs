@@ -257,14 +257,15 @@ fn wfp_status_line(ui: &mut egui::Ui, i18n: &I18n, status: &wfp::Status) {
     });
 }
 
-/// 表格列宽(逻辑点);表头与数据列同宽,add_sized 居中
+/// 表格列宽(逻辑点);表头与数据列同宽,add_sized 居中。
+/// 定宽列合计约 1160(含列间距),1440 最小窗口中央区(~1200)基本占满
 const COL_ENABLED: f32 = 44.0;
-const COL_NAME: f32 = 170.0;
+const COL_NAME: f32 = 220.0;
 const COL_ACTION: f32 = 56.0;
 const COL_DIRECTION: f32 = 64.0;
 const COL_PROTO: f32 = 56.0;
-const COL_PROCESS: f32 = 160.0;
-const COL_REMOTE: f32 = 160.0;
+const COL_PROCESS: f32 = 220.0;
+const COL_REMOTE: f32 = 220.0;
 const COL_PORT: f32 = 44.0;
 const COL_OPS: f32 = 120.0;
 

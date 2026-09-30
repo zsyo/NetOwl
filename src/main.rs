@@ -62,7 +62,8 @@ fn main() -> eframe::Result {
                 .with_inner_size([w as f32, h as f32]);
         }
         None => {
-            viewport = viewport.with_inner_size([1440.0, 800.0]);
+            // 无历史几何时用默认窗口尺寸(与最小尺寸一致)
+            viewport = viewport.with_inner_size([MIN_WINDOW_SIZE.0, MIN_WINDOW_SIZE.1]);
         }
     }
     let options = eframe::NativeOptions {

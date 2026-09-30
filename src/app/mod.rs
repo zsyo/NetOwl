@@ -59,8 +59,9 @@ const TRAFFIC_INTERVAL_ACTIVE: Duration = Duration::from_secs(1);
 const TRAFFIC_INTERVAL_HIDDEN: Duration = Duration::from_secs(5);
 /// 速率历史采样点数(约 1 分钟窗口,迷你走势图用)
 const RATE_HIST_LEN: usize = 60;
-/// 主窗口最小逻辑尺寸(main.rs 视口 min_inner_size 与无边框缩放钳制同源)
-pub const MIN_WINDOW_SIZE: (f32, f32) = (1280.0, 720.0);
+/// 主窗口最小逻辑尺寸(= 默认窗口尺寸;main.rs 视口 min_inner_size 与
+/// 无边框缩放钳制同源)
+pub const MIN_WINDOW_SIZE: (f32, f32) = (1440.0, 800.0);
 /// WFP 过滤器目标集合同步间隔(与采集同频:进程路径出现/消失的生效延迟上限)
 const WFP_SYNC_INTERVAL: Duration = Duration::from_secs(1);
 /// ETW 流量事件合并间隔(与表快照采集同频)

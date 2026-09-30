@@ -9,8 +9,9 @@ use crate::i18n::I18n;
 use crate::logging::LogLevel;
 use crate::storage::config::Config;
 
-/// 设置卡片最大宽度(避免超宽屏上行控件散布过远)
-const CARD_MAX_W: f32 = 640.0;
+/// 设置卡片最大宽度:1440 最小窗口下基本撑满中央区,
+/// 超宽屏(最大化)时以此封顶防行控件散布过远
+const CARD_MAX_W: f32 = 1200.0;
 
 /// 设置页:语言切换(词条即时生效)、主题、数据源;返回是否直接改动了配置。
 /// 日志区:级别下拉与文件开关立即生效(直接调 logging),窗口入口只置位状态
