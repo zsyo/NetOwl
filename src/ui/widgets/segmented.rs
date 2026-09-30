@@ -3,7 +3,7 @@
 use eframe::egui;
 use egui::{Button, CornerRadius, RichText, Stroke};
 
-use super::super::{icons, theme};
+use super::super::theme;
 
 /// 分段选择器:返回本轮被点击项的下标(无点击为 None)。
 ///
@@ -51,13 +51,4 @@ pub fn segmented(ui: &mut egui::Ui, items: &[(&str, &str)], selected: usize) -> 
             }
         });
     clicked
-}
-
-/// 排序方向三角(表头激活列后缀)
-pub fn sort_caret(ascending: bool) -> &'static str {
-    if ascending {
-        icons::CARET_UP_FILL
-    } else {
-        icons::CARET_DOWN_FILL
-    }
 }

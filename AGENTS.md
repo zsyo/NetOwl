@@ -109,7 +109,8 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   过滤口径[hide_local/hide_lan]);
   titlebar.rs:自绘无边框标题栏(拖动 StartDrag/双击最大化/窗控三钮,关闭走
   隐藏到托盘同路径,app 层处理 TitleAction);connections.rs:连接页(统一
-  表头可排序[header_sort_cell 整格可点,方向三角非激活透明占位防列宽抖动]、
+  表头可排序[header_sort_cell 整格可点,常驻置灰上下双三角标识可排序,
+  激活列点亮当前方向,占位与状态无关防列宽抖动]、
   行悬停高亮[Order::Background 垫底]、协议/动作徽章、数字列右对齐[num_cell]);
   settings.rs:设置页(分组卡片:外观/监控/日志,行式布局左标签
   右控件,主题分段切换);widgets/:公共组件库(header 页头/badge 胶囊徽章/

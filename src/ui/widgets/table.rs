@@ -5,9 +5,9 @@
 //! 行底色画在行内容之前,与行悬停垫底同为垫底层,悬停整体覆盖。
 
 use eframe::egui;
-use egui::{Align, Color32, FontId, Label, Layout, RichText, Stroke};
+use egui::{Align, Color32, FontId, Label, Layout, RichText, Shape, Stroke};
 
-use super::super::{theme, widgets};
+use super::super::theme;
 
 /// 表头单元格垂直内边距:决定表头行高手感(与旧按钮 padding.y 一致)
 const HEADER_PAD_Y: f32 = 3.0;
@@ -83,19 +83,20 @@ pub fn header_cell_w(ui: &mut egui::Ui, w: f32, text: &str, right_align: bool) {
     });
 }
 
-/// galley 首行基线(相对行顶):不同字体 galley 拼接时按基线对齐
-fn first_baseline(galley: &egui::Galley) -> f32 {
-    galley
-        .rows
-        .first()
-        .and_then(|row| row.glyphs.first())
-        .map_or(galley.size().y, |glyph| glyph.pos.y)
-}
+/// 表头排序双三角几何:实心直角三角取 Bootstrap caret-fill 同款比例
+/// (宽:高 ≈ 2:1),上下两枚间距 1.5px,块总高约 9.5px,与 SM 表头文字协调
+const CARET_W: f32 = 7.0;
+const CARET_H: f32 = 4.0;
+const CARET_GAP_Y: f32 = 1.5;
+/// 表头文字与三角块的水平间距
+const CARET_GAP_X: f32 = 4.0;
 
 /// 可排序表头单元格:整个单元格可点(点击区 = 本列宽 x 表头行高),激活列
-/// 整格高亮并带方向三角,点击返回(由调用方更新排序状态)。
-/// 方向三角始终参与测量,非激活时以全透明字形占位:列宽在非激活时即含三角位,
-/// 点击排序不会因列宽变化引起页面抖动;文字贴列缘,与数据列缘一致
+/// 整格高亮。表头常驻置灰上下双三角标识本列可排序,激活列按当前方向点亮
+/// 其中一枚(浅色主题置黑、深色主题置亮),另一枚保持灰色;点击返回
+/// (由调用方更新排序状态)。
+/// 三角块占位与激活状态、方向无关:列宽在非激活时即含三角位,点击排序不会
+/// 因列宽变化引起页面抖动;文字贴列缘,与数据列缘一致
 /// (`right_align` 供数据右对齐的数字列:文字与三角整体贴列右缘)。
 /// `cell_w` = 本列宽(与数据列定宽一致,独立表头 Grid 亦能对齐);
 /// 内容宽超过列宽时以内容宽兜底
@@ -109,20 +110,14 @@ pub fn header_sort_cell(
 ) -> egui::Response {
     let p = theme::c();
     let painter = ui.painter().clone();
-    let font = FontId::proportional(theme::font::SM);
     let text_color = if active { p.text } else { p.text_dim };
-    let text_galley = painter.layout_no_wrap(text.to_owned(), font.clone(), text_color);
-    // 三角前留一个空格,与旧按钮文字串同构;非激活仅占测量宽度不可见
-    let caret_galley = painter.layout_no_wrap(
-        format!(" {}", widgets::segmented::sort_caret(ascending)),
-        font,
-        if active {
-            text_color
-        } else {
-            Color32::TRANSPARENT
-        },
+    let text_galley = painter.layout_no_wrap(
+        text.to_owned(),
+        FontId::proportional(theme::font::SM),
+        text_color,
     );
-    let content_w = text_galley.size().x + caret_galley.size().x;
+    let text_w = text_galley.size().x;
+    let content_w = text_w + CARET_GAP_X + CARET_W;
     let row_h = (text_galley.size().y + 2.0 * HEADER_PAD_Y).max(ui.spacing().interact_size.y);
     let w = cell_w.max(content_w);
     let (rect, _) = ui.allocate_exact_size(egui::vec2(w, row_h), egui::Sense::click());
@@ -144,19 +139,45 @@ pub fn header_sort_cell(
         painter.rect_filled(resp.rect, theme::RADIUS_SM, p.hover_bg);
     }
 
-    // 文字贴列缘(左右随数据对齐)、行内垂直居中;三角与文字按基线对齐
-    // (图标字体行高不同)
+    // 文字贴列缘(左右随数据对齐)、行内垂直居中;三角块中心与文字 galley
+    // 中心同基准(字形视觉中心与 galley 中心偏差不足 1px)
     let x = if right_align {
         rect.left() + w - content_w
     } else {
         rect.left()
     };
     let y = rect.center().y - text_galley.size().y * 0.5;
-    let dy = first_baseline(&text_galley) - first_baseline(&caret_galley);
-    let caret_x = x + text_galley.size().x;
     painter.galley(egui::pos2(x, y), text_galley, text_color);
-    painter.galley(egui::pos2(caret_x, y + dy), caret_galley, text_color);
+
+    // 双三角:未激活列整体置灰;激活列点亮当前方向(升序上、降序下)
+    let caret_cx = x + text_w + CARET_GAP_X + CARET_W * 0.5;
+    let cy = rect.center().y;
+    let tri_offset = (CARET_H + CARET_GAP_Y) * 0.5;
+    let up_color = if active && ascending {
+        p.text
+    } else {
+        p.text_dim
+    };
+    let down_color = if active && !ascending {
+        p.text
+    } else {
+        p.text_dim
+    };
+    caret_tri(&painter, caret_cx, cy - tri_offset, true, up_color);
+    caret_tri(&painter, caret_cx, cy + tri_offset, false, down_color);
     resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// 表头排序方向三角:实心等腰直角三角形,cx/cy 为三角中心,`up` 时尖朝上
+fn caret_tri(painter: &egui::Painter, cx: f32, cy: f32, up: bool, color: Color32) {
+    let (x0, x1) = (cx - CARET_W * 0.5, cx + CARET_W * 0.5);
+    let (y0, y1) = (cy - CARET_H * 0.5, cy + CARET_H * 0.5);
+    let pts = if up {
+        vec![egui::pos2(x0, y1), egui::pos2(x1, y1), egui::pos2(cx, y0)]
+    } else {
+        vec![egui::pos2(x0, y0), egui::pos2(x1, y0), egui::pos2(cx, y1)]
+    };
+    painter.add(Shape::convex_polygon(pts, color, Stroke::NONE));
 }
 
 /// 表格行间距(Grid spacing.y):行底色范围与行高测量共用
