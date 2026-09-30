@@ -5,12 +5,17 @@
 //! 行底色画在行内容之前,与行悬停垫底同为垫底层,悬停整体覆盖。
 
 use eframe::egui;
-use egui::{Align, Color32, FontId, Label, Layout, RichText, Shape, Stroke};
+use egui::{Align, Color32, FontId, Label, Layout, RichText, Shape, Stroke, UiBuilder};
 
 use super::super::theme;
 
 /// 表头单元格垂直内边距:决定表头行高手感(与旧按钮 padding.y 一致)
 const HEADER_PAD_Y: f32 = 3.0;
+
+/// 单元格内容与列边缘的水平内边距:表格列为贴列布局(Grid spacing.x = 0),
+/// 列的视觉间隔由相邻格的内容留白形成(右格 pad + 左格 pad),表头激活底色
+/// 则横跨整列宽,与行斑马纹/悬停底连续
+pub const CELL_PAD_X: f32 = theme::sp::MD;
 
 /// 数字单元格:右对齐 + 语义色(速率/字节等可比大小数值列统一入口)
 pub fn num_cell(ui: &mut egui::Ui, text: String, color: Color32) -> egui::Response {
@@ -21,50 +26,43 @@ pub fn num_cell(ui: &mut egui::Ui, text: String, color: Color32) -> egui::Respon
 }
 
 /// 定宽左对齐单元格:先在父布局精确占位(推进光标、参与 Grid 列宽测量),
-/// 子 UI 画进该矩形。allocate_ui_with_layout 的尺寸是上限、内容小会收缩,
-/// 不能用于定宽列;长文本配 TextWrapMode::Truncate 防撑破列宽
+/// 子 UI 画进该矩形、内容左右各缩进 CELL_PAD_X。allocate_ui_with_layout 的
+/// 尺寸是上限、内容小会收缩,不能用于定宽列;长文本配 TextWrapMode::Truncate
+/// 防撑破列宽
 pub fn fixed_cell(ui: &mut egui::Ui, w: f32, h: f32, add: impl FnOnce(&mut egui::Ui)) {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(w, h), egui::Sense::hover());
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+    let mut child = ui.new_child(UiBuilder::new().max_rect(pad_rect(rect)));
     child.with_layout(Layout::left_to_right(Align::Center), add);
 }
 
 /// 定宽右对齐单元格(数字列):行高取虚拟化表格标准行 22
 pub fn fixed_num_cell(ui: &mut egui::Ui, w: f32, add: impl FnOnce(&mut egui::Ui)) {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 22.0), egui::Sense::hover());
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+    let mut child = ui.new_child(UiBuilder::new().max_rect(pad_rect(rect)));
     child.with_layout(Layout::right_to_left(Align::Center), add);
 }
 
 /// 定宽居中单元格(徽章等自适应宽内容):水平与垂直均居中于格
 pub fn fixed_center_cell(ui: &mut egui::Ui, w: f32, h: f32, add: impl FnOnce(&mut egui::Ui)) {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(w, h), egui::Sense::hover());
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+    let mut child = ui.new_child(UiBuilder::new().max_rect(pad_rect(rect)));
     child.with_layout(
         Layout::left_to_right(Align::Center).with_main_align(Align::Center),
         add,
     );
 }
 
-/// 表头单元格(纯展示列):小号加粗弱化文字,内容自适应宽
-/// (用于数据同 Grid 的表头,列宽由数据列决定)
-pub fn header_cell(ui: &mut egui::Ui, text: &str) {
-    ui.add(
-        Label::new(
-            RichText::new(text)
-                .size(theme::font::SM)
-                .strong()
-                .color(theme::c().text_dim),
-        )
-        .wrap_mode(egui::TextWrapMode::Extend),
-    );
+/// 单元格内容区:占位矩形左右各缩进 CELL_PAD_X(高度不动)
+fn pad_rect(rect: egui::Rect) -> egui::Rect {
+    rect.shrink2(egui::vec2(CELL_PAD_X, 0.0))
 }
 
 /// 定宽表头单元格(纯展示列):显式列宽,用于独立表头 Grid 与数据 Grid
-/// 列宽对齐;文字贴列缘与数据对齐(`right_align` 供数据右对齐的数字列)
+/// 列宽对齐;内容缩进 CELL_PAD_X,与数据列内容对齐
+/// (`right_align` 供数据右对齐的数字列)
 pub fn header_cell_w(ui: &mut egui::Ui, w: f32, text: &str, right_align: bool) {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 16.0), egui::Sense::hover());
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+    let mut child = ui.new_child(UiBuilder::new().max_rect(pad_rect(rect)));
     let layout = if right_align {
         Layout::right_to_left(Align::Center)
     } else {
@@ -92,12 +90,12 @@ const CARET_GAP_Y: f32 = 1.5;
 const CARET_GAP_X: f32 = 4.0;
 
 /// 可排序表头单元格:整个单元格可点(点击区 = 本列宽 x 表头行高),激活列
-/// 整格高亮。表头常驻置灰上下双三角标识本列可排序,激活列按当前方向点亮
-/// 其中一枚(浅色主题置黑、深色主题置亮),另一枚保持灰色;点击返回
-/// (由调用方更新排序状态)。
+/// 整格高亮(横跨整列宽)。表头常驻置灰上下双三角标识本列可排序,激活列按
+/// 当前方向点亮其中一枚(浅色主题置黑、深色主题置亮),另一枚保持灰色;
+/// 点击返回(由调用方更新排序状态)。
 /// 三角块占位与激活状态、方向无关:列宽在非激活时即含三角位,点击排序不会
-/// 因列宽变化引起页面抖动;文字贴列缘,与数据列缘一致
-/// (`right_align` 供数据右对齐的数字列:文字与三角整体贴列右缘)。
+/// 因列宽变化引起页面抖动;内容左右缩进 CELL_PAD_X,与数据列内容对齐
+/// (`right_align` 供数据右对齐的数字列)。
 /// `cell_w` = 本列宽(与数据列定宽一致,独立表头 Grid 亦能对齐);
 /// 内容宽超过列宽时以内容宽兜底
 pub fn header_sort_cell(
@@ -119,7 +117,7 @@ pub fn header_sort_cell(
     let text_w = text_galley.size().x;
     let content_w = text_w + CARET_GAP_X + CARET_W;
     let row_h = (text_galley.size().y + 2.0 * HEADER_PAD_Y).max(ui.spacing().interact_size.y);
-    let w = cell_w.max(content_w);
+    let w = cell_w.max(content_w + 2.0 * CELL_PAD_X);
     let (rect, _) = ui.allocate_exact_size(egui::vec2(w, row_h), egui::Sense::click());
     let resp = ui.interact(
         rect,
@@ -139,12 +137,12 @@ pub fn header_sort_cell(
         painter.rect_filled(resp.rect, theme::RADIUS_SM, p.hover_bg);
     }
 
-    // 文字贴列缘(左右随数据对齐)、行内垂直居中;三角块中心与文字 galley
-    // 中心同基准(字形视觉中心与 galley 中心偏差不足 1px)
+    // 内容贴列缘再缩进 CELL_PAD_X(左右随数据对齐)、行内垂直居中;三角块
+    // 中心与文字 galley 中心同基准(字形视觉中心与 galley 中心偏差不足 1px)
     let x = if right_align {
-        rect.left() + w - content_w
+        rect.left() + w - content_w - CELL_PAD_X
     } else {
-        rect.left()
+        rect.left() + CELL_PAD_X
     };
     let y = rect.center().y - text_galley.size().y * 0.5;
     painter.galley(egui::pos2(x, y), text_galley, text_color);

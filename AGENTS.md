@@ -114,8 +114,11 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   行悬停高亮[Order::Background 垫底]、协议/动作徽章、数字列右对齐[num_cell]);
   settings.rs:设置页(分组卡片:外观/监控/日志,行式布局左标签
   右控件,主题分段切换);widgets/:公共组件库(header 页头/badge 胶囊徽章/
-  segmented 分段选择/toggle 滑动开关/table 统一表头与行底色[num_cell 数字
-  右对齐单元格,Grid 末列须空占位防右对齐横跨]/process 进程
+  segmented 分段选择/toggle 滑动开关/table 统一表头与行底色[列贴列布局
+  (Grid spacing.x=0),内容与列缘间距由 CELL_PAD_X 提供,定宽列宽须含
+  2×CELL_PAD_X;num_cell 数字右对齐单元格,Grid 末列须空占位防右对齐
+  横跨;Grid 格内禁用 add_space(egui 断言 panic),缩进须用定宽占位 +
+  max_rect shrink 子区域]/process 进程
   图标占位/card 卡片/sparkline 多序列迷你走势图,新页面禁止重复实现);
   ask.rs:新连接询问弹窗(右下角无标题栏 toast,盾形图标标题,范围下拉 +
   允许[accent 填充 on_accent 字]/拒绝[danger 描边],进度条内嵌剩余秒数);

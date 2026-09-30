@@ -292,22 +292,20 @@ fn rows_table(
                 empty_hint(ui, i18n);
                 return;
             }
-            const D_PROTO_W: f32 = 56.0;
+            const D_PROTO_W: f32 = 64.0;
             const D_LOC_W: f32 = 112.0;
-            const D_SEEN_W: f32 = 105.0;
+            const D_SEEN_W: f32 = 112.0;
             const D_DUR_W: f32 = 80.0;
             const D_BYTES_W: f32 = 90.0;
             // 表格总宽在虚拟化容器之外取(Grid 闭包内 available_width 被
             // grid 布局器接管,返回当前列宽而非总宽)
             let table_w = ui.available_width();
-            let flex_total = (table_w
-                - 24.0 * 7.0
-                - (D_PROTO_W + D_LOC_W + D_SEEN_W + D_DUR_W + D_BYTES_W * 2.0))
-                .max(320.0);
+            let flex_total =
+                (table_w - (D_PROTO_W + D_LOC_W + D_SEEN_W + D_DUR_W + D_BYTES_W * 2.0)).max(320.0);
             let flex_w = flex_total * 0.5;
             egui::Grid::new("history_detail_header")
                 .num_columns(8)
-                .spacing([24.0, 0.0])
+                .spacing([0.0, 0.0])
                 .show(ui, |ui| {
                     for (key, w, right) in [
                         ("history-col-process", flex_w, false),
@@ -333,7 +331,7 @@ fn rows_table(
                     egui::Grid::new("history_detail_rows")
                         .num_columns(8)
                         .striped(false)
-                        .spacing([24.0, widgets::table::ROW_SPACING_Y])
+                        .spacing([0.0, widgets::table::ROW_SPACING_Y])
                         .show(ui, |ui| {
                             for r_idx in row_range {
                                 let r = &rows[r_idx];
@@ -409,15 +407,14 @@ fn rows_table(
                 empty_hint(ui, i18n);
                 return;
             }
-            const A_PROTO_W: f32 = 56.0;
+            const A_PROTO_W: f32 = 64.0;
             const A_LOC_W: f32 = 112.0;
             const A_CNT_W: f32 = 65.0;
             const A_DUR_W: f32 = 80.0;
-            const A_LAST_W: f32 = 105.0;
+            const A_LAST_W: f32 = 112.0;
             const A_BYTES_W: f32 = 90.0;
             let table_w = ui.available_width();
             let flex_total = (table_w
-                - 24.0 * 8.0
                 - (A_PROTO_W + A_LOC_W + A_CNT_W + A_DUR_W + A_LAST_W + A_BYTES_W * 2.0))
                 .max(320.0);
             let flex_w = flex_total * 0.5;
@@ -426,7 +423,7 @@ fn rows_table(
             // 数据左对齐表头贴左,下载/上传总量数据右对齐表头贴右
             egui::Grid::new("history_aggregate_header")
                 .num_columns(9)
-                .spacing([24.0, 0.0])
+                .spacing([0.0, 0.0])
                 .show(ui, |ui| {
                     for (key, w) in [
                         ("history-col-process", flex_w),
@@ -493,7 +490,7 @@ fn rows_table(
                     egui::Grid::new("history_aggregate_rows")
                         .num_columns(9)
                         .striped(false)
-                        .spacing([24.0, widgets::table::ROW_SPACING_Y])
+                        .spacing([0.0, widgets::table::ROW_SPACING_Y])
                         .show(ui, |ui| {
                             for r_idx in row_range {
                                 let r = &rows[r_idx];
@@ -582,14 +579,13 @@ fn rows_table(
             const SUM_CNT_W: f32 = 65.0;
             const SUM_DUR_W: f32 = 85.0;
             let table_w = ui.available_width();
-            let flex_w =
-                (table_w - 24.0 * 4.0 - (SUM_UP_W + SUM_DOWN_W + SUM_CNT_W + SUM_DUR_W)).max(240.0);
+            let flex_w = (table_w - (SUM_UP_W + SUM_DOWN_W + SUM_CNT_W + SUM_DUR_W)).max(240.0);
             let summary_sort = &mut state.summary_sort;
             // 表头固定在滚动区外(虚拟化行定位不含表头);全部数字列数据右对齐,
             // 表头贴右
             egui::Grid::new("history_summary_header")
                 .num_columns(5)
-                .spacing([24.0, 0.0])
+                .spacing([0.0, 0.0])
                 .show(ui, |ui| {
                     widgets::table::header_cell_w(
                         ui,
@@ -643,7 +639,7 @@ fn rows_table(
                     egui::Grid::new("history_summary_rows")
                         .num_columns(5)
                         .striped(false)
-                        .spacing([24.0, widgets::table::ROW_SPACING_Y])
+                        .spacing([0.0, widgets::table::ROW_SPACING_Y])
                         .show(ui, |ui| {
                             for r_idx in row_range {
                                 let r = &rows[r_idx];

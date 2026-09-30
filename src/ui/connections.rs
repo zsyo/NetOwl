@@ -77,17 +77,17 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
             egui::Grid::new("connections_grid")
                 .num_columns(9)
                 .striped(true)
-                .spacing([24.0, widgets::table::ROW_SPACING_Y])
+                .spacing([0.0, widgets::table::ROW_SPACING_Y])
                 .show(ui, |ui| {
                     // 定宽列(容纳表头与内容上限)+ 进程/远端弹性列:窗口放大时
-                    // 表格铺满中央区,弹性列长文本 Truncate 逐步展示
-                    const C_PROTO_W: f32 = 56.0;
+                    // 表格铺满中央区,弹性列长文本 Truncate 逐步展示;
+                    // 列贴列布局,内容间隔由单元格水平内边距形成
+                    const C_PROTO_W: f32 = 64.0;
                     const C_LOC_W: f32 = 112.0;
                     const C_RATE_W: f32 = 90.0;
                     const C_TOTAL_W: f32 = 90.0;
                     const C_ACTION_W: f32 = 70.0;
                     let flex_total = (table_w
-                        - 24.0 * 8.0
                         - (C_PROTO_W + C_LOC_W + C_RATE_W * 2.0 + C_TOTAL_W * 2.0 + C_ACTION_W))
                         .max(320.0);
                     let flex_w = flex_total * 0.5;
@@ -119,7 +119,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                                     });
                                 }
                             }
-                            None => widgets::table::header_cell(ui, &i18n.t(key)),
+                            None => widgets::table::header_cell_w(ui, w, &i18n.t(key), right),
                         }
                     };
                     header(ui, "col-process", Some(ConnSort::Process), false, flex_w);

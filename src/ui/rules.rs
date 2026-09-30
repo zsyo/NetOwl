@@ -259,20 +259,30 @@ fn wfp_status_line(ui: &mut egui::Ui, i18n: &I18n, status: &wfp::Status) {
     });
 }
 
-/// 表格列宽(逻辑点);表头与数据列同宽,add_sized 居中。
-/// 定宽列 + 名称/进程/远端三列弹性均分剩余宽:窗口放大时表格铺满中央区
-const COL_ENABLED: f32 = 44.0;
-const COL_ACTION: f32 = 56.0;
+/// 表格列宽(逻辑点);表头与数据列同宽,内容居中。
+/// 列贴列布局(Grid spacing.x = 0),内容与列缘间距由单元格内边距
+/// CELL_PAD_X 提供,定宽列 = 内容宽 + 2×CELL_PAD_X;
+/// 名称/进程/远端三列弹性均分剩余宽:窗口放大时表格铺满中央区
+const COL_ENABLED: f32 = 64.0;
+const COL_ACTION: f32 = 64.0;
 const COL_DIRECTION: f32 = 64.0;
-const COL_PROTO: f32 = 56.0;
-const COL_PORT: f32 = 44.0;
-const COL_OPS: f32 = 120.0;
+const COL_PROTO: f32 = 64.0;
+const COL_PORT: f32 = 64.0;
+const COL_OPS: f32 = 128.0;
 
 fn header_cell(ui: &mut egui::Ui, w: f32, text: String) {
+    // 列贴列布局:占位整列宽,内容区(w - 2×CELL_PAD_X)内居中,与数据格
+    // (fixed_cell 内容同缩进)同心;Grid 格内不能 add_space(egui 断言),
+    // 用定宽占位 + 缩进子区域承载
+    let pad = widgets::table::CELL_PAD_X;
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 16.0), egui::Sense::hover());
+    let mut child = ui.new_child(
+        egui::UiBuilder::new().max_rect(rect.shrink2(egui::vec2(pad, 0.0))),
+    );
     // add_sized(居中布局)实测表头稳定居中于列;徽章列的数据格用
     // 手动 add_space 居中(见下),两者同心
-    ui.add_sized(
-        [w, 16.0],
+    child.add_sized(
+        [w - 2.0 * pad, 16.0],
         Label::new(
             RichText::new(text)
                 .size(theme::font::SM)
@@ -305,14 +315,13 @@ fn rules_table(
             // grid 布局器接管,返回当前列宽(上帧值)而非总宽
             let table_w = ui.available_width();
             let flex_w = ((table_w
-                - 14.0 * 8.0
                 - (COL_ENABLED + COL_ACTION + COL_DIRECTION + COL_PROTO + COL_PORT + COL_OPS))
                 / 3.0)
                 .max(220.0);
             egui::Grid::new("rules_grid")
                 .num_columns(9)
                 .striped(true)
-                .spacing([14.0, widgets::table::ROW_SPACING_Y])
+                .spacing([0.0, widgets::table::ROW_SPACING_Y])
                 .show(ui, |ui| {
                     header_cell(ui, COL_ENABLED, i18n.t("rules-col-enabled"));
                     header_cell(ui, flex_w, i18n.t("rules-col-name"));
@@ -333,14 +342,16 @@ fn rules_table(
                         let row_top = ui.cursor().top();
                         row_hover.begin(ui, table_left, table_right, row_top);
                         let mut enabled = rule.enabled;
-                        let toggle = widgets::toggle::toggle_switch(
-                            ui,
-                            &mut enabled,
-                            egui::Id::new(("rule-enabled-toggle", rule.id)),
-                        );
-                        if toggle.changed() {
-                            let _ = rules.set_enabled(db, rule.id, enabled);
-                        }
+                        widgets::table::fixed_center_cell(ui, COL_ENABLED, 26.0, |ui| {
+                            let toggle = widgets::toggle::toggle_switch(
+                                ui,
+                                &mut enabled,
+                                egui::Id::new(("rule-enabled-toggle", rule.id)),
+                            );
+                            if toggle.changed() {
+                                let _ = rules.set_enabled(db, rule.id, enabled);
+                            }
+                        });
                         // 会话临时规则(负 id):名称加标注并以弱化色显示
                         let is_temp = rule.id < 0;
                         let name_text = if is_temp {
@@ -348,105 +359,109 @@ fn rules_table(
                         } else {
                             rule.name.clone()
                         };
-                        ui.add_sized(
-                            [flex_w, 18.0],
-                            egui::Label::new(
-                                RichText::new(name_text).size(theme::font::BODY).color(
-                                    if is_temp {
-                                        theme::c().text_dim
-                                    } else {
-                                        theme::c().text
-                                    },
-                                ),
-                            )
-                            .wrap_mode(egui::TextWrapMode::Truncate),
-                        );
+                        widgets::table::fixed_cell(ui, flex_w, 18.0, |ui| {
+                            ui.add_sized(
+                                [flex_w - 2.0 * widgets::table::CELL_PAD_X, 18.0],
+                                egui::Label::new(
+                                    RichText::new(name_text).size(theme::font::BODY).color(
+                                        if is_temp {
+                                            theme::c().text_dim
+                                        } else {
+                                            theme::c().text
+                                        },
+                                    ),
+                                )
+                                .wrap_mode(egui::TextWrapMode::Truncate),
+                            );
+                        });
                         let (action_key, action_kind) = match rule.action {
                             Action::Allow => ("rule-action-allow", widgets::badge::BadgeKind::Ok),
                             Action::Block => {
                                 ("rule-action-block", widgets::badge::BadgeKind::Danger)
                             }
                         };
-                        // 徽章为自适应宽 Frame:格内手动 add_space 水平居中
-                        // (egui main Center 对 Frame 不生效,实测贴格左;
-                        // 垂直居中由格 26=行高承担)。徽章宽 = 文字宽 +
-                        // 水平内边距 16(Margin::symmetric(8, ..))
+                        // 徽章为自适应宽 Frame:定宽格内容区(列宽 - 2×CELL_PAD_X)
+                        // 内手动 add_space 水平居中(egui main Center 对 Frame 不生效,
+                        // 实测贴格左;垂直居中由格 26=行高承担)。
+                        // 徽章宽 = 文字宽 + 水平内边距 16(Margin::symmetric(8, ..))
                         let badge_text = i18n.t(action_key);
                         let badge_w = super::text_width(ui, &badge_text, theme::font::MICRO) + 16.0;
+                        let content_w = COL_ACTION - 2.0 * widgets::table::CELL_PAD_X;
                         widgets::table::fixed_cell(ui, COL_ACTION, 26.0, |ui| {
-                            ui.add_space(((COL_ACTION - badge_w) / 2.0).max(0.0));
+                            ui.add_space(((content_w - badge_w) / 2.0).max(0.0));
                             widgets::badge::badge(ui, &badge_text, action_kind);
                         });
-                        ui.add_sized(
-                            [COL_DIRECTION, 18.0],
-                            egui::Label::new(theme::dim_text(
-                                &direction_name(i18n, rule.direction),
-                                theme::font::BODY,
-                            )),
-                        );
+                        widgets::table::fixed_cell(ui, COL_DIRECTION, 18.0, |ui| {
+                            ui.add_sized(
+                                [COL_DIRECTION - 2.0 * widgets::table::CELL_PAD_X, 18.0],
+                                egui::Label::new(theme::dim_text(
+                                    &direction_name(i18n, rule.direction),
+                                    theme::font::BODY,
+                                )),
+                            );
+                        });
                         let proto_text = proto_name(i18n, rule.proto);
                         let proto_w = super::text_width(ui, &proto_text, theme::font::MICRO) + 16.0;
+                        let content_w = COL_PROTO - 2.0 * widgets::table::CELL_PAD_X;
                         widgets::table::fixed_cell(ui, COL_PROTO, 26.0, |ui| {
-                            ui.add_space(((COL_PROTO - proto_w) / 2.0).max(0.0));
+                            ui.add_space(((content_w - proto_w) / 2.0).max(0.0));
                             widgets::badge::badge(
                                 ui,
                                 &proto_text,
                                 widgets::badge::BadgeKind::Neutral,
                             );
                         });
-                        ui.add_sized(
-                            [flex_w, 18.0],
-                            egui::Label::new(theme::dim_text(
-                                &process_display(&rule),
-                                theme::font::BODY,
-                            ))
-                            .wrap_mode(egui::TextWrapMode::Truncate),
-                        );
-                        ui.add_sized(
-                            [flex_w, 18.0],
-                            egui::Label::new(theme::dim_text(
-                                &remote_display(&rule),
-                                theme::font::BODY,
-                            ))
-                            .wrap_mode(egui::TextWrapMode::Truncate),
-                        );
-                        ui.add_sized(
-                            [COL_PORT, 18.0],
-                            egui::Label::new(theme::dim_text(
-                                &port_display(rule.port),
-                                theme::font::BODY,
-                            )),
-                        );
-                        ui.allocate_ui_with_layout(
-                            egui::vec2(COL_OPS, 26.0),
-                            egui::Layout::left_to_right(egui::Align::Min),
-                            |ui| {
-                                ui.style_mut().spacing.item_spacing.x = 2.0;
-                                if icon_btn(ui, icons::ARROW_UP, i18n.t("rules-move-up"), false)
-                                    .clicked()
-                                {
-                                    let _ = rules.move_rule(db, rule.id, -1);
+                        widgets::table::fixed_cell(ui, flex_w, 18.0, |ui| {
+                            ui.add_sized(
+                                [flex_w - 2.0 * widgets::table::CELL_PAD_X, 18.0],
+                                egui::Label::new(theme::dim_text(
+                                    &process_display(&rule),
+                                    theme::font::BODY,
+                                ))
+                                .wrap_mode(egui::TextWrapMode::Truncate),
+                            );
+                        });
+                        widgets::table::fixed_cell(ui, flex_w, 18.0, |ui| {
+                            ui.add_sized(
+                                [flex_w - 2.0 * widgets::table::CELL_PAD_X, 18.0],
+                                egui::Label::new(theme::dim_text(
+                                    &remote_display(&rule),
+                                    theme::font::BODY,
+                                ))
+                                .wrap_mode(egui::TextWrapMode::Truncate),
+                            );
+                        });
+                        widgets::table::fixed_cell(ui, COL_PORT, 18.0, |ui| {
+                            ui.add_sized(
+                                [COL_PORT - 2.0 * widgets::table::CELL_PAD_X, 18.0],
+                                egui::Label::new(theme::dim_text(
+                                    &port_display(rule.port),
+                                    theme::font::BODY,
+                                )),
+                            );
+                        });
+                        widgets::table::fixed_cell(ui, COL_OPS, 26.0, |ui| {
+                            ui.style_mut().spacing.item_spacing.x = 2.0;
+                            if icon_btn(ui, icons::ARROW_UP, i18n.t("rules-move-up"), false)
+                                .clicked()
+                            {
+                                let _ = rules.move_rule(db, rule.id, -1);
+                            }
+                            if icon_btn(ui, icons::ARROW_DOWN, i18n.t("rules-move-down"), false)
+                                .clicked()
+                            {
+                                let _ = rules.move_rule(db, rule.id, 1);
+                            }
+                            if icon_btn(ui, icons::PENCIL, i18n.t("rules-edit"), false).clicked() {
+                                state.draft = Some(Draft::from_rule(&rule));
+                            }
+                            if icon_btn(ui, icons::TRASH, i18n.t("rules-delete"), true).clicked() {
+                                if let Err(e) = rules.delete(db, rule.id) {
+                                    tracing::warn!("[Rules] 删除规则 {} 失败: {e}", rule.id);
                                 }
-                                if icon_btn(ui, icons::ARROW_DOWN, i18n.t("rules-move-down"), false)
-                                    .clicked()
-                                {
-                                    let _ = rules.move_rule(db, rule.id, 1);
-                                }
-                                if icon_btn(ui, icons::PENCIL, i18n.t("rules-edit"), false)
-                                    .clicked()
-                                {
-                                    state.draft = Some(Draft::from_rule(&rule));
-                                }
-                                if icon_btn(ui, icons::TRASH, i18n.t("rules-delete"), true)
-                                    .clicked()
-                                {
-                                    if let Err(e) = rules.delete(db, rule.id) {
-                                        tracing::warn!("[Rules] 删除规则 {} 失败: {e}", rule.id);
-                                    }
-                                    removed = true;
-                                }
-                            },
-                        );
+                                removed = true;
+                            }
+                        });
                         ui.end_row();
                         row_hover.end(ui, row_top);
                         if removed {
