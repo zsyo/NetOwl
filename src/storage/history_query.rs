@@ -198,7 +198,7 @@ pub fn query_usage(
     let sql = format!(
         "SELECT (last_seen + ?8) / {bucket_secs} AS bucket,
                 SUM(bytes_in) AS in_total, SUM(bytes_out) AS out_total
-         FROM conn_events {} GROUP BY bucket ORDER BY bucket LIMIT {QUERY_LIMIT}",
+         FROM conn_events {} GROUP BY bucket ORDER BY bucket DESC LIMIT {QUERY_LIMIT}",
         Filter::where_clause()
     );
     let mut stmt = db.prepare_cached(&sql)?;
@@ -214,7 +214,10 @@ pub fn query_usage(
             })
         },
     )?;
-    rows.collect()
+    // 倒序取 LIMIT(超上限时保留最近的桶),还原为时间正序供绘制
+    let mut out: Vec<UsageRow> = rows.collect::<Result<_, _>>()?;
+    out.reverse();
+    Ok(out)
 }
 
 /// 明细查询:按最后活动倒序,最多 QUERY_LIMIT 行
