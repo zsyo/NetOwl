@@ -6,6 +6,7 @@
 pub mod badge;
 pub mod card;
 pub mod header;
+pub mod menu;
 pub mod process;
 pub mod segmented;
 pub mod sparkline;

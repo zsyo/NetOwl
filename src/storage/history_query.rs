@@ -70,6 +70,7 @@ impl Filter {
 
 /// 明细行(一条已完结连接)
 pub struct DetailRow {
+    pub event_id: u64,
     pub first_seen: u64,
     pub last_seen: u64,
     pub pid: u32,
@@ -153,7 +154,7 @@ impl SummarySort {
 /// 明细查询:按最后活动倒序,最多 QUERY_LIMIT 行
 pub fn query_detail(db: &Db, f: &Filter) -> rusqlite::Result<Vec<DetailRow>> {
     let sql = format!(
-        "SELECT first_seen, last_seen, pid, process, proc_path, proto, remote_ip, remote_port,
+        "SELECT event_id, first_seen, last_seen, pid, process, proc_path, proto, remote_ip, remote_port,
                 bytes_in, bytes_out
          FROM conn_events {} ORDER BY last_seen DESC LIMIT {QUERY_LIMIT}",
         Filter::where_clause()
@@ -161,16 +162,17 @@ pub fn query_detail(db: &Db, f: &Filter) -> rusqlite::Result<Vec<DetailRow>> {
     let mut stmt = db.prepare_cached(&sql)?;
     let rows = stmt.query_map(rusqlite::params_from_iter(f.bind()), |row| {
         Ok(DetailRow {
-            first_seen: row.get::<_, i64>(0)? as u64,
-            last_seen: row.get::<_, i64>(1)? as u64,
-            pid: row.get::<_, i64>(2)? as u32,
-            process: row.get(3)?,
-            proc_path: row.get(4)?,
-            proto: parse_proto(&row.get::<_, String>(5)?),
-            remote_ip: Ipv4Addr::from(row.get::<_, i64>(6)? as u32),
-            remote_port: row.get::<_, i64>(7)? as u16,
-            bytes_in: row.get::<_, i64>(8)?.max(0) as u64,
-            bytes_out: row.get::<_, i64>(9)?.max(0) as u64,
+            event_id: row.get::<_, i64>(0)? as u64,
+            first_seen: row.get::<_, i64>(1)? as u64,
+            last_seen: row.get::<_, i64>(2)? as u64,
+            pid: row.get::<_, i64>(3)? as u32,
+            process: row.get(4)?,
+            proc_path: row.get(5)?,
+            proto: parse_proto(&row.get::<_, String>(6)?),
+            remote_ip: Ipv4Addr::from(row.get::<_, i64>(7)? as u32),
+            remote_port: row.get::<_, i64>(8)? as u16,
+            bytes_in: row.get::<_, i64>(9)?.max(0) as u64,
+            bytes_out: row.get::<_, i64>(10)?.max(0) as u64,
         })
     })?;
     rows.collect()
@@ -240,6 +242,45 @@ pub fn query_summary(
         })
     })?;
     rows.collect()
+}
+
+/// 待确认的批量删除(右键菜单发起,确认弹窗执行)。
+/// proto/remote_ip 均为 Some 时删除聚合组,否则删除整个进程
+#[derive(Clone)]
+pub struct PendingDelete {
+    pub process: String,
+    pub proto: Option<Protocol>,
+    pub remote_ip: Option<Ipv4Addr>,
+}
+
+/// 明细行删除:事件身份 + 首末时刻定位唯一行(端口复用产生同 event_id
+/// 的多次连接,由 first_seen 区分)
+pub fn delete_detail(db: &Db, r: &DetailRow) -> rusqlite::Result<usize> {
+    db.execute(
+        "DELETE FROM conn_events WHERE event_id = ?1 AND first_seen = ?2 AND last_seen = ?3",
+        rusqlite::params![r.event_id as i64, r.first_seen as i64, r.last_seen as i64],
+    )
+}
+
+/// 聚合组删除:同进程 + 协议 + 远端的全部记录
+pub fn delete_aggregate_group(
+    db: &Db,
+    process: &str,
+    proto: Protocol,
+    remote_ip: Ipv4Addr,
+) -> rusqlite::Result<usize> {
+    db.execute(
+        "DELETE FROM conn_events WHERE process = ?1 AND proto = ?2 AND remote_ip = ?3",
+        rusqlite::params![process, proto.as_str(), u32::from(remote_ip) as i64],
+    )
+}
+
+/// 进程全部记录删除
+pub fn delete_process(db: &Db, process: &str) -> rusqlite::Result<usize> {
+    db.execute(
+        "DELETE FROM conn_events WHERE process = ?1",
+        rusqlite::params![process],
+    )
 }
 
 fn parse_proto(s: &str) -> Protocol {
@@ -377,6 +418,8 @@ pub struct PageState {
     /// 结果或库大小需要重新加载
     pub dirty: bool,
     pub db_size: u64,
+    /// 右键发起的待确认批量删除(确认弹窗,同帧或次帧内决出)
+    pub pending_delete: Option<PendingDelete>,
     /// 已发起清理,延迟数帧后刷新(等写线程完成)
     purge_pending: Option<Instant>,
 }
@@ -394,6 +437,7 @@ impl PageState {
             rows: Rows::Detail(Vec::new()),
             dirty: true,
             db_size: 0,
+            pending_delete: None,
             purge_pending: None,
         }
     }

@@ -371,12 +371,12 @@ fn conn_menu(ui: &mut egui::Ui, conn: &Connection, elevated: bool, i18n: &I18n) 
     if conn.proto == Protocol::Tcp {
         let kill = ui.add_enabled(
             elevated,
-            egui::Button::new(RichText::new(i18n.t("conn-menu-kill")).size(theme::font::BODY)),
+            egui::Button::new(RichText::new(i18n.t("menu-kill")).size(theme::font::BODY)),
         );
         let kill = if elevated {
             kill
         } else {
-            kill.on_disabled_hover_text(i18n.t("conn-menu-kill-need-admin"))
+            kill.on_disabled_hover_text(i18n.t("menu-kill-need-admin"))
         };
         if kill.clicked() {
             match collector::close_tcp_connection(conn) {
@@ -398,28 +398,20 @@ fn conn_menu(ui: &mut egui::Ui, conn: &Connection, elevated: bool, i18n: &I18n) 
             }
         }
     }
-    if menu_item(ui, i18n.t("conn-menu-locate"), conn.proc_path.is_some()).clicked()
+    if widgets::menu::menu_item(ui, i18n.t("menu-locate"), conn.proc_path.is_some()).clicked()
         && let Some(path) = &conn.proc_path
     {
         paths::select_in_explorer(std::path::Path::new(path));
     }
-    if menu_item(ui, i18n.t("conn-menu-copy-remote"), true).clicked() {
+    if widgets::menu::menu_item(ui, i18n.t("menu-copy-remote"), true).clicked() {
         ui.ctx()
             .copy_text(format!("{}:{}", conn.remote_ip, conn.remote_port));
     }
-    if menu_item(ui, i18n.t("conn-menu-copy-path"), conn.proc_path.is_some()).clicked()
+    if widgets::menu::menu_item(ui, i18n.t("menu-copy-path"), conn.proc_path.is_some()).clicked()
         && let Some(path) = &conn.proc_path
     {
         ui.ctx().copy_text(path.clone());
     }
-}
-
-/// 菜单项按钮(可选禁用);返回响应供调用方处理点击与禁用提示
-fn menu_item(ui: &mut egui::Ui, text: String, enabled: bool) -> egui::Response {
-    ui.add_enabled(
-        enabled,
-        egui::Button::new(RichText::new(text).size(theme::font::BODY)),
-    )
 }
 
 /// 进程列第二行文本:签名状态 + 映像路径(超长取尾部保留文件名)

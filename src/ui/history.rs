@@ -10,9 +10,12 @@ use rusqlite::Connection as Db;
 use crate::i18n::I18n;
 use crate::model::{Connection, Place, Protocol, fmt_bytes};
 use crate::net::geoip;
+use crate::platform::paths;
 use crate::storage::config::Config;
 use crate::storage::history;
-use crate::storage::history_query::{self, AggregateSort, Rows, SummaryRow, SummarySort, ViewMode};
+use crate::storage::history_query::{
+    self, AggregateSort, PendingDelete, Rows, SummaryRow, SummarySort, ViewMode,
+};
 use crate::ui::{TOOLBAR_ROW_H, conn_visible, icons, theme, widgets};
 
 /// 历史页;返回是否直接改动了配置(勾选不再提醒/清空还原提醒)
@@ -43,7 +46,17 @@ pub fn show(
     toolbar(ui, state, i18n, db, writer, config, &mut config_changed);
     ui.add_space(theme::sp::SM);
 
-    rows_table(ui, state, i18n, icon_tex, default_icon_tex, conns, config);
+    rows_table(
+        ui,
+        state,
+        i18n,
+        icon_tex,
+        default_icon_tex,
+        conns,
+        db,
+        config,
+    );
+    confirm_delete_modal(ui, state, i18n, db);
     config_changed
 }
 
@@ -288,6 +301,7 @@ fn rows_table(
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
     default_icon_tex: Option<&egui::TextureHandle>,
     conns: &[Connection],
+    db: &Db,
     config: &Config,
 ) {
     match &state.rows {
@@ -340,7 +354,26 @@ fn rows_table(
                             for r_idx in row_range {
                                 let r = &rows[r_idx];
                                 let row_top = ui.cursor().top();
-                                row_background(ui, table_left, table_right, row_top, r_idx);
+                                let row_rect =
+                                    row_background(ui, table_left, table_right, row_top, r_idx);
+                                let row_resp = ui.interact(
+                                    row_rect,
+                                    egui::Id::new(("history_detail_row", r_idx)),
+                                    egui::Sense::click(),
+                                );
+                                row_resp.context_menu(|ui| {
+                                    if detail_menu(ui, r, i18n) {
+                                        match history_query::delete_detail(db, r) {
+                                            Ok(n) => {
+                                                state.dirty = true;
+                                                tracing::info!("[History] 已删除 {n} 条明细记录");
+                                            }
+                                            Err(e) => {
+                                                tracing::warn!("[History] 删除明细记录失败: {e}")
+                                            }
+                                        }
+                                    }
+                                });
                                 widgets::table::fixed_cell(ui, flex_w, 22.0, |ui| {
                                     proc_cell(
                                         ui,
@@ -499,7 +532,37 @@ fn rows_table(
                             for r_idx in row_range {
                                 let r = &rows[r_idx];
                                 let row_top = ui.cursor().top();
-                                row_background(ui, table_left, table_right, row_top, r_idx);
+                                let row_rect =
+                                    row_background(ui, table_left, table_right, row_top, r_idx);
+                                let row_resp = ui.interact(
+                                    row_rect,
+                                    egui::Id::new(("history_aggregate_row", r_idx)),
+                                    egui::Sense::click(),
+                                );
+                                row_resp.context_menu(|ui| {
+                                    if widgets::menu::menu_item(
+                                        ui,
+                                        i18n.t("history-menu-delete-group"),
+                                        true,
+                                    )
+                                    .clicked()
+                                    {
+                                        state.pending_delete = Some(PendingDelete {
+                                            process: r.process.clone(),
+                                            proto: Some(r.proto),
+                                            remote_ip: Some(r.remote_ip),
+                                        });
+                                    }
+                                    if widgets::menu::menu_item(
+                                        ui,
+                                        i18n.t("menu-copy-remote"),
+                                        true,
+                                    )
+                                    .clicked()
+                                    {
+                                        ui.ctx().copy_text(r.remote_ip.to_string());
+                                    }
+                                });
                                 widgets::table::fixed_cell(ui, flex_w, 22.0, |ui| {
                                     proc_cell(
                                         ui,
@@ -675,7 +738,7 @@ fn rows_table(
                                 // 整行点击下钻:切明细视图并按该进程名过滤
                                 // (空进程名行无法在明细中精确过滤,禁用交互)
                                 if !r.process.is_empty() {
-                                    let resp = ui.interact(
+                                    let mut resp = ui.interact(
                                         row_rect,
                                         egui::Id::new(("history_summary_row", r_idx)),
                                         egui::Sense::click(),
@@ -685,7 +748,16 @@ fn rows_table(
                                         state.process = r.process.clone();
                                         state.dirty = true;
                                     }
-                                    resp.on_hover_text(i18n.t("history-summary-drill"));
+                                    resp = resp.on_hover_text(i18n.t("history-summary-drill"));
+                                    resp.context_menu(|ui| {
+                                        if summary_menu(ui, r, i18n) {
+                                            state.pending_delete = Some(PendingDelete {
+                                                process: r.process.clone(),
+                                                proto: None,
+                                                remote_ip: None,
+                                            });
+                                        }
+                                    });
                                 }
                                 widgets::table::fixed_cell(ui, flex_w, 22.0, |ui| {
                                     proc_cell(
@@ -775,6 +847,123 @@ fn sort_summary(rows: &mut [SummaryRow], (sort, asc): (SummarySort, bool)) {
         let ord = if asc { ord } else { ord.reverse() };
         ord.then_with(|| a.process.cmp(&b.process))
     });
+}
+
+/// 明细行右键菜单;返回"删除该条"是否被点击(删除由调用方执行,
+/// 菜单函数不持 state 避免与行数据借用冲突)
+fn detail_menu(ui: &mut egui::Ui, r: &history_query::DetailRow, i18n: &I18n) -> bool {
+    let delete = widgets::menu::menu_item(ui, i18n.t("history-menu-delete-row"), true).clicked();
+    if widgets::menu::menu_item(ui, i18n.t("menu-locate"), r.proc_path.is_some()).clicked()
+        && let Some(path) = &r.proc_path
+    {
+        paths::select_in_explorer(std::path::Path::new(path));
+    }
+    if widgets::menu::menu_item(ui, i18n.t("menu-copy-remote"), true).clicked() {
+        ui.ctx()
+            .copy_text(format!("{}:{}", r.remote_ip, r.remote_port));
+    }
+    if widgets::menu::menu_item(ui, i18n.t("menu-copy-path"), r.proc_path.is_some()).clicked()
+        && let Some(path) = &r.proc_path
+    {
+        ui.ctx().copy_text(path.clone());
+    }
+    delete
+}
+
+/// 汇总行右键菜单;返回"删除该进程全部"是否被点击(转确认弹窗)
+fn summary_menu(ui: &mut egui::Ui, r: &SummaryRow, i18n: &I18n) -> bool {
+    let delete =
+        widgets::menu::menu_item(ui, i18n.t("history-menu-delete-process"), true).clicked();
+    if widgets::menu::menu_item(ui, i18n.t("menu-locate"), r.proc_path.is_some()).clicked()
+        && let Some(path) = &r.proc_path
+    {
+        paths::select_in_explorer(std::path::Path::new(path));
+    }
+    if widgets::menu::menu_item(ui, i18n.t("menu-copy-path"), r.proc_path.is_some()).clicked()
+        && let Some(path) = &r.proc_path
+    {
+        ui.ctx().copy_text(path.clone());
+    }
+    delete
+}
+
+/// 批量删除确认弹窗(Modal);Esc/遮罩点击/取消按钮均放弃删除
+fn confirm_delete_modal(
+    ui: &mut egui::Ui,
+    state: &mut history_query::PageState,
+    i18n: &I18n,
+    db: &Db,
+) {
+    let Some(pending) = state.pending_delete.clone() else {
+        return;
+    };
+    let mut confirmed = false;
+    let mut cancelled = false;
+    let modal = egui::Modal::new(egui::Id::new("history_delete_confirm")).show(ui.ctx(), |ui| {
+        ui.set_width(340.0);
+        ui.add_space(theme::sp::XS);
+        ui.label(
+            RichText::new(i18n.t("history-delete-confirm-title"))
+                .size(theme::font::H2)
+                .strong(),
+        );
+        ui.add_space(theme::sp::XS);
+        let text = match (pending.proto, pending.remote_ip) {
+            (Some(_), Some(ip)) => i18n.t_with_args(
+                "history-delete-group-text",
+                &[
+                    ("process", pending.process.clone()),
+                    ("remote", ip.to_string()),
+                ],
+            ),
+            _ => i18n.t_with_args(
+                "history-delete-process-text",
+                &[("process", pending.process.clone())],
+            ),
+        };
+        ui.label(
+            RichText::new(text)
+                .size(theme::font::BODY)
+                .color(theme::c().text),
+        );
+        ui.add_space(theme::sp::MD);
+        ui.horizontal(|ui| {
+            if ui
+                .button(RichText::new(i18n.t("history-delete-cancel")).size(theme::font::BODY))
+                .clicked()
+            {
+                cancelled = true;
+            }
+            confirmed |= ui
+                .add(
+                    egui::Button::new(
+                        RichText::new(i18n.t("history-delete-confirm"))
+                            .size(theme::font::BODY)
+                            .color(theme::c().on_accent),
+                    )
+                    .fill(theme::c().danger),
+                )
+                .clicked();
+        });
+    });
+    if confirmed {
+        let result = match (pending.proto, pending.remote_ip) {
+            (Some(p), Some(ip)) => {
+                history_query::delete_aggregate_group(db, &pending.process, p, ip)
+            }
+            _ => history_query::delete_process(db, &pending.process),
+        };
+        match result {
+            Ok(n) => {
+                state.dirty = true;
+                tracing::info!("[History] 已删除 {n} 条历史记录");
+            }
+            Err(e) => tracing::warn!("[History] 删除历史记录失败: {e}"),
+        }
+        state.pending_delete = None;
+    } else if cancelled || modal.should_close() {
+        state.pending_delete = None;
+    }
 }
 
 /// 行底色(虚拟化表格手动斑马):行首调用,悬停高亮优先于奇数行条纹;
