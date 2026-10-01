@@ -31,8 +31,10 @@ use crate::ui::widgets;
 /// 右侧 Inspector 面板:按选中对象切换视图
 pub fn inspector_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
     let panels = &mut *ctx.map_panels;
-    // Esc 清除选中(端点与进程一并清除,回到概览)
-    if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+    // Esc 清除选中(端点与进程一并清除,回到概览);焦点在输入框
+    // (左列表搜索词)时跳过,Esc 留给文本框,不连带清除选中
+    let editing = ui.memory(|m| m.focused().is_some());
+    if !editing && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
         panels.place = None;
         panels.process = None;
         return;
