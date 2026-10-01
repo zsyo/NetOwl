@@ -157,16 +157,19 @@ pub fn query_process_path(pid: u32) -> Option<String> {
 /// (任务管理器同源);仅作为路径反查失败后的名字兜底,拿不到完整路径
 pub fn query_process_names() -> HashMap<u32, String> {
     // 缓冲自适应:所需大小随进程数增长,STATUS_INFO_LENGTH_MISMATCH 时
-    // 倍增重试,上限 16 MiB(异常则放弃,返回空表由上层按无名处理)
+    // 倍增重试,上限 16 MiB(异常则放弃,返回空表由上层按无名处理);
+    // 缓冲按 u64 对齐分配,SYSTEM_PROCESS_INFORMATION 含指针对齐 8
     let mut size = 512 * 1024usize;
     loop {
-        let mut buf = vec![0u8; size];
+        let words = size.div_ceil(size_of::<u64>());
+        let mut buf = vec![0u64; words];
+        let byte_len = buf.len() * size_of::<u64>();
         let mut ret = 0u32;
         let status = unsafe {
             NtQuerySystemInformation(
                 SystemProcessInformation,
                 buf.as_mut_ptr().cast(),
-                buf.len() as u32,
+                byte_len as u32,
                 &mut ret,
             )
         };
@@ -184,18 +187,19 @@ pub fn query_process_names() -> HashMap<u32, String> {
 /// 解析 SystemProcessInformation 单链表(仅取名字与 PID,布局由
 /// windows crate 的 WDK 结构保证):节点 ImageName.Buffer 指向本缓冲区
 /// 内部,仍做区间校验防越界读;无名节点(内核线程等)跳过
-fn parse_process_names(buf: &[u8]) -> HashMap<u32, String> {
+fn parse_process_names(buf: &[u64]) -> HashMap<u32, String> {
     let step = std::mem::size_of::<SYSTEM_PROCESS_INFORMATION>();
     let mut out = HashMap::new();
     let base = buf.as_ptr() as usize;
+    let byte_len = std::mem::size_of_val(buf);
     let mut off = 0usize;
-    while off + step <= buf.len() {
+    while off + step <= byte_len {
         let info = unsafe { &*((base + off) as *const SYSTEM_PROCESS_INFORMATION) };
         let name = &info.ImageName;
         if name.Length > 0 && !name.Buffer.is_null() {
             let start = name.Buffer.0 as usize;
             let span = name.Length as usize;
-            if start >= base && start + span <= base + buf.len() {
+            if start >= base && start + span <= base + byte_len {
                 let chars = unsafe { std::slice::from_raw_parts(name.Buffer.0, span / 2) };
                 out.insert(
                     info.UniqueProcessId.0 as usize as u32,
@@ -216,16 +220,17 @@ fn parse_process_names(buf: &[u8]) -> HashMap<u32, String> {
 }
 
 /// 两段式表查询(首次调用取所需缓冲大小,不足时按返回值重试);
-/// `fill` 返回 WIN32_ERROR 码
+/// `fill` 返回 WIN32_ERROR 码。缓冲按 u64 对齐分配:MIB 表结构体
+/// 含 u32 字段(对齐 4),vec![0u8] 对齐 1 上做结构体引用形式上 UB
 fn query_table(
     fill: impl Fn(Option<*mut std::ffi::c_void>, *mut u32) -> u32,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u64>, String> {
     const SUCCESS: u32 = ERROR_SUCCESS.0;
     const INSUFFICIENT: u32 = ERROR_INSUFFICIENT_BUFFER.0;
     let mut size = 0u32;
     for _ in 0..QUERY_RETRIES {
-        let mut buf = vec![0u8; size.max(64) as usize];
-        match fill(Some(buf.as_mut_ptr() as *mut std::ffi::c_void), &mut size) {
+        let mut buf = vec![0u64; size.max(64) as usize / size_of::<u64>() + 1];
+        match fill(Some(buf.as_mut_ptr().cast()), &mut size) {
             SUCCESS => return Ok(buf),
             INSUFFICIENT => continue,
             other => return Err(format!("code {other}")),
