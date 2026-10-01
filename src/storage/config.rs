@@ -52,6 +52,9 @@ pub struct GeneralConfig {
     /// "allow" 静默放行未命中连接 / "deny" 静默拒绝未命中连接
     #[serde(default)]
     pub silent_mode: String,
+    /// 当前规则配置档 id(profiles 表,默认 1)
+    #[serde(default = "default_profile")]
+    pub profile_id: i64,
     /// 托盘图标常驻任务栏(NotifyIconSettings IsPromoted,免折叠进隐藏区);
     /// 写入失败(项未注册等)保持系统默认行为
     #[serde(default)]
@@ -76,6 +79,7 @@ impl Default for GeneralConfig {
             hide_lan: true,
             ask_connections: false,
             silent_mode: String::new(),
+            profile_id: default_profile(),
             tray_pinned: false,
             log_level: default_log_level(),
             log_to_file: false,
@@ -85,6 +89,10 @@ impl Default for GeneralConfig {
 
 fn default_collector() -> String {
     "real".to_owned()
+}
+
+fn default_profile() -> i64 {
+    1
 }
 
 fn default_log_level() -> String {

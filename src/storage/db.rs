@@ -146,4 +146,24 @@ fn migrate(conn: &Connection) {
         conn.execute("INSERT INTO schema_version (version) VALUES (6)", [])
             .unwrap_or_else(|e| panic!("[Db] 写入 schema 版本失败: {e}"));
     }
+    if current < 7 {
+        // 版本 7:规则 Profile 配置档。profiles 表(名称可重命名,默认档
+        // 由 app 启动时按启动语言创建)与 rules 归属列;存量规则归默认档 1
+        conn.execute(
+            "CREATE TABLE profiles (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            )",
+            [],
+        )
+        .unwrap_or_else(|e| panic!("[Db] 创建 profiles 表失败: {e}"));
+        conn.execute(
+            "ALTER TABLE rules ADD COLUMN profile_id INTEGER NOT NULL DEFAULT 1",
+            [],
+        )
+        .unwrap_or_else(|e| panic!("[Db] rules 补 profile_id 列失败: {e}"));
+        conn.execute("INSERT INTO schema_version (version) VALUES (7)", [])
+            .unwrap_or_else(|e| panic!("[Db] 写入 schema 版本失败: {e}"));
+    }
 }

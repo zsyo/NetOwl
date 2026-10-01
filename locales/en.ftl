@@ -209,6 +209,7 @@ history-col-last = Last active
 history-empty = No history records in the selected range
 history-truncated = Query limit of {$n} rows reached; narrow the time range or add filters
 
+rules-profile-default = Default
 rules-title = Rules
 rules-subtitle = Rules are evaluated top-down by priority; the first enabled match decides the action, unmatched connections are allowed
 ask-title = New Connection

@@ -188,7 +188,7 @@ pub struct NetOwlApp {
 }
 
 impl NetOwlApp {
-    pub fn new(cc: &eframe::CreationContext<'_>, i18n: I18n, config: Config) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, i18n: I18n, mut config: Config) -> Self {
         theme::install(&cc.egui_ctx, &config.general.theme);
         let (_tray, tray_rx) =
             tray::create(cc.egui_ctx.clone(), &i18n, &config.general.silent_mode);
@@ -196,7 +196,14 @@ impl NetOwlApp {
         let pending_restore =
             pending_restore.map(|(x, y, w, h)| (x, y, w, h, config.window.maximized));
         let history_db = crate::storage::db::open();
-        let rules = rules::RuleSet::load(&history_db);
+        // 配置档:确保默认档存在并校验配置值有效(无效回退 1,启动语言命名)
+        let profile_id = rules::RuleSet::ensure_default_profile(
+            &history_db,
+            config.general.profile_id,
+            &i18n.t("rules-profile-default"),
+        );
+        config.general.profile_id = profile_id;
+        let rules = rules::RuleSet::load(&history_db, profile_id);
         // ETW 流量事件仅在提权进程内可用;失败只记录,字节列退化为 0。
         // 提权状态进程生命周期内不变,顺带给右键"结束连接"等能力判定
         let elevated = wfp::is_elevated();

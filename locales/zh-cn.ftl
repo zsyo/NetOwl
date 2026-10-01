@@ -226,6 +226,7 @@ history-col-last = 最近活动
 history-empty = 所选范围内没有历史记录
 history-truncated = 已达单次查询上限 {$n} 条,请缩小时间范围或增加筛选
 
+rules-profile-default = 默认
 rules-title = 规则
 rules-subtitle = 规则按优先级自上而下评估,首个命中的启用规则决定动作,未命中默认放行
 wfp-status-active = 拦截引擎已生效,当前 {$n} 条过滤器
