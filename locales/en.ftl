@@ -142,6 +142,7 @@ history-view-detail = Detail
 history-view-aggregate = Aggregate
 history-view-summary = Summary
 history-summary-note = Completed connections only; active ones count when closed
+history-summary-drill = Click to show this process's connections in Detail view
 history-range-1h = Last hour
 history-range-6h = Last 6 hours
 history-range-24h = Last 24 hours

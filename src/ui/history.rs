@@ -644,7 +644,23 @@ fn rows_table(
                             for r_idx in row_range {
                                 let r = &rows[r_idx];
                                 let row_top = ui.cursor().top();
-                                row_background(ui, table_left, table_right, row_top, r_idx);
+                                let row_rect =
+                                    row_background(ui, table_left, table_right, row_top, r_idx);
+                                // 整行点击下钻:切明细视图并按该进程名过滤
+                                // (空进程名行无法在明细中精确过滤,禁用交互)
+                                if !r.process.is_empty() {
+                                    let resp = ui.interact(
+                                        row_rect,
+                                        egui::Id::new(("history_summary_row", r_idx)),
+                                        egui::Sense::click(),
+                                    );
+                                    if resp.clicked() {
+                                        state.view = ViewMode::Detail;
+                                        state.process = r.process.clone();
+                                        state.dirty = true;
+                                    }
+                                    resp.on_hover_text(i18n.t("history-summary-drill"));
+                                }
                                 widgets::table::fixed_cell(ui, flex_w, 22.0, |ui| {
                                     proc_cell(
                                         ui,
@@ -692,8 +708,9 @@ fn empty_hint(ui: &mut egui::Ui, i18n: &I18n) {
 }
 
 /// 行底色(虚拟化表格手动斑马):行首调用,悬停高亮优先于奇数行条纹;
-/// 色块上下各含半个行距,与 Grid striped 的观感一致,判定区同样含行距
-fn row_background(ui: &egui::Ui, left: f32, right: f32, top: f32, idx: usize) {
+/// 色块上下各含半个行距,与 Grid striped 的观感一致,判定区同样含行距;
+/// 返回判定区矩形供调用方做整行交互(如汇总行点击下钻)
+fn row_background(ui: &egui::Ui, left: f32, right: f32, top: f32, idx: usize) -> egui::Rect {
     let rect = egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, top + 22.0))
         .expand2(egui::vec2(0.0, widgets::table::ROW_SPACING_Y * 0.5));
     let bg = if ui.rect_contains_pointer(rect) {
@@ -701,9 +718,10 @@ fn row_background(ui: &egui::Ui, left: f32, right: f32, top: f32, idx: usize) {
     } else if idx % 2 == 1 {
         theme::c().faint
     } else {
-        return;
+        return rect;
     };
     ui.painter().rect_filled(rect, 0.0, bg);
+    rect
 }
 
 fn truncated_hint(ui: &mut egui::Ui, len: usize, i18n: &I18n) {
