@@ -626,9 +626,9 @@ fn rows_table(
                                 ui.end_row();
                             }
                         });
-                    truncated_hint(ui, rows.len(), i18n);
                 },
             );
+            truncated_hint(ui, rows.len(), i18n);
         }
         Rows::Summary(rows) => {
             // 实时叠加:SQL 结果克隆后并入活跃连接聚合,不写回 state.rows
@@ -793,9 +793,10 @@ fn rows_table(
                                 ui.end_row();
                             }
                         });
-                    truncated_hint(ui, rows.len(), i18n);
                 },
             );
+            // 行数按合并后的结果计:活跃连接并入的新进程不在 SQL 行数里
+            truncated_hint(ui, merged.len(), i18n);
         }
     }
 }
