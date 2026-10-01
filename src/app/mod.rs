@@ -22,7 +22,7 @@ use crate::i18n::I18n;
 use crate::logging;
 use crate::map::basemap;
 use crate::map::world;
-use crate::model::{Connection, Place, Protocol, Signing};
+use crate::model::{Connection, Place, Protocol, Signing, fmt_bytes};
 use crate::net::etw;
 use crate::net::geoip;
 use crate::net::local_ip;
@@ -73,6 +73,8 @@ const CONNS_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 /// 托盘常驻写入重试间隔:托盘设置项由 Explorer 在图标注册时创建,
 /// 启动数秒内可能尚不存在
 const TRAY_PIN_RETRY_INTERVAL: Duration = Duration::from_secs(60);
+/// 托盘悬停提示的速率刷新间隔(与隐藏态速率采样 5s 同频)
+const TRAY_TIP_INTERVAL: Duration = Duration::from_secs(5);
 
 /// 待恢复的窗口几何(物理像素)
 type WindowRect = (i32, i32, i32, i32, bool);
@@ -171,6 +173,8 @@ pub struct NetOwlApp {
     tray_pinned_applied: Option<bool>,
     /// 托盘常驻下次重试时刻(写入失败后定时重试)
     tray_pin_retry_at: Instant,
+    /// 托盘悬停提示上次刷新时刻(速率跟随)
+    tray_tip_at: Instant,
     /// 托盘句柄保活,drop 时移除托盘图标
     _tray: Tray,
 }
@@ -265,6 +269,7 @@ impl NetOwlApp {
             config_dirty_since: Instant::now(),
             tray_pinned_applied: None,
             tray_pin_retry_at: Instant::now(),
+            tray_tip_at: Instant::now(),
             _tray,
         }
     }
@@ -313,6 +318,24 @@ impl NetOwlApp {
         } else {
             self.tray_pin_retry_at = Instant::now() + TRAY_PIN_RETRY_INTERVAL;
         }
+    }
+
+    /// 托盘悬停提示跟随总速率刷新(TrafficMonitor 式,隐藏到托盘时
+    /// 也能瞥一眼当前流量);原生 tooltip 不走应用字体,纯文本排版
+    fn update_tray_tooltip(&mut self) {
+        if self.tray_tip_at.elapsed() < TRAY_TIP_INTERVAL {
+            return;
+        }
+        self.tray_tip_at = Instant::now();
+        let tip = format!(
+            "{}\n{} {}/s\n{} {}/s",
+            self.i18n.t("tray-tooltip"),
+            self.i18n.t("nav-rate-down"),
+            fmt_bytes(self.rates.0),
+            self.i18n.t("nav-rate-up"),
+            fmt_bytes(self.rates.1),
+        );
+        self._tray.set_tooltip(&tip);
     }
 
     /// 首帧修正窗口几何:创建时 with_position 用物理坐标当逻辑值,主屏 DPI 为 100%
@@ -836,6 +859,7 @@ impl eframe::App for NetOwlApp {
         self.handle_tray_commands(ctx);
         self.calibrate_window_visible();
         self.sync_tray_pinned();
+        self.update_tray_tooltip();
         // 关机/注销落库钩子:首帧安装一次,内部防重复(winit 不处理
         // ENDSESSION,关机时唯一能把活跃连接落库的路径)
         shutdown_hook::install(

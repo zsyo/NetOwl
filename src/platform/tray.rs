@@ -27,6 +27,14 @@ pub struct Tray {
     _inner: TrayIcon,
 }
 
+impl Tray {
+    /// 更新悬停提示(速率跟随刷新用);失败静默(Windows tooltip
+    /// 偶发重建失败不值得打扰)
+    pub fn set_tooltip(&self, text: &str) {
+        let _ = self._inner.set_tooltip(Some(text));
+    }
+}
+
 /// 在当前线程创建托盘与菜单,返回(句柄, 命令接收端);菜单与提示文案
 /// 经 i18n 按启动语言取词(托盘创建一次,运行期语言切换不重建)
 pub fn create(ctx: egui::Context, i18n: &crate::i18n::I18n) -> (Tray, Receiver<String>) {
