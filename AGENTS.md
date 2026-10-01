@@ -111,7 +111,9 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   隐藏到托盘同路径,app 层处理 TitleAction);connections.rs:连接页(统一
   表头可排序[header_sort_cell 整格可点,常驻置灰上下双三角标识可排序,
   激活列点亮当前方向,占位与状态无关防列宽抖动]、
-  行悬停高亮[Order::Background 垫底]、协议/动作徽章、数字列右对齐[num_cell]);
+  行悬停高亮[Order::Background 垫底]、协议/动作徽章、数字列右对齐[num_cell]、
+  行右键菜单[结束连接=SetTcpEntry DELETE_TCB,仅 TCP 行且提权可用,非提权
+  禁用带提示/定位程序/复制远端地址/复制进程路径]);
   settings.rs:设置页(分组卡片:外观/监控/日志,行式布局左标签
   右控件,主题分段切换);widgets/:公共组件库(header 页头/badge 胶囊徽章/
   segmented 分段选择/toggle 滑动开关/table 统一表头与行底色[列贴列布局
@@ -119,14 +121,17 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   2×CELL_PAD_X;num_cell 数字右对齐单元格,Grid 末列须空占位防右对齐
   横跨;Grid 格内禁用 add_space(egui 断言 panic),缩进须用定宽占位 +
   max_rect shrink 子区域]/process 进程
-  图标占位/card 卡片/sparkline 多序列迷你走势图,新页面禁止重复实现);
+  图标占位/card 卡片/sparkline 多序列迷你走势图/menu 菜单项按钮,新页面
+  禁止重复实现);
   ask.rs:新连接询问弹窗(右下角无标题栏 toast,盾形图标标题,范围下拉 +
   允许[accent 填充 on_accent 字]/拒绝[danger 描边],进度条内嵌剩余秒数);
   history.rs:历史页(三视图 segmented 切换:明细/聚合/进程汇总[按进程
   聚合字节总量/次数/时长,默认上传降序,数字含活跃连接实时字节——渲染时
   克隆 SQL 结果并入活跃聚合不写回查询缓存;汇总行整行点击下钻明细并按
   进程名过滤,空进程名行禁用];明细 8 列
-  聚合 9 列含字节,聚合与汇总表头可排序[字节 0 弱化显示];档位筛选、库
+  聚合 9 列含字节,聚合与汇总表头可排序[字节 0 弱化显示];三视图行右键
+  [明细删该条/聚合删该组/汇总删该进程全部,批量删除 egui::Modal 确认,
+  删除 SQL 全参数绑定;定位与复制同连接页];档位筛选、库
   大小显示、超 1 GiB 提醒卡[warn 低透明底 + 警示图标,勾选不再提醒=一票
   否决持久化,手动清空还原]、清理下拉菜单;位置列实时反查 geoip;表格口径
   与连接页一致);rules.rs:规则页(toggle 启停、动作/协议徽章、图标操作钮[删除
@@ -144,7 +149,9 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   持久化于 config [general] theme))
 - src/i18n/ - 多语言模块(mod.rs:locales 扫描/加载/语言列表;translate.rs:查找/插值/回退/告警)
 - locales/ - fluent 词条文件(zh-cn.ftl / en.ftl;目录缺失时使用编译期内嵌兜底)
-- src/platform/ - 平台集成(paths.rs:数据根目录 = exe 同级(Windows 便携式);
+- src/platform/ - 平台集成(paths.rs:数据根目录 = exe 同级(Windows 便携式),
+  open_in_explorer/select_in_explorer 资源管理器定位原语[/select, 后须
+  raw_arg 防路径含空格被拆参];
   icon.rs:应用图标加载(assets 资源编译期内嵌,PNG 解码为 RGBA);tray.rs:
   托盘与菜单(tray-icon + muda);shutdown_hook.rs:关机落库钩子(子类化
   主窗口拦 WM_ENDSESSION,执行 tracker.flush+writer.shutdown——winit 不
