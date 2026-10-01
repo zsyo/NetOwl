@@ -167,6 +167,7 @@ history-filter-process = Process…
 history-filter-remote = Remote IP…
 history-filter-proto-all = All protocols
 history-refresh = Refresh
+history-export = Export CSV
 history-db-size = Database {$size}
 history-purge = Purge
 history-purge-all = Purge all

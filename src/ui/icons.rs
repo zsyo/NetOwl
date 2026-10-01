@@ -55,6 +55,8 @@ pub const ARROW_DOWN_UP: &str = "\u{f127}";
 pub const ARROW_REPEAT: &str = "\u{f130}";
 /// glyph: funnel(筛选)
 pub const FUNNEL: &str = "\u{f3e1}";
+/// glyph: download(历史导出)
+pub const DOWNLOAD: &str = "\u{f30a}";
 /// glyph: copy(窗口还原态)
 pub const COPY: &str = "\u{f759}";
 

@@ -183,6 +183,7 @@ history-filter-process = 进程名…
 history-filter-remote = 远端 IP…
 history-filter-proto-all = 全部协议
 history-refresh = 刷新
+history-export = 导出 CSV
 history-db-size = 历史库 {$size}
 history-purge = 清理
 history-purge-all = 清空全部
