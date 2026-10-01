@@ -302,11 +302,12 @@ pub fn parse_ip_prefix(input: &str) -> Option<(u32, u32)> {
     let mut filled = 0;
     for part in s.split('.') {
         let v: u8 = part.trim().parse().ok()?;
-        octets[filled] = v;
-        filled += 1;
-        if filled > 4 {
+        // 先判段数再写入:5 段输入(如 1.2.3.4.5)直接拒绝,不能先下标
+        if filled >= 4 {
             return None;
         }
+        octets[filled] = v;
+        filled += 1;
     }
     let min = u32::from(Ipv4Addr::new(octets[0], octets[1], octets[2], octets[3]));
     let max = if filled == 4 {
