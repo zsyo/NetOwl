@@ -11,6 +11,7 @@ use crate::i18n::I18n;
 use crate::model::Protocol;
 use crate::rules::wfp;
 use crate::rules::{self, Action, Direction, RemoteKind, Rule, RuleSet};
+use crate::ui::profile_manager;
 use crate::ui::{TOOLBAR_ROW_H, icons, theme, widgets};
 
 /// 编辑弹窗控件列宽度
@@ -25,6 +26,8 @@ pub struct PageState {
     pub draft: Option<Draft>,
     /// 最近一次导入/导出的反馈消息(工具栏右侧,超时自动消失)
     pub feedback: Option<Feedback>,
+    /// 配置档管理弹窗状态
+    pub profiles: profile_manager::ProfileMgrState,
 }
 
 impl PageState {
@@ -32,6 +35,7 @@ impl PageState {
         PageState {
             draft: None,
             feedback: None,
+            profiles: profile_manager::ProfileMgrState::default(),
         }
     }
 }
@@ -44,7 +48,7 @@ pub struct Feedback {
 }
 
 impl Feedback {
-    fn now(is_err: bool, text: String) -> Feedback {
+    pub fn now(is_err: bool, text: String) -> Feedback {
         Feedback {
             is_err,
             text,
@@ -121,16 +125,19 @@ impl Draft {
     }
 }
 
-/// 规则页主入口
+/// 规则页主入口;返回是否改动了配置(档位切换,由 App 层标脏落盘)
+#[allow(clippy::too_many_arguments)]
 pub fn show(
     ui: &mut egui::Ui,
     state: &mut PageState,
     i18n: &I18n,
     db: &Db,
+    config: &mut crate::storage::config::Config,
     rules: &mut RuleSet,
     wfp_status: &wfp::Status,
     row_hover: &mut widgets::table::RowHover,
-) {
+) -> bool {
+    let mut changed = false;
     widgets::header::page_header(ui, &i18n.t("rules-title"), &i18n.t("rules-subtitle"));
     ui.add_space(theme::sp::XS);
     wfp_status_line(ui, i18n, wfp_status);
@@ -155,12 +162,55 @@ pub fn show(
         {
             do_import(db, rules, state, i18n);
         }
+        ui.add_space(theme::sp::MD);
+        // 档位切换:重载目标档规则(临时规则保留),写 config 落盘
+        let profiles = RuleSet::list_profiles(db);
+        let current_name = profiles
+            .iter()
+            .find(|p| p.id == rules.active_profile)
+            .map(|p| p.name.clone())
+            .unwrap_or_default();
+        egui::ComboBox::from_id_salt("rules-profile-select")
+            .width(140.0)
+            .selected_text(RichText::new(current_name).size(theme::font::BODY))
+            .show_ui(ui, |ui| {
+                for p in profiles {
+                    let selected = p.id == rules.active_profile;
+                    let label = RichText::new(&p.name)
+                        .size(theme::font::BODY)
+                        .color(if selected {
+                            theme::c().accent
+                        } else {
+                            theme::c().text
+                        });
+                    if ui.selectable_label(selected, label).clicked() && !selected {
+                        rules.switch_profile(db, p.id);
+                        config.general.profile_id = p.id;
+                        changed = true;
+                    }
+                }
+            });
+        if ui
+            .button(RichText::new(i18n.t("rules-manage")).size(theme::font::BODY))
+            .clicked()
+        {
+            state.profiles.open = true;
+        }
         feedback_label(ui, state);
     });
     ui.add_space(theme::sp::SM);
 
     rules_table(ui, state, i18n, db, rules, row_hover);
     edit_window(ui, state, i18n, db, rules);
+    profile_manager::show_modal(
+        ui,
+        db,
+        rules,
+        &mut state.profiles,
+        i18n,
+        &mut state.feedback,
+    );
+    changed
 }
 
 /// 导出:原生保存对话框选路径,持久规则写为 JSON 文件

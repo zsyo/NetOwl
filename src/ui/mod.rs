@@ -9,6 +9,7 @@ pub mod map_conn;
 pub mod map_inspector;
 pub mod map_panel;
 pub mod map_widgets;
+pub mod profile_manager;
 pub mod rules;
 pub mod theme;
 pub mod titlebar;
@@ -412,18 +413,16 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
             ctx.elevated,
         ),
         Page::Lan => lan::lan_ui(ui, ctx),
-        Page::Rules => {
-            rules::show(
-                ui,
-                ctx.rules_page,
-                ctx.i18n,
-                ctx.history_db,
-                ctx.rules,
-                &ctx.wfp_status,
-                ctx.rules_row_hover,
-            );
-            false
-        }
+        Page::Rules => rules::show(
+            ui,
+            ctx.rules_page,
+            ctx.i18n,
+            ctx.history_db,
+            ctx.config,
+            ctx.rules,
+            &ctx.wfp_status,
+            ctx.rules_row_hover,
+        ),
         Page::Settings => settings::settings_ui(ui, ctx.config, ctx.i18n, ctx.log_window),
     }
 }
