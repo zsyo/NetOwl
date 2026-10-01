@@ -102,7 +102,10 @@ fn summary_view(
     config: &Config,
     conns: &[Connection],
 ) {
-    ui.heading(theme::accent_text(&i18n.t("map-inspector-summary"), 18.0));
+    ui.heading(theme::accent_text(
+        &i18n.t("map-inspector-summary"),
+        theme::font::H2,
+    ));
     let visible: Vec<&Connection> = conns.iter().filter(|c| conn_visible(config, c)).collect();
     let procs: std::collections::HashSet<&str> =
         visible.iter().map(|c| c.process.as_str()).collect();
@@ -134,7 +137,7 @@ fn summary_view(
     }
     let mut groups = collect_groups(conns, config, None, "", rdns);
     if groups.is_empty() {
-        ui.label(theme::dim_text(&i18n.t("map-panel-empty"), 12.0));
+        ui.label(theme::dim_text(&i18n.t("map-panel-empty"), theme::font::SM));
     }
     // 排行按用户选择的排序键重排(累计总量/上传/下载),
     // 占比条与名次同键;次级键按名称稳定序(未提权时字节恒 0)
@@ -219,7 +222,7 @@ fn place_view(
     let rows: Vec<&Connection> = conns.iter().filter(|c| c.city == Some(place)).collect();
     ui.label(theme::dim_text(
         &i18n.t_with_args("status-conn-count", &[("count", rows.len().to_string())]),
-        12.0,
+        theme::font::SM,
     ));
     traffic_cards(
         ui,
@@ -294,7 +297,7 @@ fn process_view(
         ui.add(
             Label::new(
                 RichText::new(format!("{}: {}", i18n.t("map-inspector-path"), p))
-                    .size(11.0)
+                    .size(theme::font::XS)
                     .color(theme::c().text_dim),
             )
             .wrap(),
@@ -315,7 +318,7 @@ fn process_view(
         ui.style_mut().spacing.item_spacing.x = 5.0;
         let (rect, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
         ui.painter().circle_filled(rect.center(), 3.0, dot);
-        ui.label(theme::dim_text(&i18n.t(key), 11.0));
+        ui.label(theme::dim_text(&i18n.t(key), theme::font::XS));
     });
 
     // 进程级阻断开关(off 绿 = 放行 / on 红 = 阻断,未知进程不可阻断,
@@ -386,7 +389,7 @@ fn title_row(
             ui.add(
                 Label::new(
                     RichText::new(title.to_owned())
-                        .size(16.0)
+                        .size(theme::font::PANEL_TITLE)
                         .strong()
                         .color(theme::c().text),
                 )
@@ -395,7 +398,7 @@ fn title_row(
         });
         let btn = Button::new(
             RichText::new(icons::X_LG)
-                .size(11.0)
+                .size(theme::font::XS)
                 .color(theme::c().text_dim),
         )
         .stroke(Stroke::new(1.0, theme::c().stroke))

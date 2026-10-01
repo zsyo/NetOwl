@@ -159,12 +159,17 @@ pub fn list_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
             let text_w = (ui.available_width() - clear_w - 4.0).max(40.0);
             ui.allocate_ui(egui::vec2(text_w, 14.0), |ui| {
                 ui.add(
-                    Label::new(RichText::new(text).size(11.0).color(theme::c().accent)).truncate(),
+                    Label::new(
+                        RichText::new(text)
+                            .size(theme::font::XS)
+                            .color(theme::c().accent),
+                    )
+                    .truncate(),
                 );
             });
             let clear = Button::new(
                 RichText::new(icons::X_LG)
-                    .size(10.0)
+                    .size(theme::font::MICRO)
                     .color(theme::c().text_dim),
             )
             .frame(false);
@@ -193,7 +198,7 @@ pub fn list_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
         if groups.is_empty() {
             ui.vertical_centered(|ui| {
                 ui.add_space(24.0);
-                ui.label(theme::dim_text(&i18n.t("map-panel-empty"), 12.0));
+                ui.label(theme::dim_text(&i18n.t("map-panel-empty"), theme::font::SM));
             });
             return;
         }
@@ -241,7 +246,7 @@ pub fn list_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
     };
     if let Some((text, color)) = tip {
         ui.separator();
-        ui.add(Label::new(RichText::new(text).size(11.0).color(color)).wrap());
+        ui.add(Label::new(RichText::new(text).size(theme::font::XS).color(color)).wrap());
     }
 }
 
@@ -283,9 +288,13 @@ fn group_row(
         } else {
             icons::CHEVRON_RIGHT
         };
-        let fold = Button::new(RichText::new(arrow).size(10.0).color(theme::c().text_dim))
-            .frame(false)
-            .min_size(Vec2::new(14.0, ROW_H));
+        let fold = Button::new(
+            RichText::new(arrow)
+                .size(theme::font::MICRO)
+                .color(theme::c().text_dim),
+        )
+        .frame(false)
+        .min_size(Vec2::new(14.0, ROW_H));
         let fold_clicked = ui.add(fold).clicked();
         // 未展开(remove 失败)则展开,已展开则收起
         if fold_clicked && !panels.expanded.remove(&g.name) {

@@ -26,6 +26,8 @@ pub mod font {
     pub const H2: f32 = 17.0;
     /// 分组标题/导航项/加强按钮
     pub const H3: f32 = 14.0;
+    /// 面板/浮层标题(介于 H3 与 H2,详情视图标题用)
+    pub const PANEL_TITLE: f32 = 16.0;
     /// 正文
     pub const BODY: f32 = 13.0;
     /// 次要信息/表头
