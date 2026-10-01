@@ -3,6 +3,7 @@
 
 pub mod etw;
 pub mod geoip;
+pub mod lan;
 pub mod local_ip;
 pub mod rdns;
 pub mod traffic;

@@ -15,6 +15,7 @@ pub mod titlebar;
 pub mod widgets;
 
 mod connections;
+mod lan;
 mod settings;
 
 use std::collections::HashMap;
@@ -53,6 +54,7 @@ pub enum Page {
     Map,
     Connections,
     History,
+    Lan,
     Rules,
     Settings,
 }
@@ -62,6 +64,7 @@ const NAV_ITEMS: &[(Page, &str, &str)] = &[
     (Page::Map, "nav-map", icons::GLOBE),
     (Page::Connections, "nav-connections", icons::LIST_UL),
     (Page::History, "nav-history", icons::CLOCK_HISTORY),
+    (Page::Lan, "nav-lan", icons::ROUTER),
     (Page::Rules, "nav-rules", icons::SHIELD),
     (Page::Settings, "nav-settings", icons::GEAR),
 ];
@@ -358,6 +361,8 @@ pub struct UiCtx<'a> {
     pub elevated: bool,
     /// 历史写线程句柄(手动清空)
     pub writer: &'a history_store::Writer,
+    /// 局域网设备视图(ARP 发现,last_seen 降序)
+    pub lan_devices: &'a [crate::net::lan::DeviceRow],
     pub local_pos: (f32, f32),
 }
 
@@ -406,6 +411,7 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
             ctx.config,
             ctx.elevated,
         ),
+        Page::Lan => lan::lan_ui(ui, ctx),
         Page::Rules => {
             rules::show(
                 ui,

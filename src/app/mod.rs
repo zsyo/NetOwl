@@ -5,6 +5,7 @@
 //! 与 ui(绘制)。托盘命令、几何捕获与配置写盘节流放在 logic。
 
 pub mod ask;
+pub mod lan;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -17,6 +18,7 @@ use std::time::{Duration, Instant};
 use eframe::egui;
 
 use self::ask::{Asker, Decision, Scope, temp_rule_holds};
+use self::lan::LanState;
 use crate::collector::{self, Collector, CollectorKind};
 use crate::i18n::I18n;
 use crate::logging;
@@ -179,6 +181,8 @@ pub struct NetOwlApp {
     /// 静默模式上次同步值(config 变化或采集器重建后重同步:兜底规则
     /// 与托盘勾选态一次校准)
     silent_synced: Option<String>,
+    /// 局域网设备发现(ARP 轮询 + lan_devices 库合并)
+    lan: LanState,
     /// 托盘句柄保活,drop 时移除托盘图标
     _tray: Tray,
 }
@@ -276,6 +280,7 @@ impl NetOwlApp {
             tray_pin_retry_at: Instant::now(),
             tray_tip_at: Instant::now(),
             silent_synced: None,
+            lan: LanState::new(),
             _tray,
         }
     }
@@ -938,6 +943,7 @@ impl eframe::App for NetOwlApp {
         );
         self.ensure_collector();
         self.poll_local_ip();
+        self.lan.poll(&self.history_db);
         self.poll_traffic(ctx);
         self.poll_conns(ctx);
         self.writer.set_retention(self.config.general.history_days);
@@ -1038,6 +1044,7 @@ impl eframe::App for NetOwlApp {
             wfp_status: self.wfp.status(),
             elevated: self.elevated,
             writer: &self.writer,
+            lan_devices: self.lan.devices(),
             local_pos,
         };
         let mut config_changed = false;

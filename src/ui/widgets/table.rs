@@ -181,6 +181,9 @@ fn caret_tri(painter: &egui::Painter, cx: f32, cy: f32, up: bool, color: Color32
 /// 表格行间距(Grid spacing.y):行底色范围与行高测量共用
 pub const ROW_SPACING_Y: f32 = 9.0;
 
+/// 标准数据行高(连接/历史/规则/局域网页一致;两行内容格用 36 恒定)
+pub const ROW_H: f32 = 22.0;
+
 /// 行悬停高亮辅助:跨帧记录实测行高。
 /// 行底色必须画在行内容之前才能垫底(同层内先画者在下,见 ui 层根背景层说明),
 /// 而行高要 end_row 后才确定,故行首用上一帧实测行高判定悬停并垫底;

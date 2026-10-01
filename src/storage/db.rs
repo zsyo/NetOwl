@@ -130,4 +130,20 @@ fn migrate(conn: &Connection) {
         conn.execute("INSERT INTO schema_version (version) VALUES (5)", [])
             .unwrap_or_else(|e| panic!("[Db] 写入 schema 版本失败: {e}"));
     }
+    if current < 6 {
+        // 版本 6:局域网设备表(ARP 发现的邻居持久化;MAC 主键,首见/
+        // 最近在线时间驱动"新设备"判定,ip 存主机序 u32)
+        conn.execute(
+            "CREATE TABLE lan_devices (
+                mac TEXT PRIMARY KEY,
+                first_seen INTEGER NOT NULL,
+                last_seen INTEGER NOT NULL,
+                ip INTEGER NOT NULL
+            )",
+            [],
+        )
+        .unwrap_or_else(|e| panic!("[Db] 创建 lan_devices 表失败: {e}"));
+        conn.execute("INSERT INTO schema_version (version) VALUES (6)", [])
+            .unwrap_or_else(|e| panic!("[Db] 写入 schema 版本失败: {e}"));
+    }
 }
