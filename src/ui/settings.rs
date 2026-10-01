@@ -140,13 +140,38 @@ pub(super) fn settings_ui(
                 &i18n.t("settings-ask"),
                 &i18n.t("settings-ask-hint"),
                 |ui| {
-                    // 开启后未命中规则的公网新连接弹窗询问
+                    // 开启后未命中规则的公网新连接弹窗询问;静默模式下不生效
                     changed |= widgets::toggle::toggle_switch(
                         ui,
                         &mut config.general.ask_connections,
                         egui::Id::new("settings-ask-toggle"),
                     )
                     .changed();
+                },
+            );
+            ui.add_space(theme::sp::SM);
+            setting_row(
+                ui,
+                &i18n.t("settings-silent"),
+                &i18n.t("settings-silent-hint"),
+                |ui| {
+                    // 静默模式三态:off 按"新连接询问"开关行为,allow/deny
+                    // 静默放行/拒绝;写 config 后由 App 层统一联动兜底规则、
+                    // WFP 过滤器与托盘子菜单勾选态
+                    let items = [
+                        (&*i18n.t("settings-silent-off"), icons::X_CIRCLE),
+                        (&*i18n.t("settings-silent-allow"), icons::CHECK_CIRCLE),
+                        (&*i18n.t("settings-silent-deny"), icons::BAN),
+                    ];
+                    let current = match config.general.silent_mode.as_str() {
+                        "allow" => 1,
+                        "deny" => 2,
+                        _ => 0,
+                    };
+                    if let Some(i) = widgets::segmented::segmented(ui, &items, current) {
+                        config.general.silent_mode = ["off", "allow", "deny"][i].to_owned();
+                        changed = true;
+                    }
                 },
             );
             ui.add_space(theme::sp::SM);

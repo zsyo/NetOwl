@@ -176,6 +176,9 @@ pub struct NetOwlApp {
     tray_pin_retry_at: Instant,
     /// 托盘悬停提示上次刷新时刻(速率跟随)
     tray_tip_at: Instant,
+    /// 静默模式上次同步值(config 变化或采集器重建后重同步:兜底规则
+    /// 与托盘勾选态一次校准)
+    silent_synced: Option<String>,
     /// 托盘句柄保活,drop 时移除托盘图标
     _tray: Tray,
 }
@@ -183,7 +186,8 @@ pub struct NetOwlApp {
 impl NetOwlApp {
     pub fn new(cc: &eframe::CreationContext<'_>, i18n: I18n, config: Config) -> Self {
         theme::install(&cc.egui_ctx, &config.general.theme);
-        let (_tray, tray_rx) = tray::create(cc.egui_ctx.clone(), &i18n);
+        let (_tray, tray_rx) =
+            tray::create(cc.egui_ctx.clone(), &i18n, &config.general.silent_mode);
         let pending_restore = config.window_position();
         let pending_restore =
             pending_restore.map(|(x, y, w, h)| (x, y, w, h, config.window.maximized));
@@ -271,6 +275,7 @@ impl NetOwlApp {
             tray_pinned_applied: None,
             tray_pin_retry_at: Instant::now(),
             tray_tip_at: Instant::now(),
+            silent_synced: None,
             _tray,
         }
     }
@@ -301,6 +306,15 @@ impl NetOwlApp {
                     self.config_dirty = false;
                     self.should_exit = true;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+                tray::CMD_SILENT_OFF | tray::CMD_SILENT_ALLOW | tray::CMD_SILENT_DENY => {
+                    // 静默模式三态切换:写 config,兜底规则与托盘勾选态由
+                    // 下一帧 sync_silent_mode 统一校准
+                    let mode = cmd.strip_prefix("silent-").unwrap_or("off");
+                    if self.config.general.silent_mode != mode {
+                        self.config.general.silent_mode = mode.to_owned();
+                        self.mark_config_dirty();
+                    }
                 }
                 _ => {}
             }
@@ -435,11 +449,13 @@ impl NetOwlApp {
         }
     }
 
-    /// 数据源配置与当前实例不一致(设置页切换)时重建采集器,切换即时生效
+    /// 数据源配置与当前实例不一致(设置页切换)时重建采集器,切换即时生效;
+    /// 静默兜底按数据源判定生效,重建后强制重新校准
     fn ensure_collector(&mut self) {
         let kind = CollectorKind::from_config(&self.config.general.collector);
         if kind != self.collector.kind() {
             self.collector = collector::build(kind);
+            self.silent_synced = None;
             self.mark_config_dirty();
         }
     }
@@ -624,13 +640,19 @@ impl NetOwlApp {
         self.wfp.sync(Arc::new(specs));
     }
 
-    /// 静默拒绝兜底同步:配置为 deny 且真实数据源时注入全通配兜底规则
-    /// (求值自动命中,连接标注/地图阻断状态联动),其余状态撤销;
-    /// mock 数据源无真实流量,不注入(避免演示数据误标阻断)
+    /// 静默模式同步(配置变化或采集器重建后执行一次):deny 时注入全通配
+    /// 兜底规则(求值自动命中,连接标注/地图阻断状态联动),其余状态撤销;
+    /// 同时校准托盘子菜单勾选态(设置页与托盘双入口,config 是唯一来源);
+    /// mock 数据源无真实流量,不注入兜底(避免演示数据误标阻断)
     fn sync_silent_mode(&mut self) {
-        let deny = self.config.general.silent_mode == "deny"
-            && self.collector.kind() == CollectorKind::Real;
+        let mode = self.config.general.silent_mode.clone();
+        if self.silent_synced.as_deref() == Some(mode.as_str()) {
+            return;
+        }
+        let deny = mode == "deny" && self.collector.kind() == CollectorKind::Real;
         self.rules.set_fallback(deny);
+        self._tray.sync_silent(&mode);
+        self.silent_synced = Some(mode);
     }
 
     /// 新连接询问:静默模式关闭(ask_connections 开启)时检测未命中规则

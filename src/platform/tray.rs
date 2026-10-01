@@ -6,7 +6,7 @@
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use eframe::egui;
-use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
+use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use tray_icon::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
 use windows::Win32::System::Registry::{
@@ -21,10 +21,16 @@ pub const CMD_SHOW: &str = "show";
 pub const CMD_HIDE: &str = "hide";
 /// 托盘命令:退出应用
 pub const CMD_QUIT: &str = "quit";
+/// 托盘命令:静默模式三态切换
+pub const CMD_SILENT_OFF: &str = "silent-off";
+pub const CMD_SILENT_ALLOW: &str = "silent-allow";
+pub const CMD_SILENT_DENY: &str = "silent-deny";
 
 /// 托盘句柄;保活即图标在位,drop 时自动移除
 pub struct Tray {
     _inner: TrayIcon,
+    /// 静默模式三态勾选项(句柄保活;app 侧 sync_silent 校准勾选态)
+    silent_items: [CheckMenuItem; 3],
 }
 
 impl Tray {
@@ -33,19 +39,68 @@ impl Tray {
     pub fn set_tooltip(&self, text: &str) {
         let _ = self._inner.set_tooltip(Some(text));
     }
+
+    /// 校准静默模式勾选态(设置页与托盘双入口,app 侧状态唯一来源);
+    /// 空串等非法值视作 off
+    pub fn sync_silent(&self, mode: &str) {
+        let checks = [
+            mode != "allow" && mode != "deny",
+            mode == "allow",
+            mode == "deny",
+        ];
+        for (item, checked) in self.silent_items.iter().zip(checks) {
+            item.set_checked(checked);
+        }
+    }
 }
 
 /// 在当前线程创建托盘与菜单,返回(句柄, 命令接收端);菜单与提示文案
-/// 经 i18n 按启动语言取词(托盘创建一次,运行期语言切换不重建)
-pub fn create(ctx: egui::Context, i18n: &crate::i18n::I18n) -> (Tray, Receiver<String>) {
+/// 经 i18n 按启动语言取词(托盘创建一次,运行期语言切换不重建),
+/// `silent` 为初始静默模式
+pub fn create(
+    ctx: egui::Context,
+    i18n: &crate::i18n::I18n,
+    silent: &str,
+) -> (Tray, Receiver<String>) {
     let menu = Menu::new();
     let show = MenuItem::with_id(CMD_SHOW, i18n.t("tray-show"), true, None);
     let hide = MenuItem::with_id(CMD_HIDE, i18n.t("tray-hide"), true, None);
-    let quit = MenuItem::with_id(CMD_QUIT, i18n.t("tray-quit"), true, None);
     menu.append(&show).expect("追加托盘菜单项失败");
     menu.append(&hide).expect("追加托盘菜单项失败");
+    // 静默模式子菜单:三态勾选,切换命令经 mpsc 回 app
+    let silent_menu = Submenu::with_id("silent-submenu", i18n.t("tray-silent"), true);
+    let silent_off = CheckMenuItem::with_id(
+        CMD_SILENT_OFF,
+        i18n.t("settings-silent-off"),
+        true,
+        silent != "allow" && silent != "deny",
+        None,
+    );
+    let silent_allow = CheckMenuItem::with_id(
+        CMD_SILENT_ALLOW,
+        i18n.t("settings-silent-allow"),
+        true,
+        silent == "allow",
+        None,
+    );
+    let silent_deny = CheckMenuItem::with_id(
+        CMD_SILENT_DENY,
+        i18n.t("settings-silent-deny"),
+        true,
+        silent == "deny",
+        None,
+    );
+    silent_menu.append(&silent_off).expect("追加静默菜单项失败");
+    silent_menu
+        .append(&silent_allow)
+        .expect("追加静默菜单项失败");
+    silent_menu
+        .append(&silent_deny)
+        .expect("追加静默菜单项失败");
+    menu.append(&silent_menu).expect("追加静默子菜单失败");
     menu.append(&PredefinedMenuItem::separator())
         .expect("追加托盘分隔符失败");
+    let quit = MenuItem::with_id(CMD_QUIT, i18n.t("tray-quit"), true, None);
     menu.append(&quit).expect("追加托盘菜单项失败");
 
     let (rgba, width, height) = crate::platform::icon::tray_icon_rgba();
@@ -74,7 +129,13 @@ pub fn create(ctx: egui::Context, i18n: &crate::i18n::I18n) -> (Tray, Receiver<S
         }
     }));
 
-    (Tray { _inner: tray }, rx)
+    (
+        Tray {
+            _inner: tray,
+            silent_items: [silent_off, silent_allow, silent_deny],
+        },
+        rx,
+    )
 }
 
 /// 消费托盘命令,返回是否还有未处理事件由调用方决定;这里一次抽干

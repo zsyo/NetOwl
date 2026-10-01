@@ -206,6 +206,7 @@ ask-scope-process = Always · whole program
 tray-show = Show Main Window
 tray-hide = Hide to Tray
 tray-quit = Quit
+tray-silent = Silent Mode
 tray-tooltip = NetOwl Network Monitor
 wfp-status-active = Enforcement active: {$n} WFP filters
 wfp-status-noadmin = Not running as administrator: rules only annotate connections and do not block; restart as admin to enforce

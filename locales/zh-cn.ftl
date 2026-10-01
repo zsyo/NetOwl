@@ -171,6 +171,7 @@ ask-scope-process = 永久·整个程序
 tray-show = 显示主窗口
 tray-hide = 隐藏到托盘
 tray-quit = 退出
+tray-silent = 静默模式
 tray-tooltip = NetOwl 网络监控
 
 history-title = 连接历史
