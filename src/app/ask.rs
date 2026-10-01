@@ -159,6 +159,10 @@ pub struct Asker {
     asked: HashSet<u64>,
     /// 上轮出现过的连接 id(conn.id 稳定)
     seen: HashSet<u64>,
+    /// 启动基线是否已完成:只在第一个非空快照做一次,之后快照短暂为空
+    /// (休眠唤醒/网络抖动)不得触发重新基线化,否则存量身份被整体静默
+    /// 放行,询问功能失效
+    baselined: bool,
 }
 
 impl Asker {
@@ -168,14 +172,21 @@ impl Asker {
             active: None,
             asked: HashSet::new(),
             seen: HashSet::new(),
+            baselined: false,
         }
     }
 
     /// 每轮喂入连接快照:首次出现且未命中任何规则的 (进程,目标IP) 身份入队。
     /// 新增判定基于 conn.id(连接四元组哈希,快照间稳定)。
-    /// 启动首帧为基线:存量连接视为放行(身份记入已问),只询问之后的新连接
+    /// 启动首帧(第一个非空快照)为基线:存量连接视为放行(身份记入已问),
+    /// 只询问之后的新连接
     pub fn update(&mut self, conns: &[Connection], rules: &RuleSet, rdns: &rdns::Rdns) {
-        let baseline = self.seen.is_empty() && !conns.is_empty();
+        let baseline = if !self.baselined && !conns.is_empty() {
+            self.baselined = true;
+            true
+        } else {
+            false
+        };
         let mut current = HashSet::with_capacity(conns.len());
         let mut fresh: Vec<&Connection> = Vec::new();
         for c in conns {
