@@ -125,10 +125,11 @@ fn block_action(
                 SWITCH_H,
                 egui::Id::new(("conn-block-toggle", c.id)),
             );
-            if resp.changed() && !on {
-                if let Err(e) = rules.delete(db, id) {
-                    tracing::warn!("[Map] 目标 {} 阻断规则(id {id})删除失败: {e}", c.remote_ip);
-                }
+            if resp.changed()
+                && !on
+                && let Err(e) = rules.delete(db, id)
+            {
+                tracing::warn!("[Map] 目标 {} 阻断规则(id {id})删除失败: {e}", c.remote_ip);
             }
             resp.on_hover_text(i18n.t("map-unblock-target"));
         }
@@ -155,14 +156,15 @@ fn block_action(
                 SWITCH_H,
                 egui::Id::new(("conn-block-toggle", c.id)),
             );
-            if resp.changed() && on {
-                if let Err(e) = rules.insert(db, Rule::block(&c.process, Some(c.remote_ip))) {
-                    tracing::warn!(
-                        "[Map] 进程 {} -> {} 阻断规则写入失败: {e}",
-                        c.process,
-                        c.remote_ip
-                    );
-                }
+            if resp.changed()
+                && on
+                && let Err(e) = rules.insert(db, Rule::block(&c.process, Some(c.remote_ip)))
+            {
+                tracing::warn!(
+                    "[Map] 进程 {} -> {} 阻断规则写入失败: {e}",
+                    c.process,
+                    c.remote_ip
+                );
             }
             resp.on_hover_text(i18n.t("map-block-target"));
         }
