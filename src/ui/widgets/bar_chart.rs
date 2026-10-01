@@ -7,7 +7,7 @@
 //! 上方(跟随桶而非鼠标),柱很高无空间时翻到柱顶下方。
 
 use eframe::egui;
-use egui::{Align2, CornerRadius, FontId, Rect, Sense, Stroke, StrokeKind, Vec2};
+use egui::{Align2, CornerRadius, FontId, Rect, Sense, Stroke, StrokeKind, Vec2, Vec2b};
 
 use crate::model::fmt_bytes;
 use crate::ui::icons;
@@ -54,75 +54,79 @@ pub fn bar_chart(ui: &mut egui::Ui, bars: &[UsageBar], size: Vec2) {
     }
     let viewport_h = size.y - LABEL_H;
 
-    // 左列固定 Y 轴刻度标签,右侧为横向滚动内容区
-    let (label_rect, _) = ui.allocate_exact_size(Vec2::new(Y_LABEL_W, size.y), Sense::hover());
-    let chart_w = ui.available_width();
+    // 左列固定 Y 轴刻度标签 + 右侧横向滚动内容区:horizontal 包裹强制
+    // 并排(vertical 布局下左列 allocate 会把滚动区排到下一行,二者
+    // 垂直错位);滚动区纵向收缩到内容高,与标签列同高对齐
+    ui.horizontal(|ui| {
+        let (label_rect, _) = ui.allocate_exact_size(Vec2::new(Y_LABEL_W, size.y), Sense::hover());
+        let chart_w = ui.available_width();
 
-    // 三段式桶宽:封顶居中 / 铺满 / 恒最小宽滚动
-    let fit = chart_w / n as f32;
-    let (slot, content_w, centered) = if fit > SLOT_MAX {
-        (SLOT_MAX, chart_w, true)
-    } else if fit >= SLOT_MIN {
-        (fit, chart_w, false)
-    } else {
-        (SLOT_MIN, n as f32 * SLOT_MIN, false)
-    };
-    let max_offset = (content_w - chart_w).max(0.0);
-
-    // 粘性跟随:上一帧停在右端时,本帧把视口推到最右(数据增长跟随);
-    // 用户拖离右端后停止强制(show 后按实际偏移更新标志)
-    let stick_id = egui::Id::new("usage-bar-stick");
-    let mut stick = ui
-        .ctx()
-        .data_mut(|d| *d.get_temp_mut_or_insert_with(stick_id, || true));
-    let mut area = egui::ScrollArea::horizontal()
-        .id_salt("usage-bar-scroll")
-        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
-        .auto_shrink(false);
-    if stick && max_offset > 0.0 {
-        area = area.scroll_offset(Vec2::new(max_offset, 0.0));
-    }
-    let out = area.show(ui, |ui| {
-        let (content_rect, _) =
-            ui.allocate_exact_size(Vec2::new(content_w, viewport_h + LABEL_H), Sense::hover());
-        let origin_x = if centered {
-            content_rect.left() + (content_w - n as f32 * slot) * 0.5
+        // 三段式桶宽:封顶居中 / 铺满 / 恒最小宽滚动
+        let fit = chart_w / n as f32;
+        let (slot, content_w, centered) = if fit > SLOT_MAX {
+            (SLOT_MAX, chart_w, true)
+        } else if fit >= SLOT_MIN {
+            (fit, chart_w, false)
         } else {
-            content_rect.left()
+            (SLOT_MIN, n as f32 * SLOT_MIN, false)
         };
-        draw_content(ui, bars, slot, origin_x, content_rect, p);
-    });
-    let offset = out.state.offset.x;
-    stick = offset >= max_offset - STICK_EPS;
-    ui.ctx().data_mut(|d| d.insert_temp(stick_id, stick));
+        let max_offset = (content_w - chart_w).max(0.0);
 
-    // Y 轴刻度(固定列;网格线/基线在内容层随滚动绘制,横线横向滚动下
-    // 视觉与固定绘制无异)
-    let painter = ui.painter_at(label_rect);
-    let nice_max = nice_ceil(
-        bars.iter()
-            .map(|b| b.down.max(b.up))
-            .max()
-            .unwrap_or(0)
-            .max(1) as f32,
-    );
-    for v in [nice_max, nice_max * 0.5] {
-        let y = label_rect.top() + viewport_h * (1.0 - v / nice_max);
+        // 粘性跟随:上一帧停在右端时,本帧把视口推到最右(数据增长跟随);
+        // 用户拖离右端后停止强制(show 后按实际偏移更新标志)
+        let stick_id = egui::Id::new("usage-bar-stick");
+        let mut stick = ui
+            .ctx()
+            .data_mut(|d| *d.get_temp_mut_or_insert_with(stick_id, || true));
+        let mut area = egui::ScrollArea::horizontal()
+            .id_salt("usage-bar-scroll")
+            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
+            .auto_shrink(Vec2b::new(false, true));
+        if stick && max_offset > 0.0 {
+            area = area.scroll_offset(Vec2::new(max_offset, 0.0));
+        }
+        let out = area.show(ui, |ui| {
+            let (content_rect, _) =
+                ui.allocate_exact_size(Vec2::new(content_w, viewport_h + LABEL_H), Sense::hover());
+            let origin_x = if centered {
+                content_rect.left() + (content_w - n as f32 * slot) * 0.5
+            } else {
+                content_rect.left()
+            };
+            draw_content(ui, bars, slot, origin_x, content_rect, p);
+        });
+        let offset = out.state.offset.x;
+        stick = offset >= max_offset - STICK_EPS;
+        ui.ctx().data_mut(|d| d.insert_temp(stick_id, stick));
+
+        // Y 轴刻度(固定列;网格线/基线在内容层随滚动绘制,横线横向滚动下
+        // 视觉与固定绘制无异)
+        let painter = ui.painter_at(label_rect);
+        let nice_max = nice_ceil(
+            bars.iter()
+                .map(|b| b.down.max(b.up))
+                .max()
+                .unwrap_or(0)
+                .max(1) as f32,
+        );
+        for v in [nice_max, nice_max * 0.5] {
+            let y = label_rect.top() + viewport_h * (1.0 - v / nice_max);
+            painter.text(
+                egui::pos2(label_rect.right() - 6.0, y),
+                Align2::RIGHT_CENTER,
+                fmt_bytes(v as u64),
+                FontId::proportional(theme::font::MICRO),
+                p.text_dim,
+            );
+        }
         painter.text(
-            egui::pos2(label_rect.right() - 6.0, y),
+            egui::pos2(label_rect.right() - 6.0, label_rect.top() + viewport_h),
             Align2::RIGHT_CENTER,
-            fmt_bytes(v as u64),
+            "0",
             FontId::proportional(theme::font::MICRO),
             p.text_dim,
         );
-    }
-    painter.text(
-        egui::pos2(label_rect.right() - 6.0, label_rect.top() + viewport_h),
-        Align2::RIGHT_CENTER,
-        "0",
-        FontId::proportional(theme::font::MICRO),
-        p.text_dim,
-    );
+    });
 }
 
 /// 内容层绘制:网格、柱、槽高亮、基线、X 标签与悬停卡(随内容滚动;
