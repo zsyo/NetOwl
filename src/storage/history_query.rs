@@ -428,6 +428,10 @@ pub struct PageState {
     /// 筛选输入防抖:输入每键一次全量 SQL 查询在大库上卡顿,记下
     /// 最后按键时刻,300ms 无后续输入才真正重查
     filter_debounce: Option<Instant>,
+    /// 汇总视图"活跃合并"缓存:(生成时刻, 并入活跃连接后的行)。
+    /// SQL 结果克隆+活跃聚合+重排每帧执行在交互帧重复,按秒失效复用;
+    /// 重查后由 refresh_if_needed 置 None
+    pub summary_merged: Option<(Instant, Vec<SummaryRow>)>,
 }
 
 impl PageState {
@@ -446,6 +450,7 @@ impl PageState {
             pending_delete: None,
             purge_pending: None,
             filter_debounce: None,
+            summary_merged: None,
         }
     }
 
@@ -502,6 +507,7 @@ impl PageState {
             }
         };
         self.db_size = db_size();
+        self.summary_merged = None;
         self.dirty = false;
     }
 }

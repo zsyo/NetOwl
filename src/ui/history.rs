@@ -2,6 +2,7 @@
 //! 数据库大小展示、超容提醒与手动清空。
 
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use eframe::egui;
 use egui::{CornerRadius, Frame, Label, Margin, RichText, Stroke, containers::menu::MenuButton};
@@ -17,6 +18,10 @@ use crate::storage::history_query::{
     self, AggregateSort, PendingDelete, Rows, SummaryRow, SummarySort, ViewMode,
 };
 use crate::ui::{TOOLBAR_ROW_H, conn_visible, icons, theme, widgets};
+
+/// 汇总视图活跃合并缓存的生存期:略短于静态页 1s 重绘间隔,
+/// 保证每次常规重绘都会拿到新鲜活跃字节,交互帧复用不重算
+const SUMMARY_MERGE_TTL: Duration = Duration::from_millis(900);
 
 /// 历史页;返回是否直接改动了配置(勾选不再提醒/清空还原提醒)
 #[allow(clippy::too_many_arguments)]
@@ -634,29 +639,44 @@ fn rows_table(
             );
             truncated_hint(ui, rows.len(), i18n);
         }
-        Rows::Summary(rows) => {
-            // 实时叠加:SQL 结果克隆后并入活跃连接聚合,不写回 state.rows
-            // (活跃字节每秒增长,固化进缓存会污染 dirty 门控的下次重查)
-            let mut merged = rows.clone();
-            for (process, live) in live_proc_sums(conns, config) {
-                match merged.iter_mut().find(|r| r.process == process) {
-                    Some(r) => {
-                        r.bytes_out += live.bytes_out;
-                        r.bytes_in += live.bytes_in;
-                        r.count += live.count;
-                        r.total_secs += live.total_secs;
+        Rows::Summary(_) => {
+            // 实时叠加活跃连接(口径注记见下):克隆+聚合+重排开销大,
+            // 缓存于 summary_merged 按秒失效,交互帧直接复用不重算;
+            // 不写回 state.rows(活跃字节逐轮增长,固化进查询缓存会
+            // 污染 dirty 门控的下次重查)
+            let expired = state
+                .summary_merged
+                .as_ref()
+                .is_none_or(|(at, _)| at.elapsed() >= SUMMARY_MERGE_TTL);
+            if expired {
+                let mut merged = match &state.rows {
+                    Rows::Summary(rows) => rows.clone(),
+                    _ => Vec::new(),
+                };
+                for (process, live) in live_proc_sums(conns, config) {
+                    match merged.iter_mut().find(|r| r.process == process) {
+                        Some(r) => {
+                            r.bytes_out += live.bytes_out;
+                            r.bytes_in += live.bytes_in;
+                            r.count += live.count;
+                            r.total_secs += live.total_secs;
+                        }
+                        None => merged.push(SummaryRow {
+                            process,
+                            proc_path: live.proc_path,
+                            bytes_out: live.bytes_out,
+                            bytes_in: live.bytes_in,
+                            count: live.count,
+                            total_secs: live.total_secs,
+                        }),
                     }
-                    None => merged.push(SummaryRow {
-                        process,
-                        proc_path: live.proc_path,
-                        bytes_out: live.bytes_out,
-                        bytes_in: live.bytes_in,
-                        count: live.count,
-                        total_secs: live.total_secs,
-                    }),
                 }
+                sort_summary(&mut merged, state.summary_sort);
+                state.summary_merged = Some((Instant::now(), merged));
             }
-            sort_summary(&mut merged, state.summary_sort);
+            let Some((_, merged)) = state.summary_merged.as_ref() else {
+                return;
+            };
             if merged.is_empty() {
                 empty_hint(ui, i18n);
                 return;
