@@ -21,6 +21,10 @@ use crate::storage::history;
 /// 对端更可能是主动连入的客户端
 const EPHEMERAL_MIN: u16 = 49152;
 
+/// 静默拒绝兜底规则的保留 id(负数段之外,规则页不显示、不可编辑删除;
+/// 该规则只存在于内存,由 app 层按配置同步)
+pub const SILENT_FALLBACK_ID: i64 = i64::MIN;
+
 /// 规则动作
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Action {
@@ -157,6 +161,14 @@ impl Rule {
             local_port: 0,
         }
     }
+
+    /// 构造持久放行规则(静默拒绝兜底的撤销 = 为目标建允许规则覆盖):
+    /// 条件构造与 [`Rule::block`] 完全一致,仅动作相反
+    pub fn permit(process: &str, remote: Option<Ipv4Addr>) -> Rule {
+        let mut rule = Rule::block(process, remote);
+        rule.action = Action::Allow;
+        rule
+    }
 }
 
 /// 求值输入:从连接与 rDNS 域名构造
@@ -247,6 +259,9 @@ fn match_domain(value: &str, host: &str) -> bool {
 /// 内存规则集(priority 升序、同值按 id),变更同步落库
 pub struct RuleSet {
     pub rules: Vec<Rule>,
+    /// 静默拒绝兜底(全通配 Block):仅内存,不入 rules 列表(规则页不显示),
+    /// evaluate 在用户规则未命中时返回它——连接标注/地图阻断状态自动联动
+    fallback: Option<Rule>,
     /// 进程规则的路径粘滞缓存(规则 id -> 已命中过的完整路径):
     /// 连接被阻断后快照可能抓不到进程行,已展开路径保持,避免
     /// 拦截窗口抖动;规则删除/改进程条件时清理
@@ -290,14 +305,41 @@ impl RuleSet {
         }
         RuleSet {
             rules,
+            fallback: None,
             sticky_paths: HashMap::new(),
             next_temp_id: -1,
         }
     }
 
-    /// 求值:按优先级首个命中的启用规则;无命中返回 None(默认放行)
+    /// 同步静默拒绝兜底(全通配 Block,deny = 开):app 层按配置每帧调用,
+    /// 状态不变时零开销
+    pub fn set_fallback(&mut self, deny: bool) {
+        let want = deny.then(|| Rule {
+            id: SILENT_FALLBACK_ID,
+            name: "silent-deny".to_owned(),
+            enabled: true,
+            priority: i64::MAX,
+            action: Action::Block,
+            direction: Direction::Any,
+            proto: None,
+            process: String::new(),
+            remote_kind: RemoteKind::Any,
+            remote_value: String::new(),
+            port: 0,
+            local_port: 0,
+        });
+        if want.as_ref().map(|r| r.id) != self.fallback.as_ref().map(|r| r.id) {
+            self.fallback = want;
+        }
+    }
+
+    /// 求值:按优先级首个命中的启用规则;无命中时返回静默拒绝兜底(若开启);
+    /// 仍无则 None(默认放行)
     pub fn evaluate(&self, req: &MatchReq) -> Option<&Rule> {
-        self.rules.iter().find(|r| r.enabled && r.matches(req))
+        self.rules
+            .iter()
+            .find(|r| r.enabled && r.matches(req))
+            .or(self.fallback.as_ref())
     }
 
     /// 命中该连接的启用阻断规则(求值首个命中且动作为阻断);
@@ -447,6 +489,12 @@ const PROTO_UDP: u8 = 17;
 /// 过滤器 weight 上限(FWP_UINT8 有效范围 0..=15)
 const MAX_WEIGHT: usize = 15;
 
+/// 预留最高 weight:询问 pending 阻断与静默自身放行(二者互斥,静默拒绝
+/// 模式下询问关闭,pending 不存在)
+pub const WEIGHT_RESERVED_HIGH: u8 = MAX_WEIGHT as u8;
+/// 静默兜底阻断 weight(低于全部用户规则,与子层基线同级)
+pub const WEIGHT_FALLBACK: u8 = 0;
+
 impl RuleSet {
     /// 把启用规则翻译为 WFP 过滤器目标集合(语义见 wfp::Spec;域名规则
     /// 不参与翻译)。与求值引擎一致:优先级高者 weight 大。进程规则按
@@ -461,7 +509,10 @@ impl RuleSet {
 
         let mut specs = Vec::new();
         for (rank, r) in applicable.iter().enumerate() {
-            let weight = (MAX_WEIGHT - rank.min(MAX_WEIGHT)) as u8;
+            // weight 布局:15 = 询问 pending / 静默自身放行,1..=14 = 用户规则,
+            // 0 = 静默兜底阻断(与子层基线同级);用户规则超过 14 条后钳制到 1,
+            // 恒高于兜底,避免同 weight 时 WFP 动作未定义
+            let weight = (MAX_WEIGHT - 1 - rank.min(MAX_WEIGHT - 2)) as u8;
             let remote = match r.remote_kind {
                 RemoteKind::Any => None,
                 RemoteKind::Ip => match parse_net(&r.remote_value) {

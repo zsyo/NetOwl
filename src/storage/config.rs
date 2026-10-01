@@ -44,9 +44,14 @@ pub struct GeneralConfig {
     /// 连接页与历史页隐藏私网远端(RFC1918)
     #[serde(default = "default_true")]
     pub hide_lan: bool,
-    /// 新连接询问弹窗(默认关闭):开启后未命中规则的公网新连接弹窗询问
+    /// 新连接询问弹窗(默认关闭):开启后未命中规则的公网新连接弹窗询问;
+    /// 仅静默模式为 "off" 时生效
     #[serde(default)]
     pub ask_connections: bool,
+    /// 全局静默模式(LS Silent Mode):"off" 询问模式(按 ask_connections)/
+    /// "allow" 静默放行未命中连接 / "deny" 静默拒绝未命中连接
+    #[serde(default)]
+    pub silent_mode: String,
     /// 托盘图标常驻任务栏(NotifyIconSettings IsPromoted,免折叠进隐藏区);
     /// 写入失败(项未注册等)保持系统默认行为
     #[serde(default)]
@@ -70,6 +75,7 @@ impl Default for GeneralConfig {
             hide_local: true,
             hide_lan: true,
             ask_connections: false,
+            silent_mode: String::new(),
             tray_pinned: false,
             log_level: default_log_level(),
             log_to_file: false,
@@ -138,6 +144,9 @@ impl Config {
                     }
                     if cfg.general.collector != "real" && cfg.general.collector != "mock" {
                         cfg.general.collector = "real".to_owned();
+                    }
+                    if !matches!(cfg.general.silent_mode.as_str(), "off" | "allow" | "deny") {
+                        cfg.general.silent_mode = "off".to_owned();
                     }
                     if crate::logging::LogLevel::parse(&cfg.general.log_level).as_str()
                         != cfg.general.log_level

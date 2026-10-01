@@ -32,6 +32,7 @@ map-panel-empty = 无匹配的连接
 map-block-process = 阻断此进程的全部连接
 map-unblock-process = 撤销阻断:删除进程级阻断规则
 map-block-target = 阻断此进程到该目标
+map-unblock-silent = 静默拒绝兜底中,关闭开关将创建允许规则覆盖
 map-unblock-target = 撤销阻断:删除目标级阻断规则
 map-blocked-by-process = 已被进程级规则阻断
 map-inspector-summary = 概览
@@ -115,6 +116,11 @@ settings-history-days-unit = 天
 settings-history-days-hint = 自动删除超过该天数的历史数据,0 表示不自动清理
 
 settings-ask = 新连接询问
+settings-silent = 全局静默模式
+settings-silent-hint = 静默放行/拒绝未命中规则的连接,不弹窗询问;关闭后恢复按"新连接询问"开关行为
+settings-silent-off = 关闭
+settings-silent-allow = 静默放行
+settings-silent-deny = 静默拒绝
 settings-ask-on = 为未命中规则的新连接弹窗询问
 settings-ask-hint = 仅询问公网目标,本地与局域网连接不弹;永久选项写入规则页,可随时修改
 

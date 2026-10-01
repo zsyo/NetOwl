@@ -21,8 +21,9 @@ use crate::rules::{Action, Direction, MatchReq, RemoteKind, Rule, RuleSet};
 pub const ASK_TIMEOUT: Duration = Duration::from_secs(30);
 /// 待询问队列上限:超出后新身份静默放行,防瞬时连接风暴刷屏
 const QUEUE_LIMIT: usize = 10;
-/// 询问等待期间的临时阻断 weight(最高,压过用户规则)
-const PENDING_WEIGHT: u8 = 15;
+/// 询问等待期间的临时阻断 weight(最高,压过用户规则;与静默自身放行
+/// 互斥——静默拒绝模式下询问关闭,pending spec 不存在)
+const PENDING_WEIGHT: u8 = crate::rules::WEIGHT_RESERVED_HIGH;
 /// 系统进程(PID 4)持有内核级 socket,不询问
 const SYSTEM_PID: u32 = 4;
 /// 决策的作用范围

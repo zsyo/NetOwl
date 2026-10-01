@@ -592,13 +592,55 @@ impl NetOwlApp {
         if let Some(item) = self.asker.active.as_ref() {
             specs.insert(0, item.pending_block_spec());
         }
+        // 静默拒绝:兜底全通配阻断(weight 0,低于全部用户规则)+ 自身
+        // 放行(weight 15,防兜底切断 NetOwl 自身连接)。与询问 pending
+        // spec 互斥:deny 下询问关闭,pending 不存在
+        if self.config.general.silent_mode == "deny" && self.collector.kind() == CollectorKind::Real
+        {
+            let self_path = std::env::current_exe()
+                .ok()
+                .map(|p| p.to_string_lossy().into_owned());
+            for layer in [wfp::Layer::Out, wfp::Layer::In] {
+                specs.push(wfp::Spec {
+                    layer,
+                    weight: rules::WEIGHT_RESERVED_HIGH,
+                    block: false,
+                    app_path: self_path.clone(),
+                    remote: None,
+                    proto: None,
+                    port: None,
+                });
+                specs.push(wfp::Spec {
+                    layer,
+                    weight: rules::WEIGHT_FALLBACK,
+                    block: true,
+                    app_path: None,
+                    remote: None,
+                    proto: None,
+                    port: None,
+                });
+            }
+        }
         self.wfp.sync(Arc::new(specs));
     }
 
-    /// 新连接询问:开关开启时检测未命中规则的公网连接并入队;
-    /// 倒计时超时执行默认动作(拒绝·仅本次)
+    /// 静默拒绝兜底同步:配置为 deny 且真实数据源时注入全通配兜底规则
+    /// (求值自动命中,连接标注/地图阻断状态联动),其余状态撤销;
+    /// mock 数据源无真实流量,不注入(避免演示数据误标阻断)
+    fn sync_silent_mode(&mut self) {
+        let deny = self.config.general.silent_mode == "deny"
+            && self.collector.kind() == CollectorKind::Real;
+        self.rules.set_fallback(deny);
+    }
+
+    /// 新连接询问:静默模式关闭(ask_connections 开启)时检测未命中规则
+    /// 的公网连接并入队;倒计时超时执行默认动作(拒绝·仅本次);
+    /// 静默放行/拒绝模式下与询问互斥,队列与弹窗一并清空
     fn poll_ask(&mut self) {
-        if self.collector.kind() != CollectorKind::Real || !self.config.general.ask_connections {
+        if self.collector.kind() != CollectorKind::Real
+            || !self.config.general.ask_connections
+            || matches!(self.config.general.silent_mode.as_str(), "allow" | "deny")
+        {
             self.asker.clear();
             return;
         }
@@ -877,6 +919,7 @@ impl eframe::App for NetOwlApp {
         self.poll_traffic(ctx);
         self.poll_conns(ctx);
         self.writer.set_retention(self.config.general.history_days);
+        self.sync_silent_mode();
         self.poll_wfp();
 
         // 进入设置页时重扫 locales,加载运行期间新增的词条文件;

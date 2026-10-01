@@ -32,6 +32,7 @@ map-panel-empty = No matching connections
 map-block-process = Block all connections of this process
 map-unblock-process = Unblock: remove the process-level block rule
 map-block-target = Block this process to this target
+map-unblock-silent = Silent-deny fallback active; toggling off creates an allow rule
 map-unblock-target = Unblock: remove the target-level block rule
 map-blocked-by-process = Already blocked by a process-level rule
 map-inspector-summary = Summary
@@ -115,6 +116,11 @@ settings-history-days-unit = days
 settings-history-days-hint = Delete history older than this many days; 0 disables auto-clean
 
 settings-ask = New connection prompts
+settings-silent = Global silent mode
+settings-silent-hint = Silently allow or deny connections that match no rule without prompting; turning it off restores the "ask for new connections" behavior
+settings-silent-off = Off
+settings-silent-allow = Silent allow
+settings-silent-deny = Silent deny
 settings-ask-on = Ask for new connections that match no rule
 settings-ask-hint = Public targets only; local and LAN connections never prompt. "Always" options are saved to the Rules page
 

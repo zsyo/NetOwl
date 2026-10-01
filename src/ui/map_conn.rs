@@ -114,6 +114,30 @@ fn block_action(
         .blocking_rule(c, rdns.lookup(c.remote_ip))
         .map(|r| (r.id, r.remote_kind == RemoteKind::Ip));
     match hit {
+        // 静默拒绝兜底命中:开关开启(红 = 兜底阻断中),关 = 创建允许
+        // 规则覆盖(LS 语义:兜底不可删除,放行靠用户规则优先命中)
+        Some((id, _)) if id == crate::rules::SILENT_FALLBACK_ID => {
+            let mut on = true;
+            let resp = widgets::toggle::block_switch(
+                ui,
+                &mut on,
+                true,
+                SWITCH_W,
+                SWITCH_H,
+                egui::Id::new(("conn-block-toggle", c.id)),
+            );
+            if resp.changed()
+                && !on
+                && let Err(e) = rules.insert(db, Rule::permit(&c.process, Some(c.remote_ip)))
+            {
+                tracing::warn!(
+                    "[Map] 进程 {} -> {} 允许规则写入失败: {e}",
+                    c.process,
+                    c.remote_ip
+                );
+            }
+            resp.on_hover_text(i18n.t("map-unblock-silent"));
+        }
         // 可撤销的目标级规则:开关开启(红 = 阻断中),关 = 撤销
         Some((id, true)) => {
             let mut on = true;
