@@ -81,8 +81,9 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   显示,rdns::display 超长截断);traffic.rs:总上传/下载速率(GetIfTable2 各接口
   In/OutOctets 采样差值;排除回环/隧道;**必须排除
   InterfaceAndOperStatusFlags.FilterInterface(bit1) 接口——WFP 轻量过滤/QoS
-  过滤接口会镜像底层物理网卡计数,不过滤速率成倍虚高**;窗口可见 1s 采样、
-  隐藏 5s,表查询失败沿用旧速率);etw.rs:ETW 流量事件采集(Microsoft-Windows-
+  过滤接口会镜像底层物理网卡计数,不过滤速率成倍虚高**;可见/隐藏均 1s 采样
+  (托盘悬停提示跟随秒级刷新),表查询失败沿用旧速率);etw.rs:ETW 流量事件
+  采集(Microsoft-Windows-
   Kernel-Network 实时会话,命名实例启动清理残留/退出停止,需管理员权限,未提权
   不启动;手写 windows crate 消费者 StartTraceW→EnableTraceEx2→OpenTraceW 回调→
   ProcessTrace;payload 前 20 字节同构硬编码解析:PID/size/daddr/saddr/dport/

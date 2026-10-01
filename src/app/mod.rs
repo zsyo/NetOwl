@@ -55,9 +55,10 @@ const RESTORE_TIMEOUT: Duration = Duration::from_secs(2);
 const RESTORE_TOLERANCE: i32 = 2;
 /// 本机公网 IP 重探间隔(重拨/换网后点位跟随更新)
 const LOCAL_IP_PROBE_INTERVAL: Duration = Duration::from_secs(10 * 60);
-/// 总速率采样间隔:窗口可见时 1s,隐藏(托盘)时放宽到 5s 降低功耗
+/// 总速率采样间隔:可见/隐藏(托盘)均 1s——托盘悬停提示按秒跟随刷新,
+/// GetIfTable2 为本地内核查询开销极小,无需为功耗放宽
 const TRAFFIC_INTERVAL_ACTIVE: Duration = Duration::from_secs(1);
-const TRAFFIC_INTERVAL_HIDDEN: Duration = Duration::from_secs(5);
+const TRAFFIC_INTERVAL_HIDDEN: Duration = Duration::from_secs(1);
 /// 速率历史采样点数(约 1 分钟窗口,迷你走势图用)
 const RATE_HIST_LEN: usize = 60;
 /// 主窗口最小逻辑尺寸(= 默认窗口尺寸;main.rs 视口 min_inner_size 与
@@ -73,8 +74,8 @@ const CONNS_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 /// 托盘常驻写入重试间隔:托盘设置项由 Explorer 在图标注册时创建,
 /// 启动数秒内可能尚不存在
 const TRAY_PIN_RETRY_INTERVAL: Duration = Duration::from_secs(60);
-/// 托盘悬停提示的速率刷新间隔(与隐藏态速率采样 5s 同频)
-const TRAY_TIP_INTERVAL: Duration = Duration::from_secs(5);
+/// 托盘悬停提示的速率刷新间隔(秒级,与速率采样同频)
+const TRAY_TIP_INTERVAL: Duration = Duration::from_secs(1);
 
 /// 待恢复的窗口几何(物理像素)
 type WindowRect = (i32, i32, i32, i32, bool);
@@ -492,7 +493,7 @@ impl NetOwlApp {
         }
     }
 
-    /// 总速率采样:窗口隐藏(托盘)或最小化时放宽采样间隔降低功耗。
+    /// 总速率采样:可见与隐藏(托盘)均按秒采样,托盘悬停提示跟随刷新。
     /// 仅在真实采样(节流间隔到达且读表成功)时更新当前值并推进历史序列:
     /// logic 每帧执行,无条件 push 会让走势图随帧率滚动(地图动画 30fps
     /// 时 60 点缓冲两秒滚完,数据相同画成横线)
