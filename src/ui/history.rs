@@ -206,7 +206,11 @@ fn toolbar(
         {
             state.dirty = true;
         }
-        if process.changed() || remote.changed() || process.lost_focus() || remote.lost_focus() {
+        // 输入中防抖重查(合并连续按键);失焦视为输入结束立即刷新
+        if process.changed() || remote.changed() {
+            state.defer_refresh();
+        }
+        if process.lost_focus() || remote.lost_focus() {
             state.dirty = true;
         }
 

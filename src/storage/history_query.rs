@@ -17,6 +17,8 @@ use crate::storage::history::{Db, Writer, db_size, unix_now};
 pub const REMIND_SIZE: u64 = 1024 * 1024 * 1024;
 /// 明细/聚合单次查询行数上限
 pub const QUERY_LIMIT: usize = 500;
+/// 筛选输入防抖时长:连续按键合并为最后一次重查
+const FILTER_DEBOUNCE: Duration = Duration::from_millis(300);
 /// FILETIME(1601 起 100ns)与 unix 秒的基准差(秒)
 const EPOCH_DELTA: u64 = 11_644_473_600;
 
@@ -423,6 +425,9 @@ pub struct PageState {
     pub pending_delete: Option<PendingDelete>,
     /// 已发起清理,延迟数帧后刷新(等写线程完成)
     purge_pending: Option<Instant>,
+    /// 筛选输入防抖:输入每键一次全量 SQL 查询在大库上卡顿,记下
+    /// 最后按键时刻,300ms 无后续输入才真正重查
+    filter_debounce: Option<Instant>,
 }
 
 impl PageState {
@@ -440,7 +445,13 @@ impl PageState {
             db_size: 0,
             pending_delete: None,
             purge_pending: None,
+            filter_debounce: None,
         }
+    }
+
+    /// 筛选文本输入中:延迟 FILTER_DEBOUNCE 再重查(合并连续按键)
+    pub fn defer_refresh(&mut self) {
+        self.filter_debounce = Some(Instant::now());
     }
 
     /// 发起清理:删除 days 天前的数据(0 = 清空全部);
@@ -458,6 +469,15 @@ impl PageState {
         {
             self.dirty = true;
             self.purge_pending = None;
+        }
+        // 筛选输入防抖:静默期到达后合并为一次重查
+        if let Some(at) = self.filter_debounce {
+            if at.elapsed() >= FILTER_DEBOUNCE {
+                self.dirty = true;
+                self.filter_debounce = None;
+            } else {
+                return;
+            }
         }
         if !self.dirty {
             return;
