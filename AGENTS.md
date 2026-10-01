@@ -123,7 +123,9 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   ask.rs:新连接询问弹窗(右下角无标题栏 toast,盾形图标标题,范围下拉 +
   允许[accent 填充 on_accent 字]/拒绝[danger 描边],进度条内嵌剩余秒数);
   history.rs:历史页(三视图 segmented 切换:明细/聚合/进程汇总[按进程
-  聚合字节总量/次数/时长,默认上传降序,口径注记"仅已完结连接"];明细 8 列
+  聚合字节总量/次数/时长,默认上传降序,数字含活跃连接实时字节——渲染时
+  克隆 SQL 结果并入活跃聚合不写回查询缓存;汇总行整行点击下钻明细并按
+  进程名过滤,空进程名行禁用];明细 8 列
   聚合 9 列含字节,聚合与汇总表头可排序[字节 0 弱化显示];档位筛选、库
   大小显示、超 1 GiB 提醒卡[warn 低透明底 + 警示图标,勾选不再提醒=一票
   否决持久化,手动清空还原]、清理下拉菜单;位置列实时反查 geoip;表格口径
@@ -144,7 +146,9 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
 - locales/ - fluent 词条文件(zh-cn.ftl / en.ftl;目录缺失时使用编译期内嵌兜底)
 - src/platform/ - 平台集成(paths.rs:数据根目录 = exe 同级(Windows 便携式);
   icon.rs:应用图标加载(assets 资源编译期内嵌,PNG 解码为 RGBA);tray.rs:
-  托盘与菜单(tray-icon + muda))
+  托盘与菜单(tray-icon + muda);shutdown_hook.rs:关机落库钩子(子类化
+  主窗口拦 WM_ENDSESSION,执行 tracker.flush+writer.shutdown——winit 不
+  处理 ENDSESSION,关机时进程被强杀,该钩子是托盘退出外唯一落库路径))
 - tools/build_mapdata.py - 底图数据生成脚本(混合数据源 ->
     assets/mapdata.bin;原始 GeoJSON 放 tools/cache/,该目录不入库)
 - tools/build_geoip.py - GeoIP 归属数据生成脚本(tools/cache/ip2region_v4.xdb
