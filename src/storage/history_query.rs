@@ -117,7 +117,9 @@ impl AggregateSort {
     }
 }
 
-/// 汇总行(按进程聚合;同一进程名的多路径/PID 合并,路径取代表用于图标)
+/// 汇总行(按进程聚合;同一进程名的多路径/PID 合并,路径取代表用于图标)。
+/// Clone 供汇总视图克隆 SQL 结果后叠加活跃连接实时字节(不写回查询缓存)
+#[derive(Clone)]
 pub struct SummaryRow {
     pub process: String,
     pub proc_path: Option<String>,

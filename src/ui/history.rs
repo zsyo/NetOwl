@@ -8,12 +8,12 @@ use egui::{CornerRadius, Frame, Label, Margin, RichText, Stroke, containers::men
 use rusqlite::Connection as Db;
 
 use crate::i18n::I18n;
-use crate::model::{Place, Protocol, fmt_bytes};
+use crate::model::{Connection, Place, Protocol, fmt_bytes};
 use crate::net::geoip;
 use crate::storage::config::Config;
 use crate::storage::history;
-use crate::storage::history_query::{self, AggregateSort, Rows, SummarySort, ViewMode};
-use crate::ui::{TOOLBAR_ROW_H, icons, theme, widgets};
+use crate::storage::history_query::{self, AggregateSort, Rows, SummaryRow, SummarySort, ViewMode};
+use crate::ui::{TOOLBAR_ROW_H, conn_visible, icons, theme, widgets};
 
 /// 历史页;返回是否直接改动了配置(勾选不再提醒/清空还原提醒)
 #[allow(clippy::too_many_arguments)]
@@ -23,6 +23,7 @@ pub fn show(
     i18n: &I18n,
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
     default_icon_tex: Option<&egui::TextureHandle>,
+    conns: &[Connection],
     db: &Db,
     writer: &history::Writer,
     config: &mut Config,
@@ -42,7 +43,7 @@ pub fn show(
     toolbar(ui, state, i18n, db, writer, config, &mut config_changed);
     ui.add_space(theme::sp::SM);
 
-    rows_table(ui, state, i18n, icon_tex, default_icon_tex);
+    rows_table(ui, state, i18n, icon_tex, default_icon_tex, conns, config);
     config_changed
 }
 
@@ -279,12 +280,15 @@ fn proto_name(i18n: &I18n, proto: Option<Protocol>) -> String {
 /// (虚拟化后 Grid striped 的奇偶不再对应全局行号);
 /// 表头固定在滚动区之外(show_rows 的行定位不含表头,混入会整体错位),
 /// 列宽与数据 Grid 同一公式计算保持对齐
+#[allow(clippy::too_many_arguments)]
 fn rows_table(
     ui: &mut egui::Ui,
     state: &mut history_query::PageState,
     i18n: &I18n,
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
     default_icon_tex: Option<&egui::TextureHandle>,
+    conns: &[Connection],
+    config: &Config,
 ) {
     match &state.rows {
         Rows::Detail(rows) => {
@@ -564,11 +568,33 @@ fn rows_table(
             );
         }
         Rows::Summary(rows) => {
-            if rows.is_empty() {
+            // 实时叠加:SQL 结果克隆后并入活跃连接聚合,不写回 state.rows
+            // (活跃字节每秒增长,固化进缓存会污染 dirty 门控的下次重查)
+            let mut merged = rows.clone();
+            for (process, live) in live_proc_sums(conns, config) {
+                match merged.iter_mut().find(|r| r.process == process) {
+                    Some(r) => {
+                        r.bytes_out += live.bytes_out;
+                        r.bytes_in += live.bytes_in;
+                        r.count += live.count;
+                        r.total_secs += live.total_secs;
+                    }
+                    None => merged.push(SummaryRow {
+                        process,
+                        proc_path: live.proc_path,
+                        bytes_out: live.bytes_out,
+                        bytes_in: live.bytes_in,
+                        count: live.count,
+                        total_secs: live.total_secs,
+                    }),
+                }
+            }
+            sort_summary(&mut merged, state.summary_sort);
+            if merged.is_empty() {
                 empty_hint(ui, i18n);
                 return;
             }
-            // 口径注记:字节随连接完结定稿入库,活跃连接关闭后才计入统计
+            // 口径注记:数字含当前活跃连接的实时字节
             ui.label(theme::dim_text(
                 &i18n.t("history-summary-note"),
                 theme::font::SM,
@@ -632,7 +658,7 @@ fn rows_table(
             egui::ScrollArea::vertical().auto_shrink(false).show_rows(
                 ui,
                 22.0,
-                rows.len(),
+                merged.len(),
                 |ui, row_range| {
                     let table_left = ui.max_rect().left();
                     let table_right = ui.max_rect().right();
@@ -642,7 +668,7 @@ fn rows_table(
                         .spacing([0.0, widgets::table::ROW_SPACING_Y])
                         .show(ui, |ui| {
                             for r_idx in row_range {
-                                let r = &rows[r_idx];
+                                let r = &merged[r_idx];
                                 let row_top = ui.cursor().top();
                                 let row_rect =
                                     row_background(ui, table_left, table_right, row_top, r_idx);
@@ -705,6 +731,50 @@ fn rows_table(
 fn empty_hint(ui: &mut egui::Ui, i18n: &I18n) {
     ui.add_space(theme::sp::XL);
     ui.label(theme::dim_text(&i18n.t("history-empty"), theme::font::H3));
+}
+
+/// 活跃连接按进程聚合的实时增量(叠加进汇总视图);过滤口径与连接页
+/// 共用 conn_visible(本地/局域网远端隐藏与历史 SQL 侧一致)
+struct LiveSum {
+    bytes_out: u64,
+    bytes_in: u64,
+    count: u64,
+    total_secs: u64,
+    proc_path: Option<String>,
+}
+
+fn live_proc_sums(conns: &[Connection], config: &Config) -> HashMap<String, LiveSum> {
+    let mut map: HashMap<String, LiveSum> = HashMap::new();
+    for c in conns.iter().filter(|c| conn_visible(config, c)) {
+        let e = map.entry(c.process.clone()).or_insert_with(|| LiveSum {
+            bytes_out: 0,
+            bytes_in: 0,
+            count: 0,
+            total_secs: 0,
+            proc_path: c.proc_path.clone(),
+        });
+        e.bytes_out += c.bytes_out;
+        e.bytes_in += c.bytes_in;
+        e.count += 1;
+        e.total_secs += c.first_seen.elapsed().as_secs();
+    }
+    map
+}
+
+/// 汇总行按当前排序键内存重排(活跃合并后次序需重算,与 SQL ORDER BY
+/// 同键同方向);次级键恒为进程名,防 HashMap 迭代序不定致同值行每帧跳动
+fn sort_summary(rows: &mut [SummaryRow], (sort, asc): (SummarySort, bool)) {
+    let key = |r: &SummaryRow| match sort {
+        SummarySort::BytesOut => r.bytes_out,
+        SummarySort::BytesIn => r.bytes_in,
+        SummarySort::Count => r.count,
+        SummarySort::TotalSecs => r.total_secs,
+    };
+    rows.sort_by(|a, b| {
+        let ord = key(a).cmp(&key(b));
+        let ord = if asc { ord } else { ord.reverse() };
+        ord.then_with(|| a.process.cmp(&b.process))
+    });
 }
 
 /// 行底色(虚拟化表格手动斑马):行首调用,悬停高亮优先于奇数行条纹;
