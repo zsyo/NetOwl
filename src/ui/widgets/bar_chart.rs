@@ -244,9 +244,12 @@ fn draw_content(
         } else {
             (bar_top + 4.0).min(plot.bottom() - card_h)
         };
-        let cx = center_of(i)
-            .clamp(plot.left() + card_w * 0.5, plot.right() - card_w * 0.5)
-            .max(plot.left() + card_w * 0.5);
+        // 水平:槽中心,边缘桶钳制在图内;极少数据居中时图宽可能小于
+        // 卡片宽,钳制区间反转会让 f32::clamp panic,下界兜底为上界
+        let half = card_w * 0.5;
+        let lo = plot.left() + half;
+        let hi = (plot.right() - half).max(lo);
+        let cx = center_of(i).clamp(lo, hi);
         let card = Rect::from_min_size(
             egui::pos2(cx - card_w * 0.5, card_top),
             Vec2::new(card_w, card_h),
