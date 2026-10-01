@@ -29,6 +29,7 @@ use crate::net::local_ip;
 use crate::net::rdns;
 use crate::net::traffic;
 use crate::platform::resize::{self, DragResize};
+use crate::platform::shutdown_hook;
 use crate::platform::single_instance;
 use crate::platform::tray::{self, Tray};
 use crate::rules;
@@ -827,6 +828,17 @@ impl eframe::App for NetOwlApp {
         self.handle_tray_commands(ctx);
         self.calibrate_window_visible();
         self.sync_tray_pinned();
+        // 关机/注销落库钩子:首帧安装一次,内部防重复(winit 不处理
+        // ENDSESSION,关机时唯一能把活跃连接落库的路径)
+        shutdown_hook::install(
+            if self.main_hwnd != 0 {
+                self.main_hwnd
+            } else {
+                single_instance::main_hwnd(crate::APP_NAME)
+            },
+            &mut self.tracker,
+            &mut self.writer,
+        );
         self.ensure_collector();
         self.poll_local_ip();
         self.poll_traffic(ctx);
