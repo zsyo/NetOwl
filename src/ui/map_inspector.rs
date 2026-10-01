@@ -335,10 +335,14 @@ fn process_view(
         if resp.changed() {
             match (on, existing) {
                 (true, None) => {
-                    let _ = rules.insert(db, crate::rules::Rule::block(name, None));
+                    if let Err(e) = rules.insert(db, crate::rules::Rule::block(name, None)) {
+                        tracing::warn!("[Map] 进程 {name} 阻断规则写入失败: {e}");
+                    }
                 }
                 (false, Some(id)) => {
-                    let _ = rules.delete(db, id);
+                    if let Err(e) = rules.delete(db, id) {
+                        tracing::warn!("[Map] 进程 {name} 阻断规则(id {id})删除失败: {e}");
+                    }
                 }
                 _ => {}
             }

@@ -368,10 +368,14 @@ fn group_row(
         if resp.changed() {
             match (on, existing) {
                 (true, None) => {
-                    let _ = rules.insert(db, Rule::block(&g.name, None));
+                    if let Err(e) = rules.insert(db, Rule::block(&g.name, None)) {
+                        tracing::warn!("[Map] 进程 {} 阻断规则写入失败: {e}", g.name);
+                    }
                 }
                 (false, Some(id)) => {
-                    let _ = rules.delete(db, id);
+                    if let Err(e) = rules.delete(db, id) {
+                        tracing::warn!("[Map] 进程 {} 阻断规则(id {id})删除失败: {e}", g.name);
+                    }
                 }
                 _ => {}
             }

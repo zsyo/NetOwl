@@ -348,7 +348,13 @@ fn rules_table(
                                 egui::Id::new(("rule-enabled-toggle", rule.id)),
                             );
                             if toggle.changed() {
-                                let _ = rules.set_enabled(db, rule.id, enabled);
+                                if let Err(e) = rules.set_enabled(db, rule.id, enabled) {
+                                    tracing::warn!(
+                                        "[Rules] 切换规则 {}({}) 启停失败: {e}",
+                                        rule.name,
+                                        rule.id
+                                    );
+                                }
                             }
                         });
                         // 会话临时规则(负 id):名称加标注并以弱化色显示
@@ -444,12 +450,16 @@ fn rules_table(
                             if icon_btn(ui, icons::ARROW_UP, i18n.t("rules-move-up"), false)
                                 .clicked()
                             {
-                                let _ = rules.move_rule(db, rule.id, -1);
+                                if let Err(e) = rules.move_rule(db, rule.id, -1) {
+                                    tracing::warn!("[Rules] 上移规则 {} 失败: {e}", rule.id);
+                                }
                             }
                             if icon_btn(ui, icons::ARROW_DOWN, i18n.t("rules-move-down"), false)
                                 .clicked()
                             {
-                                let _ = rules.move_rule(db, rule.id, 1);
+                                if let Err(e) = rules.move_rule(db, rule.id, 1) {
+                                    tracing::warn!("[Rules] 下移规则 {} 失败: {e}", rule.id);
+                                }
                             }
                             if icon_btn(ui, icons::PENCIL, i18n.t("rules-edit"), false).clicked() {
                                 state.draft = Some(Draft::from_rule(&rule));
