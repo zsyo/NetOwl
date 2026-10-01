@@ -160,6 +160,11 @@ ask-scope-once = 仅本次
 ask-scope-target = 永久·仅此目标
 ask-scope-process = 永久·整个程序
 
+tray-show = 显示主窗口
+tray-hide = 隐藏到托盘
+tray-quit = 退出
+tray-tooltip = NetOwl 网络监控
+
 history-title = 连接历史
 history-subtitle = 已完结连接的记录(连接关闭时落盘)
 history-view-detail = 明细

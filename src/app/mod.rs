@@ -176,7 +176,7 @@ pub struct NetOwlApp {
 impl NetOwlApp {
     pub fn new(cc: &eframe::CreationContext<'_>, i18n: I18n, config: Config) -> Self {
         theme::install(&cc.egui_ctx, &config.general.theme);
-        let (_tray, tray_rx) = tray::create(cc.egui_ctx.clone());
+        let (_tray, tray_rx) = tray::create(cc.egui_ctx.clone(), &i18n);
         let pending_restore = config.window_position();
         let pending_restore =
             pending_restore.map(|(x, y, w, h)| (x, y, w, h, config.window.maximized));

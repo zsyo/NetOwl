@@ -27,12 +27,13 @@ pub struct Tray {
     _inner: TrayIcon,
 }
 
-/// 在当前线程创建托盘与菜单,返回(句柄, 命令接收端)
-pub fn create(ctx: egui::Context) -> (Tray, Receiver<String>) {
+/// 在当前线程创建托盘与菜单,返回(句柄, 命令接收端);菜单与提示文案
+/// 经 i18n 按启动语言取词(托盘创建一次,运行期语言切换不重建)
+pub fn create(ctx: egui::Context, i18n: &crate::i18n::I18n) -> (Tray, Receiver<String>) {
     let menu = Menu::new();
-    let show = MenuItem::with_id(CMD_SHOW, "显示主窗口", true, None);
-    let hide = MenuItem::with_id(CMD_HIDE, "隐藏到托盘", true, None);
-    let quit = MenuItem::with_id(CMD_QUIT, "退出", true, None);
+    let show = MenuItem::with_id(CMD_SHOW, i18n.t("tray-show"), true, None);
+    let hide = MenuItem::with_id(CMD_HIDE, i18n.t("tray-hide"), true, None);
+    let quit = MenuItem::with_id(CMD_QUIT, i18n.t("tray-quit"), true, None);
     menu.append(&show).expect("追加托盘菜单项失败");
     menu.append(&hide).expect("追加托盘菜单项失败");
     menu.append(&PredefinedMenuItem::separator())
@@ -43,7 +44,7 @@ pub fn create(ctx: egui::Context) -> (Tray, Receiver<String>) {
     let icon = tray_icon::Icon::from_rgba(rgba, width, height).expect("托盘图标数据非法");
     let tray = TrayIconBuilder::new()
         .with_id("netowl-tray")
-        .with_tooltip("NetOwl 网络监控")
+        .with_tooltip(i18n.t("tray-tooltip"))
         .with_icon(icon)
         .with_menu(Box::new(menu))
         // 左键不弹菜单,而是直接显示主窗口(TrayIconEvent 处理)
