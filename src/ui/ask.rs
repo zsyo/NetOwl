@@ -3,7 +3,7 @@
 //! 决策 = 动作(允许/拒绝)× 生效范围(仅本次/永久此目标/永久整个程序)。
 
 use eframe::egui;
-use egui::{CornerRadius, RichText, Stroke};
+use egui::{CornerRadius, Label, RichText, Stroke};
 use windows::Win32::Foundation::RECT;
 use windows::Win32::UI::HiDpi::GetDpiForSystem;
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -15,9 +15,10 @@ use crate::app::ask::{AskItem, Decision, Scope};
 use crate::i18n::I18n;
 use crate::ui::{icons, theme};
 
-/// 弹窗尺寸(逻辑点)与右下角边距
+/// 弹窗尺寸(逻辑点)与右下角边距;身份行全部单行截断,行数固定,
+/// 高度不随内容变化(超长文本不会把决策控件挤出视口)
 const WIDTH: f32 = 430.0;
-const HEIGHT: f32 = 266.0;
+const HEIGHT: f32 = 284.0;
 const MARGIN: f32 = 16.0;
 
 /// 主屏工作区(物理像素,已排除任务栏)换算为逻辑点;查询失败退回
@@ -96,17 +97,29 @@ pub fn show(ctx: &egui::Context, item: &mut AskItem, i18n: &I18n) -> Option<Deci
                         );
                     });
                     ui.add_space(6.0);
+                    // 身份行逐行单行截断:问句固定短句,进程名/远端/meta
+                    // 独立成行,超长文本截断不换行,窗口高度恒定
                     ui.label(
-                        RichText::new(i18n.t_with_args("ask-question", &[("process", process)]))
+                        RichText::new(i18n.t("ask-question"))
                             .size(theme::font::H3)
                             .color(theme::c().text),
                     );
-                    ui.add_space(4.0);
-                    ui.label(
-                        RichText::new(item.remote_display())
-                            .size(theme::font::H2)
-                            .strong()
-                            .color(theme::c().text),
+                    ui.add(
+                        Label::new(
+                            RichText::new(&process)
+                                .size(theme::font::BODY)
+                                .color(theme::c().text),
+                        )
+                        .truncate(),
+                    );
+                    ui.add(
+                        Label::new(
+                            RichText::new(item.remote_display())
+                                .size(theme::font::H2)
+                                .strong()
+                                .color(theme::c().text),
+                        )
+                        .truncate(),
                     );
                     // 有域名时裸 IP 并入协议/端口行(不另起一行):
                     // 域名与纯 IP 两种弹窗行数一致,窗口高度得以固定
@@ -120,7 +133,7 @@ pub fn show(ctx: &egui::Context, item: &mut AskItem, i18n: &I18n) -> Option<Deci
                     if item.domain.is_some() {
                         meta.push_str(&format!(" · {}", item.remote_ip));
                     }
-                    ui.label(theme::dim_text(&meta, theme::font::SM));
+                    ui.add(Label::new(theme::dim_text(&meta, theme::font::SM)).truncate());
                     ui.add_space(theme::sp::SM);
 
                     // 倒计时:超时自动执行默认动作(拒绝·仅本次);
