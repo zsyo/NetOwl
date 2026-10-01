@@ -5,7 +5,7 @@ use std::net::Ipv4Addr;
 use std::time::{Duration, Instant};
 
 use windows::Win32::Foundation::{FILETIME, SYSTEMTIME};
-use windows::Win32::System::SystemInformation::GetLocalTime;
+use windows::Win32::System::SystemInformation::{GetLocalTime, GetSystemTime};
 use windows::Win32::System::Time::{
     FileTimeToSystemTime, SystemTimeToFileTime, SystemTimeToTzSpecificLocalTime,
 };
@@ -151,6 +151,70 @@ impl SummarySort {
             SummarySort::TotalSecs => "total",
         }
     }
+}
+
+/// 用量行(时间桶聚合)
+pub struct UsageRow {
+    /// 桶起点 unix 秒(已还原回真实时间轴:桶号 * 桶宽 - 时区偏移)
+    pub bucket_start: u64,
+    pub bytes_in: u64,
+    pub bytes_out: u64,
+}
+
+/// 本地时区相对 UTC 的偏移秒数:用量分桶按本地日界/小时界切割,
+/// 同一时刻分别取 GetLocalTime/GetSystemTime 转 FILETIME 差值即偏移;
+/// 换算失败回退 0(按 UTC 分桶,仅桶标签偏移时区)
+pub fn local_tz_offset_secs() -> i64 {
+    unsafe {
+        let utc = GetSystemTime();
+        let local = GetLocalTime();
+        let (a, b) = (filetime_of(&utc), filetime_of(&local));
+        if a == 0 || b < a {
+            return 0;
+        }
+        (b - a) / 10_000_000
+    }
+}
+
+/// SYSTEMTIME -> FILETIME tick 数(1601 起 100ns);失败返回 0
+fn filetime_of(st: &SYSTEMTIME) -> i64 {
+    let mut ft = FILETIME::default();
+    if unsafe { SystemTimeToFileTime(st, &mut ft) }.is_ok() {
+        (ft.dwHighDateTime as i64) << 32 | ft.dwLowDateTime as i64
+    } else {
+        0
+    }
+}
+
+/// 用量查询:按 (last_seen + 时区偏移) 整除桶宽分桶,桶内收发字节求和;
+/// 一条跨桶连接计入其最后活跃桶(与聚合视图按行口径一致)。
+/// bucket_secs = 3600(小时)或 86400(天)
+pub fn query_usage(
+    db: &Db,
+    f: &Filter,
+    bucket_secs: u64,
+    tz_off: i64,
+) -> rusqlite::Result<Vec<UsageRow>> {
+    let sql = format!(
+        "SELECT (last_seen + ?8) / {bucket_secs} AS bucket,
+                SUM(bytes_in) AS in_total, SUM(bytes_out) AS out_total
+         FROM conn_events {} GROUP BY bucket ORDER BY bucket LIMIT {QUERY_LIMIT}",
+        Filter::where_clause()
+    );
+    let mut stmt = db.prepare_cached(&sql)?;
+    let tz = Box::new(tz_off) as Box<dyn rusqlite::ToSql>;
+    let rows = stmt.query_map(
+        rusqlite::params_from_iter(f.bind().into_iter().chain(std::iter::once(tz))),
+        |row| {
+            let bucket: i64 = row.get(0)?;
+            Ok(UsageRow {
+                bucket_start: (bucket * bucket_secs as i64 - tz_off).max(0) as u64,
+                bytes_in: row.get::<_, i64>(1)?.max(0) as u64,
+                bytes_out: row.get::<_, i64>(2)?.max(0) as u64,
+            })
+        },
+    )?;
+    rows.collect()
 }
 
 /// 明细查询:按最后活动倒序,最多 QUERY_LIMIT 行
@@ -372,6 +436,7 @@ pub enum ViewMode {
     Detail,
     Aggregate,
     Summary,
+    Usage,
 }
 
 /// 时间范围档位
@@ -402,6 +467,7 @@ pub enum Rows {
     Detail(Vec<DetailRow>),
     Aggregate(Vec<AggregateRow>),
     Summary(Vec<SummaryRow>),
+    Usage(Vec<UsageRow>),
 }
 
 /// 历史页状态:视图、筛选、结果与维护操作
@@ -417,6 +483,8 @@ pub struct PageState {
     pub aggregate_sort: (AggregateSort, bool),
     /// 汇总视图排序键与方向(默认上传总量降序)
     pub summary_sort: (SummarySort, bool),
+    /// 用量视图分桶宽(秒):86400 = 按天,3600 = 按小时
+    pub usage_bucket: u64,
     pub rows: Rows,
     /// 结果或库大小需要重新加载
     pub dirty: bool,
@@ -444,6 +512,7 @@ impl PageState {
             proto: None,
             aggregate_sort: (AggregateSort::LastActive, false),
             summary_sort: (SummarySort::BytesOut, false),
+            usage_bucket: 86400,
             rows: Rows::Detail(Vec::new()),
             dirty: true,
             db_size: 0,
@@ -505,6 +574,10 @@ impl PageState {
                 let (sort, asc) = self.summary_sort;
                 Rows::Summary(query_summary(db, &filter, sort, asc).unwrap_or_default())
             }
+            ViewMode::Usage => Rows::Usage(
+                query_usage(db, &filter, self.usage_bucket, local_tz_offset_secs())
+                    .unwrap_or_default(),
+            ),
         };
         self.db_size = db_size();
         self.summary_merged = None;

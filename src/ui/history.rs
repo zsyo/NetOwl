@@ -35,6 +35,7 @@ pub fn show(
     db: &Db,
     writer: &history::Writer,
     config: &mut Config,
+    elevated: bool,
 ) -> bool {
     state.refresh_if_needed(db, config.general.hide_local, config.general.hide_lan);
     let mut config_changed = false;
@@ -60,6 +61,7 @@ pub fn show(
         conns,
         db,
         config,
+        elevated,
     );
     confirm_delete_modal(ui, state, i18n, db);
     config_changed
@@ -119,22 +121,25 @@ fn toolbar(
         // 行高抬升只作用于本工具栏行(style_mut 泄漏到整页会把表格
         // Grid 的最小行高一并抬到 26,行内容与色带错位)
         ui.style_mut().spacing.interact_size.y = TOOLBAR_ROW_H;
-        // 视图切换(segmented:明细/聚合/汇总)
+        // 视图切换(segmented:明细/聚合/汇总/用量)
         let view_items = [
             (&*i18n.t("history-view-detail"), icons::VIEW_LIST),
             (&*i18n.t("history-view-aggregate"), icons::VIEW_STACKED),
             (&*i18n.t("history-view-summary"), icons::BAR_CHART_LINE),
+            (&*i18n.t("history-view-usage"), icons::GRAPH_UP),
         ];
         let view_idx = match state.view {
             ViewMode::Detail => 0,
             ViewMode::Aggregate => 1,
             ViewMode::Summary => 2,
+            ViewMode::Usage => 3,
         };
         if let Some(i) = widgets::segmented::segmented(ui, &view_items, view_idx) {
             state.view = match i {
                 0 => ViewMode::Detail,
                 1 => ViewMode::Aggregate,
-                _ => ViewMode::Summary,
+                2 => ViewMode::Summary,
+                _ => ViewMode::Usage,
             };
             state.dirty = true;
         }
@@ -416,6 +421,22 @@ fn export_csv(state: &history_query::PageState, i18n: &I18n) {
             }
             out
         }
+        Rows::Usage(rows) => {
+            let mut out = vec![
+                ["history-col-bucket", "col-down-total", "col-up-total"]
+                    .iter()
+                    .map(|k| i18n.t(k))
+                    .collect(),
+            ];
+            for r in rows {
+                out.push(vec![
+                    usage_label(r.bucket_start, state.usage_bucket),
+                    r.bytes_in.to_string(),
+                    r.bytes_out.to_string(),
+                ]);
+            }
+            out
+        }
     };
     let mut text = String::from("\u{feff}");
     for row in rows {
@@ -456,6 +477,7 @@ fn rows_table(
     conns: &[Connection],
     db: &Db,
     config: &Config,
+    elevated: bool,
 ) {
     match &state.rows {
         Rows::Detail(rows) => {
@@ -966,7 +988,52 @@ fn rows_table(
             // 行数按合并后的结果计:活跃连接并入的新进程不在 SQL 行数里
             truncated_hint(ui, merged.len(), i18n);
         }
+        Rows::Usage(rows) => {
+            // 分桶粒度切换:按天/按小时(写回 usage_bucket,切换即重查)
+            ui.horizontal(|ui| {
+                let items = [
+                    (&*i18n.t("history-usage-daily"), icons::CALENDAR_WEEK),
+                    (&*i18n.t("history-usage-hourly"), icons::CLOCK_HISTORY),
+                ];
+                let current = usize::from(state.usage_bucket != 86400);
+                if let Some(i) = widgets::segmented::segmented(ui, &items, current) {
+                    state.usage_bucket = if i == 0 { 86400 } else { 3600 };
+                    state.dirty = true;
+                }
+            });
+            ui.add_space(theme::sp::SM);
+            if rows.is_empty() {
+                empty_hint(ui, i18n);
+                return;
+            }
+            // 未提权无 ETW 字节,柱图全零:提示而非渲染空图
+            if !elevated && rows.iter().all(|r| r.bytes_in == 0 && r.bytes_out == 0) {
+                ui.label(theme::dim_text(
+                    &i18n.t("history-usage-no-etw"),
+                    theme::font::BODY,
+                ));
+                return;
+            }
+            let bars: Vec<widgets::bar_chart::UsageBar> = rows
+                .iter()
+                .map(|r| widgets::bar_chart::UsageBar {
+                    label: usage_label(r.bucket_start, state.usage_bucket),
+                    down: r.bytes_in,
+                    up: r.bytes_out,
+                })
+                .collect();
+            let height = ui.available_height().clamp(200.0, 320.0);
+            widgets::bar_chart::bar_chart(ui, &bars, egui::vec2(ui.available_width(), height));
+        }
     }
+}
+
+/// 用量桶标签:按天取 "MM-DD",按小时取 "MM-DD HH"(fmt_local 输出
+/// "MM-DD HH:MM:SS",ASCII 字段按字节切片安全)
+fn usage_label(bucket_start: u64, bucket_secs: u64) -> String {
+    let text = history_query::fmt_local(bucket_start);
+    let len = if bucket_secs == 86400 { 5 } else { 11 };
+    text.chars().take(len).collect()
 }
 
 fn empty_hint(ui: &mut egui::Ui, i18n: &I18n) {

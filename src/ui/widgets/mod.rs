@@ -4,6 +4,7 @@
 //! 全部取色经 [`theme::c()`](super::theme::c),字号/间距用刻度常量。
 
 pub mod badge;
+pub mod bar_chart;
 pub mod card;
 pub mod header;
 pub mod menu;

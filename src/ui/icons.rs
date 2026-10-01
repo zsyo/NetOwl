@@ -119,3 +119,9 @@ pub const VIEW_LIST: &str = "\u{f605}";
 pub const VIEW_STACKED: &str = "\u{f606}";
 /// glyph: bar-chart-line(进程汇总视图)
 pub const BAR_CHART_LINE: &str = "\u{f17c}";
+/// glyph: graph-up(用量视图/局域网页)
+pub const GRAPH_UP: &str = "\u{f3f2}";
+/// glyph: calendar-week(用量按天)
+pub const CALENDAR_WEEK: &str = "\u{f1f3}";
+/// glyph: router(局域网设备)
+pub const ROUTER: &str = "\u{f6ec}";

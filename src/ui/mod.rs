@@ -404,6 +404,7 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
             ctx.history_db,
             ctx.writer,
             ctx.config,
+            ctx.elevated,
         ),
         Page::Rules => {
             rules::show(
