@@ -24,6 +24,8 @@ const SLOT_MAX: f32 = 44.0;
 const LABEL_H: f32 = 16.0;
 /// 左侧 Y 轴刻度标签区宽度
 const Y_LABEL_W: f32 = 46.0;
+/// 顶部内边距:满值刻度文字(中心对齐网格线)完整落在图内不裁切
+const TOP_PAD: f32 = 12.0;
 /// X 标签最小间距(按此推导稀疏化步长,滚动下标签固定在桶上不跳动)
 const LABEL_SPACING: f32 = 90.0;
 /// 粘性跟随的右端判定阈值(偏移距最右小于此值视为"停在最新")
@@ -52,7 +54,8 @@ pub fn bar_chart(ui: &mut egui::Ui, bars: &[UsageBar], size: Vec2) {
         ui.allocate_exact_size(size, Sense::hover());
         return;
     }
-    let viewport_h = size.y - LABEL_H;
+    // 净图区高(内容区高 = 净图 + 顶部内边距 + 底部标签带)
+    let plot_h = size.y - LABEL_H - TOP_PAD;
 
     // 左列固定 Y 轴刻度标签 + 右侧横向滚动内容区:horizontal 包裹强制
     // 并排(vertical 布局下左列 allocate 会把滚动区排到下一行,二者
@@ -86,8 +89,10 @@ pub fn bar_chart(ui: &mut egui::Ui, bars: &[UsageBar], size: Vec2) {
             area = area.scroll_offset(Vec2::new(max_offset, 0.0));
         }
         let out = area.show(ui, |ui| {
-            let (content_rect, _) =
-                ui.allocate_exact_size(Vec2::new(content_w, viewport_h + LABEL_H), Sense::hover());
+            let (content_rect, _) = ui.allocate_exact_size(
+                Vec2::new(content_w, plot_h + TOP_PAD + LABEL_H),
+                Sense::hover(),
+            );
             let origin_x = if centered {
                 content_rect.left() + (content_w - n as f32 * slot) * 0.5
             } else {
@@ -110,7 +115,7 @@ pub fn bar_chart(ui: &mut egui::Ui, bars: &[UsageBar], size: Vec2) {
                 .max(1) as f32,
         );
         for v in [nice_max, nice_max * 0.5] {
-            let y = label_rect.top() + viewport_h * (1.0 - v / nice_max);
+            let y = label_rect.top() + TOP_PAD + plot_h * (1.0 - v / nice_max);
             painter.text(
                 egui::pos2(label_rect.right() - 6.0, y),
                 Align2::RIGHT_CENTER,
@@ -120,7 +125,10 @@ pub fn bar_chart(ui: &mut egui::Ui, bars: &[UsageBar], size: Vec2) {
             );
         }
         painter.text(
-            egui::pos2(label_rect.right() - 6.0, label_rect.top() + viewport_h),
+            egui::pos2(
+                label_rect.right() - 6.0,
+                label_rect.top() + TOP_PAD + plot_h,
+            ),
             Align2::RIGHT_CENTER,
             "0",
             FontId::proportional(theme::font::MICRO),
@@ -142,7 +150,7 @@ fn draw_content(
     let painter = ui.painter_at(content_rect);
     let n = bars.len();
     let plot = Rect::from_min_max(
-        egui::pos2(origin_x, content_rect.top()),
+        egui::pos2(origin_x, content_rect.top() + TOP_PAD),
         egui::pos2(origin_x + n as f32 * slot, content_rect.bottom() - LABEL_H),
     );
     let nice_max = nice_ceil(

@@ -1022,7 +1022,8 @@ fn rows_table(
                     up: r.bytes_out,
                 })
                 .collect();
-            let height = ui.available_height().clamp(200.0, 320.0);
+            // 图表占满面板剩余高度(数据可视化面积随窗口伸缩,不留下方空白)
+            let height = ui.available_height().max(200.0);
             widgets::bar_chart::bar_chart(ui, &bars, egui::vec2(ui.available_width(), height));
         }
     }
