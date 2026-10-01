@@ -25,7 +25,9 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   映像路径,logic 每帧对未缓存路径向采集器请求 IconState,到位经
   ColorImage::from_rgba_unmultiplied 建纹理;ask.rs:新连接询问状态机——
   触发身份=进程+目标IP,静默放行自身/系统/未知进程/回环/局域网/保留段/
-  UDP 无远端/队列超限,决策=动作x范围,仅本次只作用于当前连接
+  UDP 无远端/队列超限,信任签名放行(config 可选,signed==Signed 直接放行,
+  Unknown 延迟至下轮重判[sig_wait 表,5s 上限超期照常弹窗]),决策=动作x范围,
+  仅本次只作用于当前连接
   (拒绝=含本地端口的临时规则,连接消失即清理,决策后解除身份去重
   重连重问;允许=不产生规则),超时自动拒绝)
 - src/model/ - 共享数据模型(mod.rs:Connection/Protocol/Place 等数据结构;
@@ -115,7 +117,8 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   行右键菜单[结束连接=SetTcpEntry DELETE_TCB,仅 TCP 行且提权可用,非提权
   禁用带提示/定位程序/复制远端地址/复制进程路径]);
   settings.rs:设置页(分组卡片:外观/监控/日志,行式布局左标签
-  右控件,主题分段切换);widgets/:公共组件库(header 页头/badge 胶囊徽章/
+  右控件,主题分段切换;监控卡的"默认放行信任签名程序"依赖"新连接询问"
+  开启,关闭时 toggle 置灰带提示但保留已选值);widgets/:公共组件库(header 页头/badge 胶囊徽章/
   segmented 分段选择/toggle 滑动开关/table 统一表头与行底色[列贴列布局
   (Grid spacing.x=0),内容与列缘间距由 CELL_PAD_X 提供,定宽列宽须含
   2×CELL_PAD_X;num_cell 数字右对齐单元格,Grid 末列须空占位防右对齐
