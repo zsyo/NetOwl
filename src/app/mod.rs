@@ -575,7 +575,12 @@ impl NetOwlApp {
             self.asker.clear();
             return;
         }
-        self.asker.update(&self.conns, &self.rules, &self.rdns);
+        self.asker.update(
+            &self.conns,
+            &self.rules,
+            &self.rdns,
+            self.config.general.ask_trust_signed,
+        );
         self.asker.poll();
         if self.asker.expired() {
             self.apply_decision(Decision {

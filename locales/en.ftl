@@ -115,6 +115,9 @@ settings-history-days-hint = Delete history older than this many days; 0 disable
 settings-ask = New connection prompts
 settings-ask-on = Ask for new connections that match no rule
 settings-ask-hint = Public targets only; local and LAN connections never prompt. "Always" options are saved to the Rules page
+settings-ask-trust-signed = Auto-allow trusted signed programs
+settings-ask-trust-signed-hint = Signed programs connect without prompting; signature results are awaited up to 5 seconds
+settings-ask-trust-signed-need-ask = Enable "New connection prompts" first
 
 settings-tray-pin = Pin tray icon
 settings-tray-pin-on = Keep the tray icon on the taskbar instead of the hidden overflow

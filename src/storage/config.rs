@@ -47,6 +47,10 @@ pub struct GeneralConfig {
     /// 新连接询问弹窗(默认关闭):开启后未命中规则的公网新连接弹窗询问
     #[serde(default)]
     pub ask_connections: bool,
+    /// 询问默认放行信任签名程序(默认关闭;仅在 ask_connections 开启时
+    /// 生效,关闭询问时值保留,重开后恢复)
+    #[serde(default)]
+    pub ask_trust_signed: bool,
     /// 托盘图标常驻任务栏(NotifyIconSettings IsPromoted,免折叠进隐藏区);
     /// 写入失败(项未注册等)保持系统默认行为
     #[serde(default)]
@@ -70,6 +74,7 @@ impl Default for GeneralConfig {
             hide_local: true,
             hide_lan: true,
             ask_connections: false,
+            ask_trust_signed: false,
             tray_pinned: false,
             log_level: default_log_level(),
             log_to_file: false,
