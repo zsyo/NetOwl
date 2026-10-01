@@ -149,6 +149,8 @@ pub struct NetOwlApp {
     conns: Vec<Connection>,
     tray_rx: Receiver<String>,
     should_exit: bool,
+    /// 是否以管理员令牌运行(启动时判定;ETW/WFP 可用性与右键"结束连接")
+    elevated: bool,
     /// 主窗口可见性(自行跟踪):egui 0.36 的 viewport().visible() 恒为 None
     /// 不可依赖;全部可见性变更路径(托盘命令/关闭按钮/单实例唤出)都必须同步此字段
     window_visible: bool,
@@ -180,8 +182,10 @@ impl NetOwlApp {
             pending_restore.map(|(x, y, w, h)| (x, y, w, h, config.window.maximized));
         let history_db = crate::storage::db::open();
         let rules = rules::RuleSet::load(&history_db);
-        // ETW 流量事件仅在提权进程内可用;失败只记录,字节列退化为 0
-        let etw = if wfp::is_elevated() {
+        // ETW 流量事件仅在提权进程内可用;失败只记录,字节列退化为 0。
+        // 提权状态进程生命周期内不变,顺带给右键"结束连接"等能力判定
+        let elevated = wfp::is_elevated();
+        let etw = if elevated {
             match etw::Etw::start() {
                 Ok(e) => {
                     tracing::info!("[ETW] 流量事件采集会话已启动");
@@ -247,6 +251,7 @@ impl NetOwlApp {
             conns: Vec::new(),
             tray_rx,
             should_exit: false,
+            elevated,
             window_visible: true,
             main_hwnd: single_instance::main_hwnd(crate::APP_NAME),
             window_resize: DragResize::default(),
@@ -937,6 +942,7 @@ impl eframe::App for NetOwlApp {
             rules_page: &mut self.rules_page,
             map_panels: &mut self.map_panels,
             wfp_status: self.wfp.status(),
+            elevated: self.elevated,
             writer: &self.writer,
             local_pos,
         };

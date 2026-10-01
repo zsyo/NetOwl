@@ -41,6 +41,8 @@ pub struct Connection {
     /// 进程映像签名状态(异步查询,回填前为 Unknown)
     pub signed: Signing,
     pub proto: Protocol,
+    /// 本地地址(连接四元组的一部分;"结束连接"重建 MIB_TCPROW 用)
+    pub local_addr: Ipv4Addr,
     /// 本地端口(连接四元组的一部分;弹窗"仅本次"临时规则用其精确
     /// 锁定单条连接)
     pub local_port: u16,

@@ -6,10 +6,12 @@ use eframe::egui;
 use egui::{Label, RichText};
 
 use super::{ConnSort, ConnSortState, UiCtx, conn_visible, icons, theme, widgets};
+use crate::collector;
 use crate::i18n::I18n;
-use crate::model::{Connection, Signing, fmt_bytes};
+use crate::model::{Connection, Protocol, Signing, fmt_bytes};
 use crate::net::geoip;
 use crate::net::rdns;
+use crate::platform::paths;
 use crate::rules as rules_engine;
 
 /// 连接列表页;返回是否直接改动了配置(隐藏本地/局域网开关)。
@@ -26,11 +28,13 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         conn_rates,
         conn_sort,
         conn_row_hover,
+        elevated,
         ..
     } = ctx;
     // &mut UiCtx 解构出的引用字段带两层 &mut,借类型注解 coerce 回单层
     let conn_sort: &mut ConnSortState = conn_sort;
     let conn_row_hover: &mut widgets::table::RowHover = conn_row_hover;
+    let elevated = *elevated;
     widgets::header::page_header(ui, &i18n.t("conns-title"), &i18n.t("conns-subtitle"));
     ui.add_space(theme::sp::SM);
 
@@ -142,6 +146,19 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                     for conn in shown {
                         let row_top = ui.cursor().top();
                         conn_row_hover.begin(ui, table_left, table_right, row_top);
+                        // 行整格右键菜单(Sense::click 使行级 hit-test 胜过
+                        // 行内仅 hover 的文本控件);左键无动作
+                        let row_rect = egui::Rect::from_min_max(
+                            egui::pos2(table_left, row_top),
+                            egui::pos2(table_right, row_top + 36.0),
+                        )
+                        .expand2(egui::vec2(0.0, widgets::table::ROW_SPACING_Y * 0.5));
+                        let row_resp = ui.interact(
+                            row_rect,
+                            egui::Id::new(("conn_row", conn.id)),
+                            egui::Sense::click(),
+                        );
+                        row_resp.context_menu(|ui| conn_menu(ui, conn, elevated, i18n));
                         let process = if conn.process.is_empty() {
                             format!("{} (PID {})", i18n.t("conn-proc-unknown"), conn.pid)
                         } else {
@@ -346,6 +363,63 @@ fn sort_conns(
         ConnSort::TotalDown => flip(a.bytes_in.cmp(&b.bytes_in)),
         ConnSort::TotalUp => flip(a.bytes_out.cmp(&b.bytes_out)),
     });
+}
+
+/// 行右键菜单:结束连接(仅 TCP,需提权)/定位程序/复制远端与路径。
+/// 菜单项用默认 Button 样式,禁用态带原因悬停提示
+fn conn_menu(ui: &mut egui::Ui, conn: &Connection, elevated: bool, i18n: &I18n) {
+    if conn.proto == Protocol::Tcp {
+        let kill = ui.add_enabled(
+            elevated,
+            egui::Button::new(RichText::new(i18n.t("conn-menu-kill")).size(theme::font::BODY)),
+        );
+        let kill = if elevated {
+            kill
+        } else {
+            kill.on_disabled_hover_text(i18n.t("conn-menu-kill-need-admin"))
+        };
+        if kill.clicked() {
+            match collector::close_tcp_connection(conn) {
+                Ok(()) => tracing::info!(
+                    "[Connections] 已请求结束连接 {}:{} -> {}:{} (PID {})",
+                    conn.local_addr,
+                    conn.local_port,
+                    conn.remote_ip,
+                    conn.remote_port,
+                    conn.pid
+                ),
+                Err(e) => tracing::warn!(
+                    "[Connections] 结束连接失败 {}:{} -> {}:{}: {e}",
+                    conn.local_addr,
+                    conn.local_port,
+                    conn.remote_ip,
+                    conn.remote_port
+                ),
+            }
+        }
+    }
+    if menu_item(ui, i18n.t("conn-menu-locate"), conn.proc_path.is_some()).clicked()
+        && let Some(path) = &conn.proc_path
+    {
+        paths::select_in_explorer(std::path::Path::new(path));
+    }
+    if menu_item(ui, i18n.t("conn-menu-copy-remote"), true).clicked() {
+        ui.ctx()
+            .copy_text(format!("{}:{}", conn.remote_ip, conn.remote_port));
+    }
+    if menu_item(ui, i18n.t("conn-menu-copy-path"), conn.proc_path.is_some()).clicked()
+        && let Some(path) = &conn.proc_path
+    {
+        ui.ctx().copy_text(path.clone());
+    }
+}
+
+/// 菜单项按钮(可选禁用);返回响应供调用方处理点击与禁用提示
+fn menu_item(ui: &mut egui::Ui, text: String, enabled: bool) -> egui::Response {
+    ui.add_enabled(
+        enabled,
+        egui::Button::new(RichText::new(text).size(theme::font::BODY)),
+    )
 }
 
 /// 进程列第二行文本:签名状态 + 映像路径(超长取尾部保留文件名)

@@ -352,6 +352,8 @@ pub struct UiCtx<'a> {
     pub log_window: &'a mut log_window::PageState,
     /// 拦截引擎状态(WFP 管理线程回报)
     pub wfp_status: wfp::Status,
+    /// 是否以管理员令牌运行(右键"结束连接"等能力判定)
+    pub elevated: bool,
     /// 历史写线程句柄(手动清空)
     pub writer: &'a history_store::Writer,
     pub local_pos: (f32, f32),

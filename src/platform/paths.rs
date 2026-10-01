@@ -29,3 +29,24 @@ fn app_root_dir() -> PathBuf {
         .and_then(|exe| exe.parent().map(|dir| dir.to_path_buf()))
         .unwrap_or_else(|| PathBuf::from("."))
 }
+
+/// 资源管理器打开目录
+pub fn open_in_explorer(dir: &std::path::Path) {
+    if let Err(e) = std::process::Command::new("explorer").arg(dir).spawn() {
+        tracing::warn!("[Paths] 打开目录失败 {}: {e}", dir.display());
+    }
+}
+
+/// 资源管理器定位文件(选中该文件)
+pub fn select_in_explorer(file: &std::path::Path) {
+    use std::os::windows::process::CommandExt;
+
+    // /select, 与路径间不能有空格;路径含空格须整体加引号,普通 arg
+    // 会对含空格参数自动加引号导致 /select, 被拆开,须 raw_arg
+    if let Err(e) = std::process::Command::new("explorer")
+        .raw_arg(format!("/select,\"{}\"", file.display()))
+        .spawn()
+    {
+        tracing::warn!("[Paths] 定位文件失败 {}: {e}", file.display());
+    }
+}

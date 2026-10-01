@@ -85,6 +85,11 @@ conn-loc-unknown = 未知归属
 conn-proc-unknown = 未知进程
 conn-action-allow = 允许
 conn-action-block = 阻断
+conn-menu-kill = 结束连接
+conn-menu-kill-need-admin = 需要以管理员身份运行才能结束连接
+conn-menu-locate = 定位程序
+conn-menu-copy-remote = 复制远端地址
+conn-menu-copy-path = 复制进程路径
 
 proc-signed = 已签名
 proc-unsigned = 未签名

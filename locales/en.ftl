@@ -85,6 +85,11 @@ conn-loc-unknown = Unknown
 conn-proc-unknown = Unknown process
 conn-action-allow = Allow
 conn-action-block = Block
+conn-menu-kill = Close connection
+conn-menu-kill-need-admin = Run as administrator to close connections
+conn-menu-locate = Reveal program
+conn-menu-copy-remote = Copy remote address
+conn-menu-copy-path = Copy process path
 
 proc-signed = Signed
 proc-unsigned = Unsigned

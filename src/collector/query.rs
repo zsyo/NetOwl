@@ -10,8 +10,9 @@ use windows::Win32::Foundation::{
     CloseHandle, ERROR_INSUFFICIENT_BUFFER, ERROR_SUCCESS, STATUS_INFO_LENGTH_MISMATCH,
 };
 use windows::Win32::NetworkManagement::IpHelper::{
-    GetExtendedTcpTable, GetExtendedUdpTable, MIB_TCP_STATE_LAST_ACK, MIB_TCP_STATE_SYN_SENT,
-    MIB_TCPTABLE_OWNER_PID, MIB_UDPTABLE_OWNER_PID, TCP_TABLE_OWNER_PID_ALL, UDP_TABLE_OWNER_PID,
+    GetExtendedTcpTable, GetExtendedUdpTable, MIB_TCP_STATE_DELETE_TCB, MIB_TCP_STATE_LAST_ACK,
+    MIB_TCP_STATE_SYN_SENT, MIB_TCPROW_LH, MIB_TCPROW_LH_0, MIB_TCPTABLE_OWNER_PID,
+    MIB_UDPTABLE_OWNER_PID, SetTcpEntry, TCP_TABLE_OWNER_PID_ALL, UDP_TABLE_OWNER_PID,
 };
 use windows::Win32::Networking::WinSock::AF_INET;
 use windows::Win32::System::Threading::{
@@ -20,7 +21,7 @@ use windows::Win32::System::Threading::{
 use windows::Win32::System::WindowsProgramming::SYSTEM_PROCESS_INFORMATION;
 use windows::core::PWSTR;
 
-use crate::model::Protocol;
+use crate::model::{Connection, Protocol};
 
 /// 活动状态区间 [SYN_SENT, LAST_ACK]:LISTEN 是监听而非连接,
 /// CLOSED/TIME_WAIT 已无数据交互,均不入连接列表
@@ -52,6 +53,32 @@ impl ConnKey {
     /// 远端 IPv4 地址(网络字节序原始值转主机序)
     pub fn remote_ip(&self) -> Ipv4Addr {
         Ipv4Addr::from(u32::from_be(self.remote_addr))
+    }
+
+    /// 本地 IPv4 地址(网络字节序原始值转主机序)
+    pub fn local_addr_ipv4(&self) -> Ipv4Addr {
+        Ipv4Addr::from(u32::from_be(self.local_addr))
+    }
+}
+
+/// 请求内核删除一条 TCP 连接(状态置 DELETE_TCB,等价强制关闭);
+/// 需要管理员权限,非提权返回拒绝访问。地址/端口按 MIB_TCPROW 的
+/// 网络序约定重建:地址为内存字节序原始值,端口取 htons 值置于低 16 位
+pub fn close_tcp_connection(conn: &Connection) -> Result<(), String> {
+    let row = MIB_TCPROW_LH {
+        Anonymous: MIB_TCPROW_LH_0 {
+            State: MIB_TCP_STATE_DELETE_TCB,
+        },
+        dwLocalAddr: u32::from_ne_bytes(conn.local_addr.octets()),
+        dwLocalPort: u32::from(conn.local_port.to_be()),
+        dwRemoteAddr: u32::from_ne_bytes(conn.remote_ip.octets()),
+        dwRemotePort: u32::from(conn.remote_port.to_be()),
+    };
+    let err = unsafe { SetTcpEntry(&row) };
+    if err == 0 {
+        Ok(())
+    } else {
+        Err(format!("SetTcpEntry 返回 0x{err:08X}"))
     }
 }
 

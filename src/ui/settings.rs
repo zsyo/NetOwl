@@ -302,25 +302,16 @@ const CTRL_AREA_W: f32 = 260.0;
 /// 资源管理器定位日志:latest.log 存在则选中,否则打开日志目录。
 /// 工作目录在启动时已切到数据根,拼 LOGS_DIR 即为目标目录
 fn locate_log_file() {
-    use std::os::windows::process::CommandExt;
+    use crate::platform::paths::{open_in_explorer, select_in_explorer};
 
     let dir = std::env::current_dir()
         .unwrap_or_else(|_| std::path::PathBuf::from("."))
         .join(crate::platform::paths::LOGS_DIR);
     let latest = dir.join("latest.log");
     if latest.exists() {
-        // /select, 与路径间不能有空格;路径含空格须整体加引号,普通 arg
-        // 会对含空格参数自动加引号导致 /select, 被拆开,须 raw_arg
-        if let Err(e) = std::process::Command::new("explorer")
-            .raw_arg(format!("/select,\"{}\"", latest.display()))
-            .spawn()
-        {
-            tracing::warn!("[Settings] 定位日志文件失败: {e}");
-        }
+        select_in_explorer(&latest);
     } else {
         let _ = std::fs::create_dir_all(&dir);
-        if let Err(e) = std::process::Command::new("explorer").arg(&dir).spawn() {
-            tracing::warn!("[Settings] 打开日志目录失败: {e}");
-        }
+        open_in_explorer(&dir);
     }
 }

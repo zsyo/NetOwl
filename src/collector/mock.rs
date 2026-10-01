@@ -139,6 +139,7 @@ impl MockCollector {
                 } else {
                     Protocol::Udp
                 },
+                local_addr: std::net::Ipv4Addr::new(192, 168, 1, 100),
                 local_port: (1024 + self.rng.range(60000)) as u16,
                 remote_ip: ip,
                 remote_port: port,

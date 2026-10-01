@@ -112,6 +112,7 @@ impl TableCollector {
             let pid = key.pid;
             let id = key.id();
             let proto = key.proto;
+            let local_addr = key.local_addr_ipv4();
             let local_port = key.local_port;
             let remote_port = key.remote_port;
             let remote_ip = key.remote_ip();
@@ -127,6 +128,7 @@ impl TableCollector {
                     proc_path: meta.path,
                     signed: meta.signed,
                     proto,
+                    local_addr,
                     local_port,
                     remote_ip,
                     remote_port,
