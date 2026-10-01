@@ -35,6 +35,9 @@ pub struct I18n {
     pub current_lang: String,
     /// 已告警过的缺失键,避免每帧渲染重复刷日志
     pub(crate) warned_keys: RefCell<HashSet<String>>,
+    /// 无参数词条缓存(键 = 词条键):UI 每帧数百次 t() 调用,命中时免
+    /// fluent 解析与插值;语言切换/重扫时清空
+    pub(crate) t_cache: RefCell<HashMap<String, String>>,
 }
 
 impl Default for I18n {
@@ -93,6 +96,7 @@ impl I18n {
             available_langs,
             current_lang,
             warned_keys: RefCell::new(HashSet::new()),
+            t_cache: RefCell::new(HashMap::new()),
         }
     }
 
@@ -178,6 +182,7 @@ impl I18n {
     pub fn set_language(&mut self, lang: String) {
         if self.bundles.contains_key(&lang) {
             self.current_lang = lang;
+            self.t_cache.borrow_mut().clear();
         }
     }
 

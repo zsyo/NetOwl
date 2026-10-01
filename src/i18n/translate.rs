@@ -4,9 +4,18 @@ use super::{DEFAULT_LANG_CODE, I18n};
 use fluent_bundle::{FluentArgs, FluentBundle, FluentResource};
 
 impl I18n {
-    /// 翻译指定键(无参数)
+    /// 翻译指定键(无参数)。UI 每帧数百次取词,结果缓存于 t_cache,
+    /// 命中时免 fluent 解析与插值(即时模式渲染最大的每帧分配源);
+    /// 带参数词条不缓存(插值结果随参数变化)
     pub fn t(&self, key: &str) -> String {
-        self.translate(key, None)
+        if let Some(hit) = self.t_cache.borrow().get(key) {
+            return hit.clone();
+        }
+        let text = self.translate(key, None);
+        self.t_cache
+            .borrow_mut()
+            .insert(key.to_owned(), text.clone());
+        text
     }
 
     /// 翻译指定键,并用 `args` 替换 FTL 文件中的 `{$name}` 占位符
