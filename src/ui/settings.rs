@@ -144,31 +144,9 @@ pub(super) fn settings_ui(
                     changed |= widgets::toggle::toggle_switch(
                         ui,
                         &mut config.general.ask_connections,
-                        true,
                         egui::Id::new("settings-ask-toggle"),
                     )
                     .changed();
-                },
-            );
-            ui.add_space(theme::sp::SM);
-            setting_row(
-                ui,
-                &i18n.t("settings-ask-trust-signed"),
-                &i18n.t("settings-ask-trust-signed-hint"),
-                |ui| {
-                    // 依赖"新连接询问"开启:询问关闭时置灰不可点,
-                    // 但保留用户已选值,重开询问后恢复
-                    let mut trust = widgets::toggle::toggle_switch(
-                        ui,
-                        &mut config.general.ask_trust_signed,
-                        config.general.ask_connections,
-                        egui::Id::new("settings-ask-trust-toggle"),
-                    );
-                    if !config.general.ask_connections {
-                        trust = trust
-                            .on_disabled_hover_text(i18n.t("settings-ask-trust-signed-need-ask"));
-                    }
-                    changed |= trust.changed();
                 },
             );
             ui.add_space(theme::sp::SM);
@@ -181,7 +159,6 @@ pub(super) fn settings_ui(
                     changed |= widgets::toggle::toggle_switch(
                         ui,
                         &mut config.general.tray_pinned,
-                        true,
                         egui::Id::new("settings-tray-toggle"),
                     )
                     .changed();
@@ -205,7 +182,6 @@ pub(super) fn settings_ui(
                     if widgets::toggle::toggle_switch(
                         ui,
                         &mut config.general.log_to_file,
-                        true,
                         egui::Id::new("settings-log-file-toggle"),
                     )
                     .changed()

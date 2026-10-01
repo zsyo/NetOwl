@@ -115,9 +115,6 @@ settings-history-days-hint = 自动删除超过该天数的历史数据,0 表示
 settings-ask = 新连接询问
 settings-ask-on = 为未命中规则的新连接弹窗询问
 settings-ask-hint = 仅询问公网目标,本地与局域网连接不弹;永久选项写入规则页,可随时修改
-settings-ask-trust-signed = 默认放行信任签名程序
-settings-ask-trust-signed-hint = 签名有效的程序连接时不再询问;签名校验结果最长等待 5 秒
-settings-ask-trust-signed-need-ask = 需先开启"新连接询问"
 
 settings-tray-pin = 托盘图标常驻
 settings-tray-pin-on = 将托盘图标固定在任务栏,不折叠进隐藏区域

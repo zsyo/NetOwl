@@ -17,21 +17,15 @@ const KNOB_MARGIN: f32 = 3.0;
 /// 状态切换动画时长(秒)
 const ANIM_SECS: f32 = 0.12;
 
-/// 通用启停开关(规则页/设置页):off 灰底横线表示停用,on 强调色;
-/// `enabled = false` 置灰不可点(依赖项未开启等,语义用 tooltip 说明)
-pub fn toggle_switch(
-    ui: &mut egui::Ui,
-    on: &mut bool,
-    enabled: bool,
-    anim_id: Id,
-) -> egui::Response {
+/// 通用启停开关(规则页/设置页):off 灰底横线表示停用,on 强调色
+pub fn toggle_switch(ui: &mut egui::Ui, on: &mut bool, anim_id: Id) -> egui::Response {
     paint_switch(
         ui,
         on,
         theme::c().accent,
         theme::c().stroke_strong,
         true,
-        enabled,
+        true,
         TRACK_W,
         TRACK_H,
         anim_id,

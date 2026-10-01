@@ -8,12 +8,12 @@
 //! 当前连接(拒绝时生成含本地端口的临时规则,连接结束即清理),
 //! 永久选项落库,WFP 拦截与列表标注随之生效。
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashSet, VecDeque};
 use std::hash::{Hash, Hasher};
 use std::net::Ipv4Addr;
 use std::time::{Duration, Instant};
 
-use crate::model::{Connection, Protocol, Signing};
+use crate::model::{Connection, Protocol};
 use crate::net::rdns;
 use crate::rules::{Action, Direction, MatchReq, RemoteKind, Rule, RuleSet};
 
@@ -25,10 +25,6 @@ const QUEUE_LIMIT: usize = 10;
 const PENDING_WEIGHT: u8 = 15;
 /// 系统进程(PID 4)持有内核级 socket,不询问
 const SYSTEM_PID: u32 = 4;
-/// 信任签名放行时等待签名回填的上限(签名校验异步限流派发,常规
-/// 回填在数轮内完成);超期照常弹窗,防校验持续失败(文件不可访问等)
-/// 被无限期放行
-const SIGN_WAIT_MAX: Duration = Duration::from_secs(5);
 /// 决策的作用范围
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Scope {
@@ -163,9 +159,6 @@ pub struct Asker {
     asked: HashSet<u64>,
     /// 上轮出现过的连接 id(conn.id 稳定)
     seen: HashSet<u64>,
-    /// 签名回填等待中的身份(身份 -> 首次延迟时刻);trust_signed 开启时
-    /// 签名尚未回填的连接延后询问,每轮清扫超期项
-    sig_wait: HashMap<u64, Instant>,
 }
 
 impl Asker {
@@ -175,23 +168,13 @@ impl Asker {
             active: None,
             asked: HashSet::new(),
             seen: HashSet::new(),
-            sig_wait: HashMap::new(),
         }
     }
 
     /// 每轮喂入连接快照:首次出现且未命中任何规则的 (进程,目标IP) 身份入队。
     /// 新增判定基于 conn.id(连接四元组哈希,快照间稳定)。
-    /// 启动首帧为基线:存量连接视为放行(身份记入已问),只询问之后的新连接。
-    /// `trust_signed` 放行签名有效程序;签名尚未回填(Unknown)的连接延后
-    /// 至下轮重判,超期照常弹窗
-    pub fn update(
-        &mut self,
-        conns: &[Connection],
-        rules: &RuleSet,
-        rdns: &rdns::Rdns,
-        trust_signed: bool,
-    ) {
-        let now = Instant::now();
+    /// 启动首帧为基线:存量连接视为放行(身份记入已问),只询问之后的新连接
+    pub fn update(&mut self, conns: &[Connection], rules: &RuleSet, rdns: &rdns::Rdns) {
         let baseline = self.seen.is_empty() && !conns.is_empty();
         let mut current = HashSet::with_capacity(conns.len());
         let mut fresh: Vec<&Connection> = Vec::new();
@@ -223,22 +206,6 @@ impl Asker {
             {
                 continue;
             }
-            // 信任签名:签名有效直接放行;尚未回填时本轮不询问也不记去重,
-            // 从 seen 移除让下轮重判(Signed 放行 / Unsigned·Invalid 入队)
-            if trust_signed {
-                if c.signed == Signing::Signed {
-                    self.sig_wait.remove(&key);
-                    continue;
-                }
-                if c.signed == Signing::Unknown {
-                    let start = self.sig_wait.entry(key).or_insert(now);
-                    if now.duration_since(*start) < SIGN_WAIT_MAX {
-                        self.seen.remove(&c.id);
-                        self.asked.remove(&key);
-                        continue;
-                    }
-                }
-            }
             let req = MatchReq::from_conn(c, rdns.lookup(c.remote_ip));
             if rules.evaluate(&req).is_some() {
                 continue;
@@ -259,9 +226,6 @@ impl Asker {
                 scope: Scope::Once,
             });
         }
-        // 清扫等待表:超期身份已落定(入队或连接消失),不留陈旧起始时刻
-        self.sig_wait
-            .retain(|_, start| now.duration_since(*start) < SIGN_WAIT_MAX);
     }
 
     /// 弹窗调度:当前无弹窗时从队列取下一个;返回是否正在询问

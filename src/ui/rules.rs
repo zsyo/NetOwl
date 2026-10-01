@@ -345,7 +345,6 @@ fn rules_table(
                             let toggle = widgets::toggle::toggle_switch(
                                 ui,
                                 &mut enabled,
-                                true,
                                 egui::Id::new(("rule-enabled-toggle", rule.id)),
                             );
                             if toggle.changed() {
