@@ -27,18 +27,21 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         rules,
         conn_rates,
         conn_sort,
+        conn_search,
         conn_row_hover,
         elevated,
         ..
     } = ctx;
     // &mut UiCtx 解构出的引用字段带两层 &mut,借类型注解 coerce 回单层
     let conn_sort: &mut ConnSortState = conn_sort;
+    let conn_search: &mut String = conn_search;
     let conn_row_hover: &mut widgets::table::RowHover = conn_row_hover;
     let elevated = *elevated;
     widgets::header::page_header(ui, &i18n.t("conns-title"), &i18n.t("conns-subtitle"));
     ui.add_space(theme::sp::SM);
 
     // 本地/局域网远端噪音过滤(config 持久化,连接页与历史页共享)
+    // + 搜索框(进程/映像路径/远端 IP/rDNS 域名包含匹配,会话态)
     let mut changed = false;
     ui.horizontal(|ui| {
         ui.label(
@@ -58,15 +61,48 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         {
             changed = true;
         }
+        ui.add_space(theme::sp::MD);
+        ui.label(
+            RichText::new(icons::SEARCH)
+                .size(theme::font::XS)
+                .color(theme::c().text_dim),
+        );
+        ui.add(
+            egui::TextEdit::singleline(conn_search)
+                .hint_text(i18n.t("conns-search"))
+                .desired_width(220.0),
+        );
     });
     ui.add_space(theme::sp::XS);
 
-    // 空态判定与过滤同口径:全部连接都被隐藏时同样提示无连接
-    let mut shown: Vec<&Connection> = conns.iter().filter(|c| conn_visible(config, c)).collect();
+    // 搜索词匹配:进程名/映像路径/远端 IP/rDNS 域名包含(大小写不敏感);
+    // 与显示过滤叠加,空词即全量
+    let needle = conn_search.trim().to_lowercase();
+    let match_search = |c: &Connection| -> bool {
+        needle.is_empty()
+            || c.process.to_lowercase().contains(&needle)
+            || c.proc_path
+                .as_deref()
+                .is_some_and(|p| p.to_lowercase().contains(&needle))
+            || c.remote_ip.to_string().contains(&needle)
+            || rdns
+                .lookup(c.remote_ip)
+                .is_some_and(|d| d.to_lowercase().contains(&needle))
+    };
+    let mut shown: Vec<&Connection> = conns
+        .iter()
+        .filter(|c| conn_visible(config, c) && match_search(c))
+        .collect();
     sort_conns(&mut shown, conn_sort, conn_rates, i18n);
     if shown.is_empty() {
         ui.add_space(theme::sp::LG);
-        ui.label(theme::dim_text(&i18n.t("conns-empty"), theme::font::H3));
+        // 全部连接被隐藏/搜索无命中与确实无连接区分提示
+        let key = if conns.is_empty() {
+            "conns-empty"
+        } else {
+            "conns-no-match"
+        };
+        ui.label(theme::dim_text(&i18n.t(key), theme::font::H3));
         return changed;
     }
 

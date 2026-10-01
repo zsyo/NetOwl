@@ -330,6 +330,8 @@ pub struct UiCtx<'a> {
     pub conn_rates: &'a HashMap<u64, (u64, u64)>,
     /// 连接列表表头排序状态(表头点击切换)
     pub conn_sort: &'a mut ConnSortState,
+    /// 连接页搜索词(进程/远端/域名包含过滤,会话态)
+    pub conn_search: &'a mut String,
     /// 连接页行悬停辅助(跨帧行高,行首垫底用)
     pub conn_row_hover: &'a mut widgets::table::RowHover,
     /// 规则页行悬停辅助(跨帧行高)
