@@ -10,7 +10,7 @@ use eframe::egui;
 use netowl::app::{MIN_WINDOW_SIZE, NetOwlApp};
 use netowl::i18n;
 use netowl::logging;
-use netowl::platform::{icon, paths, single_instance};
+use netowl::platform::{autostart, icon, paths, single_instance};
 use netowl::storage::config::Config;
 use netowl::storage::db;
 
@@ -26,6 +26,9 @@ fn main() -> eframe::Result {
         single_instance::activate_existing(APP_NAME);
         return Ok(());
     };
+
+    // 自启动拉起(Run 键写入的参数,见 platform::autostart):静默启动到托盘
+    let minimized = std::env::args().any(|a| a == autostart::MINIMIZED_ARG);
 
     let mut i18n = i18n::I18n::new();
     let available: Vec<String> = i18n
@@ -66,6 +69,10 @@ fn main() -> eframe::Result {
             viewport = viewport.with_inner_size([MIN_WINDOW_SIZE.0, MIN_WINDOW_SIZE.1]);
         }
     }
+    // 静默启动:窗口创建即不可见,无闪现(唤出走托盘命令)
+    if minimized {
+        viewport = viewport.with_visible(false);
+    }
     let options = eframe::NativeOptions {
         viewport,
         ..Default::default()
@@ -73,6 +80,6 @@ fn main() -> eframe::Result {
     eframe::run_native(
         APP_NAME,
         options,
-        Box::new(move |cc| Ok(Box::new(NetOwlApp::new(cc, i18n, app_config)))),
+        Box::new(move |cc| Ok(Box::new(NetOwlApp::new(cc, i18n, app_config, minimized)))),
     )
 }

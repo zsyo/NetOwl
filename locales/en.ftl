@@ -129,6 +129,9 @@ settings-tray-pin = Pin tray icon
 settings-tray-pin-on = Keep the tray icon on the taskbar instead of the hidden overflow
 settings-tray-pin-hint = Writes the system tray setting; takes effect next session, falls back to system default on failure
 
+settings-autostart = Launch at login
+settings-autostart-hint = Run in the background after you sign in without showing the main window
+
 settings-log = Logging
 settings-log-level = Log level
 settings-log-level-hint = Applies immediately to console and file; the log window has its own shown level

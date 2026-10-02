@@ -129,6 +129,9 @@ settings-tray-pin = 托盘图标常驻
 settings-tray-pin-on = 将托盘图标固定在任务栏,不折叠进隐藏区域
 settings-tray-pin-hint = 写入系统托盘设置,新会话生效;失败时保持系统默认行为
 
+settings-autostart = 开机自启动
+settings-autostart-hint = 登录后自动在后台运行,主窗口不弹出
+
 settings-log = 运行日志
 settings-log-level = 日志级别
 settings-log-level-hint = 立即生效,作用于控制台与日志文件;浏览窗口内可独立调整显示级别

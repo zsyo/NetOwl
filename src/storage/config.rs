@@ -59,6 +59,9 @@ pub struct GeneralConfig {
     /// 写入失败(项未注册等)保持系统默认行为
     #[serde(default)]
     pub tray_pinned: bool,
+    /// 开机自启动(HKCU Run 键):登录后静默启动到托盘,主窗口不弹出
+    #[serde(default)]
+    pub autostart: bool,
     /// 日志级别:off/error/warn/info/debug/trace(设置页可调,立即生效)
     #[serde(default = "default_log_level")]
     pub log_level: String,
@@ -81,6 +84,7 @@ impl Default for GeneralConfig {
             silent_mode: String::new(),
             profile_id: default_profile(),
             tray_pinned: false,
+            autostart: false,
             log_level: default_log_level(),
             log_to_file: false,
         }

@@ -189,6 +189,21 @@ pub(super) fn settings_ui(
                     .changed();
                 },
             );
+            ui.add_space(theme::sp::SM);
+            setting_row(
+                ui,
+                &i18n.t("settings-autostart"),
+                &i18n.t("settings-autostart-hint"),
+                |ui| {
+                    // 注册表 Run 键,写入失败由 App 层定时重试;自启动走静默到托盘
+                    changed |= widgets::toggle::toggle_switch(
+                        ui,
+                        &mut config.general.autostart,
+                        egui::Id::new("settings-autostart-toggle"),
+                    )
+                    .changed();
+                },
+            );
         },
     );
     ui.add_space(theme::sp::MD);

@@ -30,6 +30,7 @@ use crate::net::geoip;
 use crate::net::local_ip;
 use crate::net::rdns;
 use crate::net::traffic;
+use crate::platform::autostart;
 use crate::platform::resize::{self, DragResize};
 use crate::platform::shutdown_hook;
 use crate::platform::single_instance;
@@ -76,6 +77,8 @@ const CONNS_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 /// 托盘常驻写入重试间隔:托盘设置项由 Explorer 在图标注册时创建,
 /// 启动数秒内可能尚不存在
 const TRAY_PIN_RETRY_INTERVAL: Duration = Duration::from_secs(60);
+/// 自启动 Run 键写入重试间隔(标准用户键,失败多为暂时性系统状态)
+const AUTOSTART_RETRY_INTERVAL: Duration = Duration::from_secs(60);
 /// 托盘悬停提示的速率刷新间隔(秒级,与速率采样同频)
 const TRAY_TIP_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -176,6 +179,10 @@ pub struct NetOwlApp {
     tray_pinned_applied: Option<bool>,
     /// 托盘常驻下次重试时刻(写入失败后定时重试)
     tray_pin_retry_at: Instant,
+    /// 已写入注册表的自启动状态(None = 尚未成功达成目标态)
+    autostart_applied: Option<bool>,
+    /// 自启动下次重试时刻(写入失败后定时重试)
+    autostart_retry_at: Instant,
     /// 托盘悬停提示上次刷新时刻(速率跟随)
     tray_tip_at: Instant,
     /// 静默模式上次同步值(config 变化或采集器重建后重同步:兜底规则
@@ -188,8 +195,19 @@ pub struct NetOwlApp {
 }
 
 impl NetOwlApp {
-    pub fn new(cc: &eframe::CreationContext<'_>, i18n: I18n, mut config: Config) -> Self {
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        i18n: I18n,
+        mut config: Config,
+        minimized: bool,
+    ) -> Self {
         theme::install(&cc.egui_ctx, &config.general.theme);
+        // 静默启动兜底:main.rs 已 with_visible(false),此处再补发一次隐藏,
+        // 防 eframe 首帧渲染后自动显示窗口(幂等,窗口不可见时为空操作)
+        if minimized {
+            cc.egui_ctx
+                .send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        }
         let (_tray, tray_rx) =
             tray::create(cc.egui_ctx.clone(), &i18n, &config.general.silent_mode);
         let pending_restore = config.window_position();
@@ -275,7 +293,7 @@ impl NetOwlApp {
             tray_rx,
             should_exit: false,
             elevated,
-            window_visible: true,
+            window_visible: !minimized,
             main_hwnd: single_instance::main_hwnd(crate::APP_NAME),
             window_resize: DragResize::default(),
             pending_restore,
@@ -285,6 +303,8 @@ impl NetOwlApp {
             config_dirty_since: Instant::now(),
             tray_pinned_applied: None,
             tray_pin_retry_at: Instant::now(),
+            autostart_applied: None,
+            autostart_retry_at: Instant::now(),
             tray_tip_at: Instant::now(),
             silent_synced: None,
             lan: LanState::new(),
@@ -344,6 +364,20 @@ impl NetOwlApp {
             self.tray_pinned_applied = Some(want);
         } else {
             self.tray_pin_retry_at = Instant::now() + TRAY_PIN_RETRY_INTERVAL;
+        }
+    }
+
+    /// 开机自启动:配置开关变化时写/删 HKCU Run 键;失败定时重试,
+    /// 直到达成目标态(config 为唯一来源,注册表残留态会被纠正)
+    fn sync_autostart(&mut self) {
+        let want = self.config.general.autostart;
+        if self.autostart_applied == Some(want) || Instant::now() < self.autostart_retry_at {
+            return;
+        }
+        if autostart::set_enabled(want) {
+            self.autostart_applied = Some(want);
+        } else {
+            self.autostart_retry_at = Instant::now() + AUTOSTART_RETRY_INTERVAL;
         }
     }
 
@@ -936,6 +970,7 @@ impl eframe::App for NetOwlApp {
         self.handle_tray_commands(ctx);
         self.calibrate_window_visible();
         self.sync_tray_pinned();
+        self.sync_autostart();
         self.update_tray_tooltip();
         // 关机/注销落库钩子:首帧安装一次,内部防重复(winit 不处理
         // ENDSESSION,关机时唯一能把活跃连接落库的路径)
