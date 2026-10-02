@@ -77,6 +77,21 @@ pub(super) fn settings_ui(
                     }
                 },
             );
+            ui.add_space(theme::sp::SM);
+            setting_row(
+                ui,
+                &i18n.t("settings-floating-ball"),
+                &i18n.t("settings-floating-ball-hint"),
+                |ui| {
+                    // 悬浮球窗口由 App 层按开关显隐;贴边位置记忆随开关保留
+                    changed |= widgets::toggle::toggle_switch(
+                        ui,
+                        &mut config.floating_ball.enabled,
+                        egui::Id::new("settings-ball-toggle"),
+                    )
+                    .changed();
+                },
+            );
         },
     );
     ui.add_space(theme::sp::MD);

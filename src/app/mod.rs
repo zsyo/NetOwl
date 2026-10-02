@@ -41,6 +41,7 @@ use crate::storage::config::Config;
 use crate::storage::history;
 use crate::storage::history_query;
 use crate::ui::ask as ui_ask;
+use crate::ui::floating_ball;
 use crate::ui::rules as ui_rules;
 use crate::ui::theme;
 use crate::ui::{self, Page};
@@ -183,6 +184,11 @@ pub struct NetOwlApp {
     autostart_applied: Option<bool>,
     /// 自启动下次重试时刻(写入失败后定时重试)
     autostart_retry_at: Instant,
+    /// 悬浮球交互状态(贴边/展开/拖动,位置记忆经 show 结果回写 config)
+    floating_ball: floating_ball::BallState,
+    /// 悬浮球数据快照(总速率 + 进程速率榜,1s 节流聚合)
+    ball_data: floating_ball::BallData,
+    ball_data_at: Instant,
     /// 托盘悬停提示上次刷新时刻(速率跟随)
     tray_tip_at: Instant,
     /// 静默模式上次同步值(config 变化或采集器重建后重同步:兜底规则
@@ -249,6 +255,8 @@ impl NetOwlApp {
             ),
             egui::TextureOptions::LINEAR,
         );
+        // 悬浮球状态初始化需读取 config(结构体字面量内 config 随后 move)
+        let ball_state = floating_ball::BallState::new(&config.floating_ball);
         NetOwlApp {
             page: Page::Map,
             last_page: Page::Map,
@@ -305,6 +313,9 @@ impl NetOwlApp {
             tray_pin_retry_at: Instant::now(),
             autostart_applied: None,
             autostart_retry_at: Instant::now(),
+            floating_ball: ball_state,
+            ball_data: floating_ball::BallData::default(),
+            ball_data_at: Instant::now(),
             tray_tip_at: Instant::now(),
             silent_synced: None,
             lan: LanState::new(),
@@ -379,6 +390,31 @@ impl NetOwlApp {
         } else {
             self.autostart_retry_at = Instant::now() + AUTOSTART_RETRY_INTERVAL;
         }
+    }
+
+    /// 悬浮球数据快照:总速率与进程速率榜 1s 节流重建(与连接采集同频);
+    /// 仅开关开启时计算
+    fn poll_ball_data(&mut self) {
+        if !self.config.floating_ball.enabled
+            || self.ball_data_at.elapsed() < Duration::from_secs(1)
+        {
+            return;
+        }
+        self.ball_data_at = Instant::now();
+        let (up_top, down_top) = floating_ball::collect_proc_rates(
+            &self.conns,
+            &self.conn_rates,
+            &self.config,
+            &self.icon_tex,
+        );
+        self.ball_data = floating_ball::BallData {
+            logo: Some(self.logo_tex.clone()),
+            default_icon: self.default_icon_tex.clone(),
+            rates: self.rates,
+            up_top,
+            down_top,
+            elevated: self.elevated,
+        };
     }
 
     /// 托盘悬停提示跟随总速率刷新(TrafficMonitor 式,隐藏到托盘时
@@ -971,6 +1007,7 @@ impl eframe::App for NetOwlApp {
         self.calibrate_window_visible();
         self.sync_tray_pinned();
         self.sync_autostart();
+        self.poll_ball_data();
         self.update_tray_tooltip();
         // 关机/注销落库钩子:首帧安装一次,内部防重复(winit 不处理
         // ENDSESSION,关机时唯一能把活跃连接落库的路径)
@@ -1198,6 +1235,31 @@ impl eframe::App for NetOwlApp {
         }
         // 日志浏览窗口(独立 viewport;内存层增量拉取,关闭时停止收集)
         ui::log_window::show(ui.ctx(), &mut self.log_window, &self.i18n);
+
+        // 悬浮球(独立 viewport;主窗口隐藏时低频帧仍维持显示与数据刷新)
+        if self.config.floating_ball.enabled {
+            let ball = floating_ball::show(
+                ui.ctx(),
+                &mut self.floating_ball,
+                &self.ball_data,
+                &self.i18n,
+            );
+            if ball.pos_dirty {
+                let (x, y) = self.floating_ball.pos();
+                self.config.floating_ball.x = x.round() as i32;
+                self.config.floating_ball.y = y.round() as i32;
+                self.mark_config_dirty();
+            }
+            if ball.show_main {
+                // 与托盘"显示主窗口"同路径:恢复可见、抢前台并落到连接页
+                self.window_visible = true;
+                self.page = Page::Connections;
+                ui.ctx()
+                    .send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Focus);
+            }
+        }
+
         if config_changed {
             self.mark_config_dirty();
         }

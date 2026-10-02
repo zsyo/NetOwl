@@ -132,6 +132,15 @@ settings-tray-pin-hint = Writes the system tray setting; takes effect next sessi
 settings-autostart = Launch at login
 settings-autostart-hint = Run in the background after you sign in without showing the main window
 
+settings-floating-ball = Floating widget
+settings-floating-ball-hint = Dock to the screen edge with live rates; hover for per-process traffic
+
+ball-realtime-up = Live upload
+ball-realtime-down = Live download
+ball-detail = View details
+ball-no-etw = Running without elevation, per-process rates unavailable
+ball-empty = No active traffic
+
 settings-log = Logging
 settings-log-level = Log level
 settings-log-level-hint = Applies immediately to console and file; the log window has its own shown level

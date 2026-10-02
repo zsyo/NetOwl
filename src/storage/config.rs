@@ -18,7 +18,33 @@ pub struct Config {
     #[serde(default)]
     pub general: GeneralConfig,
     #[serde(default)]
+    pub floating_ball: FloatingBallConfig,
+    #[serde(default)]
     pub window: WindowConfig,
+}
+
+/// 悬浮球配置;位置为窗口外框左上角逻辑点,坐标哨兵 = 未设置(默认右缘居中)
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FloatingBallConfig {
+    /// 悬浮球开关(默认关)
+    #[serde(default)]
+    pub enabled: bool,
+    /// 贴边位置 x(逻辑点;i32::MIN = 未设置,右缘居中)
+    #[serde(default = "default_pos")]
+    pub x: i32,
+    /// 贴边位置 y(逻辑点)
+    #[serde(default = "default_pos")]
+    pub y: i32,
+}
+
+impl Default for FloatingBallConfig {
+    fn default() -> Self {
+        FloatingBallConfig {
+            enabled: false,
+            x: WINDOW_POS_UNSET,
+            y: WINDOW_POS_UNSET,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]

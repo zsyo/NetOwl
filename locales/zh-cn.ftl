@@ -132,6 +132,15 @@ settings-tray-pin-hint = 写入系统托盘设置,新会话生效;失败时保�
 settings-autostart = 开机自启动
 settings-autostart-hint = 登录后自动在后台运行,主窗口不弹出
 
+settings-floating-ball = 悬浮窗
+settings-floating-ball-hint = 贴边显示实时速率,悬浮展开进程流量排行
+
+ball-realtime-up = 实时上传
+ball-realtime-down = 实时下载
+ball-detail = 查看详情
+ball-no-etw = 未提权运行,无法统计进程速率
+ball-empty = 暂无活跃流量
+
 settings-log = 运行日志
 settings-log-level = 日志级别
 settings-log-level-hint = 立即生效,作用于控制台与日志文件;浏览窗口内可独立调整显示级别

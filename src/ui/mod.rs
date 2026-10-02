@@ -2,6 +2,7 @@
 //! 全部界面文本经 I18n 词条获取(AGENTS.md 规范 4)。
 
 pub mod ask;
+pub mod floating_ball;
 pub mod history;
 pub mod icons;
 pub mod log_window;

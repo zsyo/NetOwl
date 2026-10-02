@@ -4,15 +4,10 @@
 
 use eframe::egui;
 use egui::{CornerRadius, Label, RichText, Stroke};
-use windows::Win32::Foundation::RECT;
-use windows::Win32::UI::HiDpi::GetDpiForSystem;
-use windows::Win32::UI::WindowsAndMessaging::{
-    GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN, SPI_GETWORKAREA,
-    SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SystemParametersInfoW,
-};
 
 use crate::app::ask::{AskItem, Decision, Scope};
 use crate::i18n::I18n;
+use crate::platform::monitor::workarea_logical;
 use crate::ui::{icons, theme};
 
 /// 弹窗尺寸(逻辑点)与右下角边距;身份行全部单行截断,行数固定,
@@ -20,32 +15,6 @@ use crate::ui::{icons, theme};
 const WIDTH: f32 = 430.0;
 const HEIGHT: f32 = 284.0;
 const MARGIN: f32 = 16.0;
-
-/// 主屏工作区(物理像素,已排除任务栏)换算为逻辑点;查询失败退回
-/// 整屏尺寸(GetSystemMetrics 恒成功,不丢失定位能力)
-fn workarea_logical() -> (f32, f32) {
-    unsafe {
-        let sys_scale = GetDpiForSystem() as f32 / 96.0;
-        let mut rect = RECT::default();
-        let ok = SystemParametersInfoW(
-            SPI_GETWORKAREA,
-            0,
-            Some(&mut rect as *mut _ as *mut core::ffi::c_void),
-            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
-        );
-        if ok.is_ok() && rect.right > 0 && rect.bottom > 0 {
-            (
-                rect.right as f32 / sys_scale,
-                rect.bottom as f32 / sys_scale,
-            )
-        } else {
-            (
-                GetSystemMetrics(SM_CXSCREEN) as f32 / sys_scale,
-                GetSystemMetrics(SM_CYSCREEN) as f32 / sys_scale,
-            )
-        }
-    }
-}
 
 /// 弹出询问;返回用户决策(None = 本帧未决策)。
 /// show_viewport_immediate 的闭包在本帧渲染期同步执行;
