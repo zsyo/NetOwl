@@ -84,10 +84,12 @@ fn paint_switch(
         .ctx()
         .animate_value_with_time(anim_id, if *on { 1.0 } else { 0.0 }, ANIM_SECS);
     let knob = track_h - 2.0 * KNOB_MARGIN;
-    let bg = if !enabled {
-        p.faint
-    } else if t > 0.5 {
+    // 语义色优先于禁用:禁用仅锁交互,on 态(如"被进程规则阻断的
+    // 目标")仍显示阻断红,off 才回落弱化灰
+    let bg = if t > 0.5 {
         on_color
+    } else if !enabled {
+        p.faint
     } else {
         off_color
     };
@@ -100,7 +102,11 @@ fn paint_switch(
     ui.painter().circle_filled(
         knob_center,
         knob / 2.0,
-        if enabled { p.on_accent } else { p.text_dim },
+        if enabled || *on {
+            p.on_accent
+        } else {
+            p.text_dim
+        },
     );
 
     // 关闭态在滑块右侧显示细横线,强化"停用"语义(仅通用启停形态)

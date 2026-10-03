@@ -24,7 +24,11 @@ use crate::ui::widgets;
 const SWITCH_W: f32 = 26.0;
 const SWITCH_H: f32 = 15.0;
 
-/// 连接明细行:远端(域名/地址)、协议、累计字节与目标级阻断开关
+/// 子行内容预分配高度(远端 Truncate 容器与斑马底共用,改一处须同步)
+const SUBROW_H: f32 = 22.0;
+
+/// 连接明细行:远端(域名/地址)、协议、累计字节与目标级阻断开关;
+/// `zebra` 为真时行底画弱化底色(子列表隔行交替)
 pub(crate) fn conn_row(
     ui: &mut egui::Ui,
     rules: &mut crate::rules::RuleSet,
@@ -32,7 +36,17 @@ pub(crate) fn conn_row(
     i18n: &crate::i18n::I18n,
     rdns: &rdns::Rdns,
     c: &Connection,
+    zebra: bool,
 ) {
+    let row_top = ui.cursor().top();
+    // 斑马底先画(同层先序即垫底);行高与内容预分配高度一致
+    if zebra {
+        let rect = egui::Rect::from_min_max(
+            egui::pos2(ui.max_rect().left(), row_top),
+            egui::pos2(ui.max_rect().right(), row_top + SUBROW_H + theme::sp::XS),
+        );
+        ui.painter().rect_filled(rect, 0.0, theme::c().faint);
+    }
     ui.horizontal(|ui| {
         ui.style_mut().spacing.item_spacing.x = 4.0;
         ui.add_space(16.0);
@@ -55,7 +69,7 @@ pub(crate) fn conn_row(
         let remote_w = (ui.available_width() - right_w).max(60.0);
 
         // 远端:受限容器内 Truncate,拉满容器宽并绘制省略号(不溢出)
-        ui.allocate_ui(egui::vec2(remote_w, 22.0), |ui| {
+        ui.allocate_ui(egui::vec2(remote_w, SUBROW_H), |ui| {
             ui.add(
                 Label::new(
                     RichText::new(remote)
