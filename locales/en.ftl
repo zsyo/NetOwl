@@ -254,7 +254,6 @@ ask-scope-target = Always · this target
 ask-scope-process = Always · whole program
 
 tray-show = Show Main Window
-tray-hide = Hide to Tray
 tray-quit = Quit
 tray-silent = Silent Mode
 tray-log = Open Live Log

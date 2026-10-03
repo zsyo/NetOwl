@@ -24,8 +24,6 @@ use windows::core::{HSTRING, PCWSTR, PWSTR};
 
 /// 托盘命令:显示主窗口
 pub const CMD_SHOW: &str = "show";
-/// 托盘命令:隐藏到托盘
-pub const CMD_HIDE: &str = "hide";
 /// 托盘命令:退出应用
 pub const CMD_QUIT: &str = "quit";
 /// 托盘命令:静默模式三态切换
@@ -126,10 +124,14 @@ pub fn create(
 ) -> (Tray, Receiver<String>) {
     let menu = Menu::new();
     let show = MenuItem::with_id(CMD_SHOW, i18n.t("tray-show"), true, None);
-    let hide = MenuItem::with_id(CMD_HIDE, i18n.t("tray-hide"), true, None);
     menu.append(&show).expect("追加托盘菜单项失败");
-    menu.append(&hide).expect("追加托盘菜单项失败");
-    // 静默模式子菜单:三态勾选,切换命令经 mpsc 回 app
+    menu.append(&PredefinedMenuItem::separator())
+        .expect("追加托盘分隔符失败");
+    // "未命中规则的连接如何处理"一组:新连接询问开关 + 静默模式子菜单;
+    // 开关项点击时 muda 自动翻转勾选并发出事件,app 侧按事件翻转 config
+    // 后经 sync_ask 校准
+    let ask_item = CheckMenuItem::with_id(CMD_ASK_TOGGLE, i18n.t("settings-ask"), true, ask, None);
+    menu.append(&ask_item).expect("追加询问菜单项失败");
     let silent_menu = Submenu::with_id("silent-submenu", i18n.t("tray-silent"), true);
     let silent_off = CheckMenuItem::with_id(
         CMD_SILENT_OFF,
@@ -160,11 +162,6 @@ pub fn create(
         .append(&silent_deny)
         .expect("追加静默菜单项失败");
     menu.append(&silent_menu).expect("追加静默子菜单失败");
-    // 新连接询问开关:与静默子菜单同属"未命中规则的连接如何处理"一组;
-    // CheckMenuItem 点击时 muda 自动翻转勾选并发出事件,app 侧按事件
-    // 翻转 config 后经 sync_ask 校准
-    let ask_item = CheckMenuItem::with_id(CMD_ASK_TOGGLE, i18n.t("settings-ask"), true, ask, None);
-    menu.append(&ask_item).expect("追加询问菜单项失败");
     menu.append(&PredefinedMenuItem::separator())
         .expect("追加托盘分隔符失败");
     let log = MenuItem::with_id(CMD_LOG_OPEN, i18n.t("tray-log"), true, None);

@@ -370,10 +370,6 @@ impl NetOwlApp {
                     // 原位重现,视觉等效保持打开
                     self._tray.reopen_menu();
                 }
-                tray::CMD_HIDE => {
-                    self.window_visible = false;
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
-                }
                 tray::CMD_QUIT => {
                     // 退出收尾:仍活跃的连接补写为已完结行,等待写线程清空队列,
                     // 再把待写配置立即落盘

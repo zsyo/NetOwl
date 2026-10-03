@@ -187,7 +187,6 @@ ask-scope-target = 永久·仅此目标
 ask-scope-process = 永久·整个程序
 
 tray-show = 显示主窗口
-tray-hide = 隐藏到托盘
 tray-quit = 退出
 tray-silent = 静默模式
 tray-log = 打开实时日志
