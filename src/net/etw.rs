@@ -242,7 +242,10 @@ unsafe fn prepare_props() -> *mut EVENT_TRACE_PROPERTIES {
         (*props).Wnode.Guid = SESSION_GUID;
         (*props).Wnode.Flags = WNODE_FLAG_TRACED_GUID;
         (*props).Wnode.ClientContext = 1;
-        (*props).BufferSize = 64 * 1024;
+        // BufferSize 单位 KB(1MB/缓冲);实时模式满缓冲即投递消费者,
+        // Kernel-Network 事件量下足量且内核侧总占用 = 缓冲数 × 1MB。
+        // 此前误传字节值(64MiB/缓冲),乘 CPU 数后会话缓冲达 GB 级
+        (*props).BufferSize = 1024;
         (*props).MinimumBuffers = 8;
         (*props).MaximumBuffers = 32;
         (*props).FlushTimer = 1;
