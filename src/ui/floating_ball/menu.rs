@@ -3,7 +3,7 @@
 use eframe::egui;
 use egui::{Color32, Rect, Sense, Stroke};
 
-use super::Page;
+use crate::ui::Page;
 use super::view::panel_bg;
 use crate::i18n::I18n;
 use crate::storage::config::FloatingBallConfig;

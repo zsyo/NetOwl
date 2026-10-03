@@ -4,7 +4,8 @@
 use eframe::egui;
 use egui::{Align, Label, Layout, RichText, Stroke};
 
-use super::{BAR_H, BAR_W, BallData, Page, ProcRate, RATE_STEPS, STRIP_W};
+use super::types::{BAR_H, BAR_W, RATE_STEPS, STRIP_W, BallData, ProcRate};
+use crate::ui::Page;
 use crate::i18n::I18n;
 use crate::model::fmt_bytes;
 use crate::ui::{icons, theme, widgets};
