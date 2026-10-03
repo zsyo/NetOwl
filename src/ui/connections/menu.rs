@@ -1,0 +1,58 @@
+//! 连接列表行右键菜单:结束连接(仅 TCP,需提权)/定位程序/复制远端
+//! 与路径。菜单项用默认 Button 样式,禁用态带原因悬停提示。
+
+use eframe::egui;
+use egui::RichText;
+
+use crate::collector;
+use crate::i18n::I18n;
+use crate::model::{Connection, Protocol};
+use crate::platform::paths;
+use crate::ui::{theme, widgets};
+
+pub(super) fn conn_menu(ui: &mut egui::Ui, conn: &Connection, elevated: bool, i18n: &I18n) {
+    if conn.proto == Protocol::Tcp {
+        let kill = ui.add_enabled(
+            elevated,
+            egui::Button::new(RichText::new(i18n.t("menu-kill")).size(theme::font::BODY)),
+        );
+        let kill = if elevated {
+            kill
+        } else {
+            kill.on_disabled_hover_text(i18n.t("menu-kill-need-admin"))
+        };
+        if kill.clicked() {
+            match collector::close_tcp_connection(conn) {
+                Ok(()) => tracing::info!(
+                    "[Connections] 已请求结束连接 {}:{} -> {}:{} (PID {})",
+                    conn.local_addr,
+                    conn.local_port,
+                    conn.remote_ip,
+                    conn.remote_port,
+                    conn.pid
+                ),
+                Err(e) => tracing::warn!(
+                    "[Connections] 结束连接失败 {}:{} -> {}:{}: {e}",
+                    conn.local_addr,
+                    conn.local_port,
+                    conn.remote_ip,
+                    conn.remote_port
+                ),
+            }
+        }
+    }
+    if widgets::menu::menu_item(ui, i18n.t("menu-locate"), conn.proc_path.is_some()).clicked()
+        && let Some(path) = &conn.proc_path
+    {
+        paths::select_in_explorer(std::path::Path::new(path));
+    }
+    if widgets::menu::menu_item(ui, i18n.t("menu-copy-remote"), true).clicked() {
+        ui.ctx()
+            .copy_text(format!("{}:{}", conn.remote_ip, conn.remote_port));
+    }
+    if widgets::menu::menu_item(ui, i18n.t("menu-copy-path"), conn.proc_path.is_some()).clicked()
+        && let Some(path) = &conn.proc_path
+    {
+        ui.ctx().copy_text(path.clone());
+    }
+}
