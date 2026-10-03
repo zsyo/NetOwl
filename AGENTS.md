@@ -16,21 +16,45 @@
 
 ## 项目结构
 src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用),
-按功能域分目录;子目录统一用 mod.rs 风格。
+按功能域分目录;子目录统一用 mod.rs 风格。拆分组织模式(参照 wallwarp):
+单一文件不超过 300 行;大结构体单点定义在目录 mod.rs,方法 impl 块按
+功能域分散到子模块文件;目录 mod.rs 尽量纯声明,跨目录引用的符号经
+`pub use` re-export 保持 `crate::xxx::符号` 原路径(外部调用零改动);
+拆出方法可见性用 pub(super),不放宽。
 
 - src/main.rs - 程序入口(NativeOptions、窗口最小/默认尺寸、窗口图标、run_native)
 - src/lib.rs - crate 根:模块声明
-- src/app/ - 应用编排(mod.rs:NetOwlApp——托盘事件、采集 tick、页面切换、
-  关闭到托盘、退出、WFP 目标集同步、配置持久化编排;进程图标纹理缓存按键 =
-  映像路径,logic 每帧对未缓存路径向采集器请求 IconState,到位经
-  ColorImage::from_rgba_unmultiplied 建纹理;ask.rs:新连接询问状态机——
-  触发身份=进程+目标IP,静默放行自身/系统/未知进程/回环/局域网/保留段/
-  UDP 无远端/队列超限,决策=动作x范围,仅本次只作用于当前连接
-  (拒绝=含本地端口的临时规则,连接消失即清理,决策后解除身份去重
-  重连重问;允许=不产生规则),超时自动拒绝;与静默模式互斥,
-  allow/deny 下队列与弹窗一并清空;lan.rs:局域网设备发现编排——
-  10s 轮询 ARP(net/lan.rs),条目合并 lan_devices 表(新 MAC 插入
-  留痕,已知项刷新 last_seen),视图行带 online/is_new 合并口径)
+- src/app/ - 应用编排(结构体 NetOwlApp 单点定义于 mod.rs(全部字段)与共享
+  常量/WindowRect;frame.rs:eframe::App trait 实现——logic 每帧逻辑编排
+  [托盘命令→可见性校准→注册表同步→采集轮询→页面切换检测→几何→关闭拦截→
+  配置防抖落盘] 与 ui 每帧绘制编排[标题栏/导航/地图面板/中央面板/重绘节奏/
+  边缘缩放/浮层]+ 语言主题→config 同步 + mark_config_dirty;trait impl
+  不可跨文件,logic+ui 必须同块;etw_merge.rs:ETW 合并——TCP 精确键字节
+  回填、UDP 按 (pid,本地端口) 归并回填远端+字节、udp_last_remote 缓存回退、
+  每连接实时速率、短命连接收割落盘;window.rs:窗口几何恢复/捕获、可见性
+  跟踪与单实例唤出校准;tray.rs:托盘命令分发[显示/设置/日志/询问开关/
+  静默三态/退出收尾]、托盘常驻与自启动注册表写入(失败定时重试)、tooltip
+  速率刷新、双入口勾选态校准;poll.rs:采集编排——连接快照 1s 轮询
+  [UDP 无远端过滤/去重→rDNS→图标→历史→询问→临时规则]、公网 IP 重探、
+  总速率采样、图标纹理缓存(键=映像路径,ColorImage::from_rgba_unmultiplied
+  建纹理)、WFP 目标集合同步[规则 specs+询问 pending 阻断+静默 deny
+  兜底/自身放行]、悬浮球数据快照;ask_flow.rs:询问编排——入队检测、
+  超时默认拒绝、决策落地[永久落库/仅本次临时规则]、临时规则生命周期
+  (连接消失即删);ball.rs:悬浮球交互结果落地(位置记忆/唤出主窗口/
+  开关闭合);init.rs:NetOwlApp::new 构造(托盘创建、历史库/规则档、
+  ETW 启动、logo 纹理、全字段初始化);
+  ask/:新连接询问引擎(mod.rs:ASK_TIMEOUT + re-export;item.rs:AskItem
+  身份快照[remote_display/pending_block_spec/to_rule]、Scope/Decision、
+  可询问目标判定 is_askable、身份键 identity_key、temp_rule_holds;
+  asker.rs:Asker 状态机——触发身份=进程+目标IP,静默放行自身/系统/
+  未知进程/回环/局域网/保留段/UDP 无远端/队列超限,启动基线仅首个非空
+  快照做一次(休眠唤醒快照短暂为空不得重新基线化),决策=动作x范围,
+  仅本次只作用于当前连接(拒绝=含本地端口的临时规则,连接消失即清理,
+  决策后解除身份去重重连重问;允许=不产生规则),超时自动拒绝;
+  与静默模式互斥,allow/deny 下队列与弹窗一并清空;
+  lan.rs:局域网设备发现编排——10s 轮询 ARP(net/lan.rs),条目合并
+  lan_devices 表(新 MAC 插入留痕,已知项刷新 last_seen),视图行带
+  online/is_new 合并口径)
 - src/model/ - 共享数据模型(mod.rs:Connection/Protocol/Place 等数据结构;
   city 为 Option<Place>:内网/保留段/未收录 IP 归属未知,地图不绘制,列表
   显示占位;UDP 表行远端以 *:* 占位,ETW 合并后仍无远端的行由 app 层
@@ -51,32 +75,47 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   回填前 Unknown;icon.rs:SHGetFileInfoW 取 32x32 关联图标 + GetIconInfo/
   GetDIBits 转 RGBA(工作线程执行,失败缓存 None);表快照无字节语义,
   字节由 app 层从 ETW 流合并填充;均为只读 API,无需管理员权限)
-- src/rules/ - 规则与拦截(mod.rs:规则模型(动作/方向/协议/进程/远端[网段或
-  域名]/端口/优先级),求值按 priority 升序首个命中,未命中返回静默兜底(若
-  开启)否则放行;规则按配置档隔离(db v7 profiles 表 + rules.profile_id,
-  RuleSet::load/insert 作用于当前档,switch_profile 重载并保留会话临时规则,
-  ensure_default_profile 启动兜底);静默拒绝兜底 = 全通配 Block 内存规则
-  (id=SILENT_FALLBACK_ID,不入 rules 列表,evaluate 自动联动连接标注与地图
-  开关);wfp_specs 翻译启用规则为 WFP 过滤器目标集——进程条件按映像名展开为
-  完整路径集合(粘滞缓存防拦截窗口抖动),网段 RANGE、端口/协议等值,Any 方向
-  拆 CONNECT/RECV_ACCEPT 两层;weight 布局:15=询问 pending/静默自身放行
-  (互斥),14..1=用户规则(超 14 条钳制到 1),0=静默兜底/子层基线;域名规则
-  不参与翻译,仅求值标注;表快照方向按远端端口近似(>=49152 入站),ETW 后
-  替换;wfp.rs:WFP 拦截引擎——管理线程持动态会话(进程退出/崩溃内核对象
-  自毁),单子层 weight 0 低于系统防火墙,非提权回落 NoAdmin 只读;静默拒绝
-  下 app 层追加自身放行(当前 exe,weight 15)与通配阻断(weight 0))
+- src/rules/ - 规则与拦截(结构体 RuleSet 单点定义于 mod.rs:规则模型
+  (动作/方向/协议/进程/远端[网段或域名]/端口/优先级)、MatchReq 求值输入、
+  conn_direction 表快照方向近似(>=49152 入站,ETW 后替换)、parse_net、
+  SILENT_FALLBACK_ID/WEIGHT_RESERVED_HIGH/WEIGHT_FALLBACK;profile.rs:
+  RuleSet impl 配置档管理——db v7 profiles 表 + rules.profile_id,规则按
+  配置档隔离,load/insert 作用于当前档,switch_profile 重载并保留会话
+  临时规则,ensure_default_profile 启动兜底,数据库行反序列化 parse_*;
+  eval.rs:RuleSet impl 求值——priority 升序首个命中,未命中返回静默兜底
+  (若开启)否则放行;静默拒绝兜底 = 全通配 Block 内存规则(不入 rules
+  列表,evaluate 自动联动连接标注与地图开关);blocking_rule/
+  process_block_rule 供地图面板标注;store.rs:RuleSet impl CRUD 与会话
+  临时规则(负数 id 不落库);specs.rs:RuleSet impl wfp_specs 翻译启用规则
+  为 WFP 过滤器目标集——进程条件按映像名展开为完整路径集合(粘滞缓存防
+  拦截窗口抖动),网段 RANGE、端口/协议等值,Any 方向拆 CONNECT/
+  RECV_ACCEPT 两层;weight 布局:15=询问 pending/静默自身放行(互斥),
+  14..1=用户规则(超 14 条钳制到 1),0=静默兜底/子层基线;域名规则
+  不参与翻译,仅求值标注;wfp/:WFP 拦截引擎(mod.rs:管理线程持动态会话
+  [进程退出/崩溃内核对象自毁],单子层 weight 0 低于系统防火墙,非提权
+  回落 NoAdmin 只读;静默拒绝下 app 层追加自身放行(当前 exe,weight 15)
+  与通配阻断(weight 0);filter.rs:Spec→FWPM_FILTER0 的 FFI 构造
+  [app id blob/网段 RANGE/协议端口等值]))
 - src/storage/ - 持久化(config.rs:应用配置(config.toml,serde TOML + 防抖
   写盘);db.rs:SQLite 连接与结构迁移(v5 = conn_events 补 bytes_in/out 列;
   v6 = lan_devices 局域网设备表;v7 = profiles 配置档表 + rules.profile_id);
-  history.rs:历史落盘(conn_events 事件表,每条已完结连接一行整行 INSERT,
-  含收发字节——Tracker 每轮随快照刷新、短命连接取 FlowAgg;Tracker 对比
-  前后快照生成事件,mock 不入库;后台写线程批量事务,托盘退出 flush 并
-  join;自动清理小时级节流,天数 0 = 不清理;归属地不落库);
-  history_query.rs:历史查询与页面状态(明细/聚合/按进程汇总 SQL 全参数
-  绑定,LIMIT 500;聚合/汇总排序键走白名单列名映射拼 ORDER BY,远端前缀
-  解析为网段 BETWEEN;proto None 绑空串而非 NULL——SQL 侧 ?5 = '' 判定,
-  NULL 比较恒假会过滤全部行;本地/私网过滤在 SQL 内位运算判定;本月起点/
-  时间格式化走 Win32 SystemTime;PageState 含视图/筛选/排序/结果/清空))
+  history/:历史落盘(mod.rs:ClosedConn、Tracker 对比前后快照生成事件
+  [mock 不入库]、Writer 写线程句柄与 run 主循环、write_batch 批量事务
+  [conn_events 事件表,每条已完结连接一行整行 INSERT,含收发字节——
+  Tracker 每轮随快照刷新、短命连接取 FlowAgg;托盘退出 flush 并 join;
+  归属地不落库];maintenance.rs:自动清理小时级节流[天数 0 = 不清理]、
+  purge_before/reclaim_space[DELETE 后归还空闲页+截断 WAL,
+  incremental_vacuum 须消费全部结果行]、db_size);
+  history_query/:历史查询与页面状态(mod.rs:REMIND_SIZE/QUERY_LIMIT +
+  re-export;filter.rs:Filter[WHERE 公共段+参数绑定]、明细/聚合/汇总/
+  用量行类型与排序枚举[order_col 白名单列名映射拼 ORDER BY];query.rs:
+  明细/聚合/汇总/用量 SQL 全参数绑定,LIMIT 500,远端前缀解析为网段
+  BETWEEN;proto None 绑空串而非 NULL——SQL 侧 ?5 = '' 判定,NULL 比较
+  恒假会过滤全部行;本地/私网过滤在 SQL 内位运算判定;PendingDelete 与
+  明细行/聚合组/整进程删除;fmt.rs:local_tz_offset_secs/month_start/
+  fmt_local[Win32 SystemTime]、parse_ip_prefix、fmt_duration;page.rs:
+  ViewMode/Range/Rows/PageState[视图/筛选/排序/结果/清空,筛选防抖
+  300ms,汇总活跃合并缓存]))
 - src/net/ - 网络信息(geoip.rs:GeoIP 归属定位(assets/geoip.bin 编译期内嵌,
   首用解析一次;IPv4 区间表 LEB128 delta 编码二分查询;城市级粒度:中国含港澳台
   到地级市、外国按城市名匹配 GeoNames,未命中回退省/国家级;place_pos/place_label
@@ -91,44 +130,56 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   In/OutOctets 采样差值;排除回环/隧道;**必须排除
   InterfaceAndOperStatusFlags.FilterInterface(bit1) 接口——WFP 轻量过滤/QoS
   过滤接口会镜像底层物理网卡计数,不过滤速率成倍虚高**;可见/隐藏均 1s 采样
-  (托盘悬停提示跟随秒级刷新),表查询失败沿用旧速率);etw.rs:ETW 流量事件
-  采集(Microsoft-Windows-
-  Kernel-Network 实时会话,命名实例启动清理残留/退出停止,需管理员权限,未提权
-  不启动;手写 windows crate 消费者 StartTraceW→EnableTraceEx2→OpenTraceW 回调→
-  ProcessTrace;payload 前 20 字节同构硬编码解析:PID/size/daddr/saddr/dport/
-  sport,端口网络序、IPv4 BE;事件视角归一本地/远端:发送/发起/接受/关闭
+  (托盘悬停提示跟随秒级刷新),表查询失败沿用旧速率);etw/:ETW 流量事件
+  采集(mod.rs:Microsoft-Windows-Kernel-Network 实时会话,命名实例启动清理
+  残留/退出停止,需管理员权限,未提权不启动;手写 windows crate 消费者
+  StartTraceW→EnableTraceEx2→OpenTraceW 回调→ProcessTrace;FlowKey/FlowAgg/
+  Etw 句柄[snapshot 空闲流收割/流表 4096 上限/take_finished];decode.rs:
+  payload 前 20 字节同构硬编码解析:PID/size/daddr/saddr/dport/sport,
+  端口网络序、IPv4 BE;事件视角归一本地/远端:发送/发起/接受/关闭
   saddr 为本机侧、接收 daddr 为本机侧;消费 10/11 TCP 收发、42/43 UDP 收发、
   12/15/13 连接建立/接受/关闭,18 与 11 双计、IPv6 系列忽略;TCP close 完结,
-  UDP 10s/TCP 60s 空闲兜底,流表 4096 上限;app 层按 PID+协议+本地端口+远端
+  UDP 10s/TCP 60s 空闲兜底;app 层按 PID+协议+本地端口+远端
   合并填充连接字节,完结流未被表快照覆盖即短命连接落盘历史,回环不入库;
   lan.rs:局域网设备发现(GetIpNetTable IPv4 ARP 缓存只读查询,两段式
   缓冲;排除无效表项与组播/广播 MAC[首字节 I/G 位],dwAddr 网络序还原;
   DeviceRow 视图行 = 库记录 + 本轮在线状态合并,免管理员权限))
-- src/map/ - 流量地图(mod.rs:画布(painter 自绘:连线动画、节点聚合、悬停
-  信息卡、视图交互:滚轮锚点缩放/拖拽/双击复位,视图状态存 NetOwlApp;
-  经度方向无缝循环:中心经度归一化 [-180,180),节点/连线按可见副本平移绘制,
-  悬停按模周期距离,连线取最短方向走短弧);basemap.rs:地图底图(视图/投影、
-  经纬网格、陆地与洞环填充、海岸线/国界 quad 线段、主要河流折线、南海十段线、
-  国家/海洋/省级名称标签;经度按 360 度周期对世界副本循环绘制;每帧视口剔除
-  即时渲染,无缓存无状态;标签按缩放分级显隐,英文国家名大写逐字符字距,
-  省名弱化色);triangulate.rs:简单多边形耳剪三角化(输入量化整数坐标,精确
-  几何判定;f32 坐标会破坏共线性导致耳被误判,勿改回浮点);world.rs:城市坐标表
-  与矢量底图解码(Natural Earth 世界 + DataV 中国混合,两档 LOD:110m 全局 /
-  50m 放大,zoom>=3 切换;海岸线/国界按邻国共享边分类;labels 三种 kind +
-  十段线段节 + 河流折线节两档))
-- src/ui/ - 界面(mod.rs:主窗口布局与页面(标题栏、导航栏[品牌区/选中指示条
-  动画/底部速率走势卡+会话累计]、UiCtx、TOOLBAR_ROW_H 工具栏行高共用常量;
-  conn_visible 为连接列表与地图页左右面板共用的本地/局域网远端
-  过滤口径[hide_local/hide_lan]);
+- src/map/ - 流量地图(mod.rs:画布(painter 自绘:节点聚合与脉冲、悬停
+  信息卡、视图交互 handle_input[滚轮锚点缩放/拖拽/双击复位]与 clamp_view,
+  视图状态存 NetOwlApp;经度方向无缝循环:中心经度归一化 [-180,180),节点
+  按可见副本平移绘制,悬停按模周期距离);flights.rs:贝塞尔连线与粒子尾迹
+  (远端归属+主导方向聚合 LOD 一城一线,线宽随聚合数增长;连线取最短方向
+  走短弧,按可见世界副本平移铺开);basemap/:地图底图(mod.rs:绘制入口
+  [世界层/中国层/河流/十段线层序]、经纬网格、陆地与洞环填充、海岸线/国界
+  quad 线段[每帧视口剔除即时渲染,无缓存无状态];projection.rs:View 视图
+  状态[动画目标趋近]与等距圆柱投影[周期副本平移/可见副本区间];
+  labels.rs:名称标签按缩放分级显隐,英文国家名大写逐字符字距,省名弱化色);
+  triangulate.rs:简单多边形耳剪三角化(输入量化整数坐标,精确
+  几何判定;f32 坐标会破坏共线性导致耳被误判,勿改回浮点);world/:城市坐标
+  与矢量底图数据(mod.rs:Ring/MapLevel/MapData 模型与 map_data 懒初始化;
+  cities.rs:City/LOCAL/CITIES 静态表;decode.rs:mapdata.bin 解码[Natural
+  Earth 世界 + DataV 中国混合,两档 LOD:110m 全局/50m 放大,zoom>=3 切换;
+  海岸线/国界按邻国共享边分类;labels 三种 kind + 十段线段节 + 河流折线节
+  两档]))
+- src/ui/ - 界面(mod.rs:主窗口布局与页面(UiCtx、TOOLBAR_ROW_H 工具栏行高
+  共用常量、text_width、Page/ConnSort;conn_visible 为连接列表与地图页左右
+  面板共用的本地/局域网远端过滤口径[hide_local/hide_lan];central_ui 页面
+  分发与 map_header/panel_toggle/legend);
+  nav.rs:左侧导航栏(品牌区、页面切换[选中指示条动画]、底部速率卡
+  [一分钟双色走势 + 当前速率 + 会话累计]与监控状态行);
   titlebar.rs:自绘无边框标题栏(拖动 StartDrag/双击最大化/窗控三钮,关闭走
-  隐藏到托盘同路径,app 层处理 TitleAction);connections.rs:连接页(统一
-  表头可排序[header_sort_cell 整格可点,常驻置灰上下双三角标识可排序,
-  激活列点亮当前方向,占位与状态无关防列宽抖动]、
-  行悬停高亮[Order::Background 垫底]、协议/动作徽章、数字列右对齐[num_cell]、
-  行右键菜单[结束连接=SetTcpEntry DELETE_TCB,仅 TCP 行且提权可用,非提权
-  禁用带提示/定位程序/复制远端地址/复制进程路径]);
-  settings.rs:设置页(分组卡片:外观/监控/日志,行式布局左标签
-  右控件,主题分段切换,监控卡静默模式三态分段[off/allow/deny]);
+  隐藏到托盘同路径,app 层处理 TitleAction);
+  connections/:连接页(mod.rs:过滤/搜索编排与表头可排序[header_sort_cell
+  整格可点,常驻置灰上下双三角标识可排序,激活列点亮当前方向,占位与状态
+  无关防列宽抖动];rows.rs:行渲染[行悬停高亮 Order::Background 垫底、进程
+  两行列/协议徽章/rDNS 域名两行列/速率与累计数字列右对齐/规则求值动作
+  徽章];menu.rs:行右键菜单[结束连接=SetTcpEntry DELETE_TCB,仅 TCP 行且
+  提权可用,非提权禁用带提示/定位程序/复制远端地址/复制进程路径];
+  sort.rs:表头排序);
+  settings/:设置页(mod.rs:ScrollArea 编排 + section_card/setting_row 行式
+  布局[左标签右控件] + locate_log_file;appearance.rs:语言/主题分段切换/
+  悬浮球开关;monitor.rs:数据源/保留期/询问/静默模式三态分段
+  [off/allow/deny]/托盘常驻/自启动;logging.rs:日志文件开关/级别/浏览入口);
   widgets/:公共组件库(header 页头/badge 胶囊徽章/
   segmented 分段选择/toggle 滑动开关/table 统一表头与行底色[列贴列布局
   (Grid spacing.x=0),内容与列缘间距由 CELL_PAD_X 提供,定宽列宽须含
@@ -136,39 +187,47 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   横跨;Grid 格内禁用 add_space(egui 断言 panic),缩进须用定宽占位 +
   max_rect shrink 子区域]/process 进程
   图标占位/card 卡片/sparkline 多序列迷你走势图/bar_chart 双序列时间桶
-  柱状图[入/出站语义色、Y 归一、悬停桶标签+精确字节、X 标签稀疏化]/
-  menu 菜单项按钮,新页面禁止重复实现);
+  柱状图[mod.rs 三段式桶宽/粘性跟随/Y 归一/X 标签稀疏化,tooltip.rs 悬停
+  桶标签+精确字节数据卡]/menu 菜单项按钮,新页面禁止重复实现);
   ask.rs:新连接询问弹窗(右下角无标题栏 toast,盾形图标标题,范围下拉 +
   允许[accent 填充 on_accent 字]/拒绝[danger 描边],进度条内嵌剩余秒数);
-  history.rs:历史页(四视图 segmented 切换:明细/聚合/进程汇总/用量[按
-  本地时区日界或小时界分桶柱状图,query_usage GROUP BY 桶求和,未提权全零
-  时提示不渲染空图;历史页 CSV 导出覆盖全部四视图];进程汇总[按进程
-  聚合字节总量/次数/时长,默认上传降序,数字含活跃连接实时字节——渲染时
-  克隆 SQL 结果并入活跃聚合不写回查询缓存;汇总行整行点击下钻明细并按
-  进程名过滤,空进程名行禁用];明细 8 列
-  聚合 9 列含字节,聚合与汇总表头可排序[字节 0 弱化显示];三视图行右键
-  [明细删该条/聚合删该组/汇总删该进程全部,批量删除 egui::Modal 确认,
-  删除 SQL 全参数绑定;定位与复制同连接页];档位筛选、库
-  大小显示、超 1 GiB 提醒卡[warn 低透明底 + 警示图标,勾选不再提醒=一票
-  否决持久化,手动清空还原]、清理下拉菜单;位置列实时反查 geoip;表格口径
-  与连接页一致);rules.rs:规则页(toggle 启停、动作/协议徽章、图标操作钮[删除
-  悬停警示]、新建/保存走 accent 主按钮、编辑弹窗带校验、WFP 拦截状态行
-  带盾形图标,工具栏档位下拉切换 + 管理按钮[profile_manager.rs 弹窗:
-  档列表带规则数/新建/行内重命名/复制档/删除(当前档置灰,确认后连同
-  规则删除)],show 返回配置变更标志);lan.rs:局域网设备页(ARP 设备表
+  history/:历史页(mod.rs:show 入口与四视图分发 + 超容提醒卡[warn 低透明
+  底 + 警示图标,勾选不再提醒=一票否决持久化,手动清空还原];toolbar.rs:
+  四视图 segmented 切换/时间范围/进程远端协议筛选[300ms 防抖]/导出按钮/
+  隐藏开关/库大小与清理菜单;detail.rs:明细 8 列[行右键删该条];
+  aggregate.rs:聚合 9 列表头可排序[行右键删该组];summary.rs:进程汇总
+  [按进程聚合字节总量/次数/时长,默认上传降序,数字含活跃连接实时字节——
+  活跃合并缓存按秒失效不写回查询缓存;汇总行整行点击下钻明细并按进程名
+  过滤,空进程名行禁用,行右键删该进程全部];usage.rs:用量[按本地时区
+  日界或小时界分桶柱状图,query_usage GROUP BY 桶求和,未提权全零时提示
+  不渲染空图];export.rs:CSV 导出覆盖全部四视图[UTF-8 BOM];cells.rs:
+  手动斑马行底色/进程/位置[实时反查 geoip]/字节单元格;menu.rs:右键菜单;
+  confirm.rs:批量删除 egui::Modal 确认[删除 SQL 全参数绑定;定位与复制
+  同连接页];表格口径与连接页一致);
+  rules/:规则页(mod.rs:show 入口/PageState/Feedback/WFP 拦截状态行
+  [盾形图标]/工具栏档位下拉切换与管理按钮/primary_btn;draft.rs:编辑草稿
+  与 Rule 互转;table.rs:规则表格[toggle 启停、动作/协议徽章、图标操作钮
+  (删除悬停警示),删除后立即结束本帧表格防索引越界];edit.rs:编辑弹窗
+  带校验与落库;labels.rs:方向/协议/动作/远端显示文案;import_export.rs:
+  当前档规则 JSON 导入导出[rfd 模态];profile_manager.rs 弹窗:档列表带
+  规则数/新建/行内重命名/复制档/删除(当前档置灰,确认后连同规则删除),
+  show 返回配置变更标志);lan.rs:局域网设备页(ARP 设备表
   IP/MAC/最近在线/首见/在线状态点/新徽章[首见 24h 内],行右键复制 IP 与
   MAC,统计行显示在线数;设备量小不虚拟化,表头固定滚动区外);
   log_window.rs:日志浏览窗口(样式与主窗口刻度对齐);
-  map_panel.rs/map_inspector.rs/map_widgets.rs/map_conn.rs:地图页左右面板
-  (左列表按进程分组:名称+会话累计上/下行副行+连接数徽章+进程级阻断
-  开关,展开见连接明细;右 Inspector 三态:概览[流量卡+进程/域名排行,
-  各自独立的总量/上传/下载排序切换,上传占优行警示色]、端点详情、进程详情;
-  行内变长文本统一"固定宽度容器 + Truncate"防面板宽度记忆膨胀);
+  map_panel/:地图左面板(mod.rs:MapPanelState/RankSort/ProcGroup/
+  collect_groups 分组聚合与 list_panel[搜索/端点过滤条/WFP 状态提示];
+  group_row.rs:进程组头行[名称+会话累计上/下行副行+连接数徽章+进程级
+  阻断开关]);map_inspector/:右 Inspector(mod.rs:三态切换与 title_row;
+  summary.rs:概览[流量卡+进程/域名排行,各自独立的总量/上传/下载排序
+  切换,上传占优行警示色];place.rs:端点详情;process.rs:进程详情[路径/
+  签名/阻断开关/连接明细];行内变长文本统一"固定宽度容器 + Truncate"防
+  面板宽度记忆膨胀);map_widgets.rs/map_conn.rs:面板共享小件与连接明细行;
   icons.rs:Bootstrap Icons 码点常量表(glyph 名注释即契约);theme.rs:主题
-  (深/浅两套 Palette 调色板 + AtomicUsize 主题索引,theme::c() 统一取色;
-  设计刻度:font 字号/sp 间距/圆角三档+PILL/window_shadow+popup_shadow;
-  Visuals 双主题定制含窗口描边与投影;字体加载;设置页切换即时生效,
-  持久化于 config [general] theme))
+  (theme/palette.rs:深/浅两套 Palette 调色板纯数据;AtomicUsize 主题索引,
+  theme::c() 统一取色;设计刻度:font 字号/sp 间距/圆角三档+PILL/
+  window_shadow+popup_shadow;Visuals 双主题定制含窗口描边与投影;字体加载;
+  设置页切换即时生效,持久化于 config [general] theme))
 - src/i18n/ - 多语言模块(mod.rs:locales 扫描/加载/语言列表;translate.rs:查找/插值/回退/告警)
 - locales/ - fluent 词条文件(zh-cn.ftl / en.ftl;目录缺失时使用编译期内嵌兜底)
 - src/platform/ - 平台集成(paths.rs:数据根目录 = exe 同级(Windows 便携式),
@@ -177,9 +236,11 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   icon.rs:应用图标加载(assets 资源编译期内嵌,PNG 解码为 RGBA);tray.rs:
   托盘与菜单(tray-icon + muda;静默模式子菜单三态 CheckMenuItem[句柄
   保活,app 侧 sync_silent 以 config 为唯一来源校准勾选态],tooltip 跟随
-  实时速率 1s 刷新);shutdown_hook.rs:关机落库钩子(子类化
-  主窗口拦 WM_ENDSESSION,执行 tracker.flush+writer.shutdown——winit 不
-  处理 ENDSESSION,关机时进程被强杀,该钩子是托盘退出外唯一落库路径))
+  实时速率 1s 刷新);tray_pin.rs:托盘常驻注册表写入(NotifyIconSettings
+  IsPromoted,按 ExecutablePath 匹配本进程定位);shutdown_hook.rs:关机
+  落库钩子(子类化主窗口拦 WM_ENDSESSION,执行 tracker.flush+
+  writer.shutdown——winit 不处理 ENDSESSION,关机时进程被强杀,该钩子是
+  托盘退出外唯一落库路径))
 - tools/build_mapdata.py - 底图数据生成脚本(混合数据源 ->
     assets/mapdata.bin;原始 GeoJSON 放 tools/cache/,该目录不入库)
 - tools/build_geoip.py - GeoIP 归属数据生成脚本(tools/cache/ip2region_v4.xdb
