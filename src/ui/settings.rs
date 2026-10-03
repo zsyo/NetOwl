@@ -21,277 +21,286 @@ pub(super) fn settings_ui(
     ui.add_space(theme::sp::MD);
 
     let mut changed = false;
-
-    // ---- 外观:语言 / 主题 ----
-    section_card(
-        ui,
-        icons::PALETTE,
-        &i18n.t("settings-section-appearance"),
-        |ui| {
-            setting_row(
+    // 页头固定,卡片内容随窗口高度滚动(设置项多,窗口较小时
+    // 需要滚动到下方分组)
+    egui::ScrollArea::vertical()
+        .auto_shrink(false)
+        .show(ui, |ui| {
+            // ---- 外观:语言 / 主题 ----
+            section_card(
                 ui,
-                &i18n.t("settings-language"),
-                &i18n.t("settings-language-hint"),
+                icons::PALETTE,
+                &i18n.t("settings-section-appearance"),
                 |ui| {
-                    let current_name = i18n
-                        .available_langs
-                        .iter()
-                        .find(|info| info.code == i18n.current_lang)
-                        .map(|info| info.name.clone())
-                        .unwrap_or_else(|| i18n.current_lang.clone());
-                    egui::ComboBox::from_id_salt("settings-language-select")
-                        .width(180.0)
-                        .selected_text(current_name)
-                        .show_ui(ui, |ui| {
-                            for (code, name) in i18n.lang_codes_and_names() {
-                                let selected = code == i18n.current_lang;
-                                let label = RichText::new(name).size(theme::font::BODY).color(
-                                    if selected {
-                                        theme::c().accent
-                                    } else {
-                                        theme::c().text
-                                    },
-                                );
-                                if ui.selectable_label(selected, label).clicked() {
-                                    i18n.set_language(code);
-                                }
+                    setting_row(
+                        ui,
+                        &i18n.t("settings-language"),
+                        &i18n.t("settings-language-hint"),
+                        |ui| {
+                            let current_name = i18n
+                                .available_langs
+                                .iter()
+                                .find(|info| info.code == i18n.current_lang)
+                                .map(|info| info.name.clone())
+                                .unwrap_or_else(|| i18n.current_lang.clone());
+                            egui::ComboBox::from_id_salt("settings-language-select")
+                                .width(180.0)
+                                .selected_text(current_name)
+                                .show_ui(ui, |ui| {
+                                    for (code, name) in i18n.lang_codes_and_names() {
+                                        let selected = code == i18n.current_lang;
+                                        let label = RichText::new(name)
+                                            .size(theme::font::BODY)
+                                            .color(if selected {
+                                                theme::c().accent
+                                            } else {
+                                                theme::c().text
+                                            });
+                                        if ui.selectable_label(selected, label).clicked() {
+                                            i18n.set_language(code);
+                                        }
+                                    }
+                                });
+                        },
+                    );
+                    ui.add_space(theme::sp::SM);
+                    setting_row(
+                        ui,
+                        &i18n.t("settings-theme"),
+                        &i18n.t("settings-theme-hint"),
+                        |ui| {
+                            // 主题分段选择:切换立即生效(调色板与 Visuals 同步刷新),
+                            // 落盘由 App 层 sync_theme_to_config 检测
+                            let items = [
+                                (&*i18n.t("theme-dark"), icons::MOON),
+                                (&*i18n.t("theme-light"), icons::BRIGHTNESS_HIGH),
+                            ];
+                            let current = if theme::is_dark() { 0 } else { 1 };
+                            if let Some(i) = widgets::segmented::segmented(ui, &items, current) {
+                                theme::set_theme(i == 0, ui.ctx());
                             }
-                        });
-                },
-            );
-            ui.add_space(theme::sp::SM);
-            setting_row(
-                ui,
-                &i18n.t("settings-theme"),
-                &i18n.t("settings-theme-hint"),
-                |ui| {
-                    // 主题分段选择:切换立即生效(调色板与 Visuals 同步刷新),
-                    // 落盘由 App 层 sync_theme_to_config 检测
-                    let items = [
-                        (&*i18n.t("theme-dark"), icons::MOON),
-                        (&*i18n.t("theme-light"), icons::BRIGHTNESS_HIGH),
-                    ];
-                    let current = if theme::is_dark() { 0 } else { 1 };
-                    if let Some(i) = widgets::segmented::segmented(ui, &items, current) {
-                        theme::set_theme(i == 0, ui.ctx());
-                    }
-                },
-            );
-            ui.add_space(theme::sp::SM);
-            setting_row(
-                ui,
-                &i18n.t("settings-floating-ball"),
-                &i18n.t("settings-floating-ball-hint"),
-                |ui| {
-                    // 悬浮球窗口由 App 层按开关显隐;贴边位置记忆随开关保留
-                    changed |= widgets::toggle::toggle_switch(
+                        },
+                    );
+                    ui.add_space(theme::sp::SM);
+                    setting_row(
                         ui,
-                        &mut config.floating_ball.enabled,
-                        egui::Id::new("settings-ball-toggle"),
-                    )
-                    .changed();
+                        &i18n.t("settings-floating-ball"),
+                        &i18n.t("settings-floating-ball-hint"),
+                        |ui| {
+                            // 悬浮球窗口由 App 层按开关显隐;贴边位置记忆随开关保留
+                            changed |= widgets::toggle::toggle_switch(
+                                ui,
+                                &mut config.floating_ball.enabled,
+                                egui::Id::new("settings-ball-toggle"),
+                            )
+                            .changed();
+                        },
+                    );
                 },
             );
-        },
-    );
-    ui.add_space(theme::sp::MD);
+            ui.add_space(theme::sp::MD);
 
-    // ---- 监控:数据源 / 历史保留期 / 新连接询问 / 托盘常驻 ----
-    section_card(
-        ui,
-        icons::ETHERNET,
-        &i18n.t("settings-section-monitoring"),
-        |ui| {
-            setting_row(
+            // ---- 监控:数据源 / 历史保留期 / 新连接询问 / 托盘常驻 ----
+            section_card(
                 ui,
-                &i18n.t("settings-datasource"),
-                &i18n.t("settings-datasource-hint"),
+                icons::ETHERNET,
+                &i18n.t("settings-section-monitoring"),
                 |ui| {
-                    // 切换后由 logic 检测配置变化并重建采集器
-                    let current = CollectorKind::from_config(&config.general.collector);
-                    let name = |i18n: &I18n, kind: CollectorKind| match kind {
-                        CollectorKind::Real => i18n.t("datasource-real"),
-                        CollectorKind::Mock => i18n.t("datasource-mock"),
-                    };
-                    egui::ComboBox::from_id_salt("settings-datasource-select")
-                        .width(180.0)
-                        .selected_text(name(i18n, current))
-                        .show_ui(ui, |ui| {
-                            for kind in [CollectorKind::Real, CollectorKind::Mock] {
-                                let selected = current == kind;
-                                let label = RichText::new(name(i18n, kind))
-                                    .size(theme::font::BODY)
-                                    .color(if selected {
-                                        theme::c().accent
-                                    } else {
-                                        theme::c().text
-                                    });
-                                if ui.selectable_label(selected, label).clicked() {
-                                    config.general.collector = kind.as_config().to_owned();
-                                }
+                    setting_row(
+                        ui,
+                        &i18n.t("settings-datasource"),
+                        &i18n.t("settings-datasource-hint"),
+                        |ui| {
+                            // 切换后由 logic 检测配置变化并重建采集器
+                            let current = CollectorKind::from_config(&config.general.collector);
+                            let name = |i18n: &I18n, kind: CollectorKind| match kind {
+                                CollectorKind::Real => i18n.t("datasource-real"),
+                                CollectorKind::Mock => i18n.t("datasource-mock"),
+                            };
+                            egui::ComboBox::from_id_salt("settings-datasource-select")
+                                .width(180.0)
+                                .selected_text(name(i18n, current))
+                                .show_ui(ui, |ui| {
+                                    for kind in [CollectorKind::Real, CollectorKind::Mock] {
+                                        let selected = current == kind;
+                                        let label = RichText::new(name(i18n, kind))
+                                            .size(theme::font::BODY)
+                                            .color(if selected {
+                                                theme::c().accent
+                                            } else {
+                                                theme::c().text
+                                            });
+                                        if ui.selectable_label(selected, label).clicked() {
+                                            config.general.collector = kind.as_config().to_owned();
+                                        }
+                                    }
+                                });
+                        },
+                    );
+                    ui.add_space(theme::sp::SM);
+                    setting_row(
+                        ui,
+                        &i18n.t("settings-history-days"),
+                        &i18n.t("settings-history-days-hint"),
+                        |ui| {
+                            // 0 = 不自动清理
+                            changed |= ui
+                                .add(
+                                    egui::DragValue::new(&mut config.general.history_days)
+                                        .range(0..=365)
+                                        .suffix(format!(
+                                            " {}",
+                                            i18n.t("settings-history-days-unit")
+                                        )),
+                                )
+                                .changed();
+                        },
+                    );
+                    ui.add_space(theme::sp::SM);
+                    setting_row(
+                        ui,
+                        &i18n.t("settings-ask"),
+                        &i18n.t("settings-ask-hint"),
+                        |ui| {
+                            // 开启后未命中规则的公网新连接弹窗询问;静默模式下不生效
+                            changed |= widgets::toggle::toggle_switch(
+                                ui,
+                                &mut config.general.ask_connections,
+                                egui::Id::new("settings-ask-toggle"),
+                            )
+                            .changed();
+                        },
+                    );
+                    ui.add_space(theme::sp::SM);
+                    setting_row(
+                        ui,
+                        &i18n.t("settings-silent"),
+                        &i18n.t("settings-silent-hint"),
+                        |ui| {
+                            // 静默模式三态:off 按"新连接询问"开关行为,allow/deny
+                            // 静默放行/拒绝;写 config 后由 App 层统一联动兜底规则、
+                            // WFP 过滤器与托盘子菜单勾选态
+                            let items = [
+                                (&*i18n.t("settings-silent-off"), icons::X_CIRCLE),
+                                (&*i18n.t("settings-silent-allow"), icons::CHECK_CIRCLE),
+                                (&*i18n.t("settings-silent-deny"), icons::BAN),
+                            ];
+                            let current = match config.general.silent_mode.as_str() {
+                                "allow" => 1,
+                                "deny" => 2,
+                                _ => 0,
+                            };
+                            if let Some(i) = widgets::segmented::segmented(ui, &items, current) {
+                                config.general.silent_mode = ["off", "allow", "deny"][i].to_owned();
+                                changed = true;
                             }
-                        });
-                },
-            );
-            ui.add_space(theme::sp::SM);
-            setting_row(
-                ui,
-                &i18n.t("settings-history-days"),
-                &i18n.t("settings-history-days-hint"),
-                |ui| {
-                    // 0 = 不自动清理
-                    changed |= ui
-                        .add(
-                            egui::DragValue::new(&mut config.general.history_days)
-                                .range(0..=365)
-                                .suffix(format!(" {}", i18n.t("settings-history-days-unit"))),
-                        )
-                        .changed();
-                },
-            );
-            ui.add_space(theme::sp::SM);
-            setting_row(
-                ui,
-                &i18n.t("settings-ask"),
-                &i18n.t("settings-ask-hint"),
-                |ui| {
-                    // 开启后未命中规则的公网新连接弹窗询问;静默模式下不生效
-                    changed |= widgets::toggle::toggle_switch(
+                        },
+                    );
+                    ui.add_space(theme::sp::SM);
+                    setting_row(
                         ui,
-                        &mut config.general.ask_connections,
-                        egui::Id::new("settings-ask-toggle"),
-                    )
-                    .changed();
-                },
-            );
-            ui.add_space(theme::sp::SM);
-            setting_row(
-                ui,
-                &i18n.t("settings-silent"),
-                &i18n.t("settings-silent-hint"),
-                |ui| {
-                    // 静默模式三态:off 按"新连接询问"开关行为,allow/deny
-                    // 静默放行/拒绝;写 config 后由 App 层统一联动兜底规则、
-                    // WFP 过滤器与托盘子菜单勾选态
-                    let items = [
-                        (&*i18n.t("settings-silent-off"), icons::X_CIRCLE),
-                        (&*i18n.t("settings-silent-allow"), icons::CHECK_CIRCLE),
-                        (&*i18n.t("settings-silent-deny"), icons::BAN),
-                    ];
-                    let current = match config.general.silent_mode.as_str() {
-                        "allow" => 1,
-                        "deny" => 2,
-                        _ => 0,
-                    };
-                    if let Some(i) = widgets::segmented::segmented(ui, &items, current) {
-                        config.general.silent_mode = ["off", "allow", "deny"][i].to_owned();
-                        changed = true;
-                    }
-                },
-            );
-            ui.add_space(theme::sp::SM);
-            setting_row(
-                ui,
-                &i18n.t("settings-tray-pin"),
-                &i18n.t("settings-tray-pin-hint"),
-                |ui| {
-                    // 注册表 IsPromoted,写入失败静默保持系统默认;新会话生效
-                    changed |= widgets::toggle::toggle_switch(
+                        &i18n.t("settings-tray-pin"),
+                        &i18n.t("settings-tray-pin-hint"),
+                        |ui| {
+                            // 注册表 IsPromoted,写入失败静默保持系统默认;新会话生效
+                            changed |= widgets::toggle::toggle_switch(
+                                ui,
+                                &mut config.general.tray_pinned,
+                                egui::Id::new("settings-tray-toggle"),
+                            )
+                            .changed();
+                        },
+                    );
+                    ui.add_space(theme::sp::SM);
+                    setting_row(
                         ui,
-                        &mut config.general.tray_pinned,
-                        egui::Id::new("settings-tray-toggle"),
-                    )
-                    .changed();
+                        &i18n.t("settings-autostart"),
+                        &i18n.t("settings-autostart-hint"),
+                        |ui| {
+                            // 注册表 Run 键,写入失败由 App 层定时重试;自启动走静默到托盘
+                            changed |= widgets::toggle::toggle_switch(
+                                ui,
+                                &mut config.general.autostart,
+                                egui::Id::new("settings-autostart-toggle"),
+                            )
+                            .changed();
+                        },
+                    );
                 },
             );
-            ui.add_space(theme::sp::SM);
-            setting_row(
-                ui,
-                &i18n.t("settings-autostart"),
-                &i18n.t("settings-autostart-hint"),
-                |ui| {
-                    // 注册表 Run 键,写入失败由 App 层定时重试;自启动走静默到托盘
-                    changed |= widgets::toggle::toggle_switch(
-                        ui,
-                        &mut config.general.autostart,
-                        egui::Id::new("settings-autostart-toggle"),
-                    )
-                    .changed();
-                },
-            );
-        },
-    );
-    ui.add_space(theme::sp::MD);
+            ui.add_space(theme::sp::MD);
 
-    // ---- 日志:文件开关 / 级别 / 查看入口,每行语义单一 ----
-    section_card(
-        ui,
-        icons::TERMINAL,
-        &i18n.t("settings-section-logging"),
-        |ui| {
-            setting_row(
+            // ---- 日志:文件开关 / 级别 / 查看入口,每行语义单一 ----
+            section_card(
                 ui,
-                &i18n.t("settings-log-file-on"),
-                &i18n.t("settings-log-file-hint"),
+                icons::TERMINAL,
+                &i18n.t("settings-section-logging"),
                 |ui| {
-                    if widgets::toggle::toggle_switch(
+                    setting_row(
                         ui,
-                        &mut config.general.log_to_file,
-                        egui::Id::new("settings-log-file-toggle"),
-                    )
-                    .changed()
-                    {
-                        crate::logging::set_file_enabled(config.general.log_to_file);
-                        changed = true;
-                    }
-                },
-            );
-            ui.add_space(theme::sp::SM);
-            setting_row(
-                ui,
-                &i18n.t("settings-log-level"),
-                &i18n.t("settings-log-level-hint"),
-                |ui| {
-                    let current = LogLevel::parse(&config.general.log_level);
-                    egui::ComboBox::from_id_salt("settings-log-level")
-                        .width(110.0)
-                        .selected_text(i18n.t(log_window::level_key(current)))
-                        .show_ui(ui, |ui| {
-                            for level in LogLevel::ALL {
-                                if ui
-                                    .selectable_label(
-                                        current == level,
-                                        RichText::new(i18n.t(log_window::level_key(level)))
-                                            .size(theme::font::BODY),
-                                    )
-                                    .clicked()
-                                {
-                                    config.general.log_level = level.as_str().to_owned();
-                                    crate::logging::set_level(level);
-                                    changed = true;
-                                }
+                        &i18n.t("settings-log-file-on"),
+                        &i18n.t("settings-log-file-hint"),
+                        |ui| {
+                            if widgets::toggle::toggle_switch(
+                                ui,
+                                &mut config.general.log_to_file,
+                                egui::Id::new("settings-log-file-toggle"),
+                            )
+                            .changed()
+                            {
+                                crate::logging::set_file_enabled(config.general.log_to_file);
+                                changed = true;
                             }
-                        });
+                        },
+                    );
+                    ui.add_space(theme::sp::SM);
+                    setting_row(
+                        ui,
+                        &i18n.t("settings-log-level"),
+                        &i18n.t("settings-log-level-hint"),
+                        |ui| {
+                            let current = LogLevel::parse(&config.general.log_level);
+                            egui::ComboBox::from_id_salt("settings-log-level")
+                                .width(110.0)
+                                .selected_text(i18n.t(log_window::level_key(current)))
+                                .show_ui(ui, |ui| {
+                                    for level in LogLevel::ALL {
+                                        if ui
+                                            .selectable_label(
+                                                current == level,
+                                                RichText::new(i18n.t(log_window::level_key(level)))
+                                                    .size(theme::font::BODY),
+                                            )
+                                            .clicked()
+                                        {
+                                            config.general.log_level = level.as_str().to_owned();
+                                            crate::logging::set_level(level);
+                                            changed = true;
+                                        }
+                                    }
+                                });
+                        },
+                    );
+                    ui.add_space(theme::sp::SM);
+                    setting_row(
+                        ui,
+                        &i18n.t("settings-log-view"),
+                        &i18n.t("settings-log-view-hint"),
+                        |ui| {
+                            if ui.button(i18n.t("settings-log-open")).clicked() {
+                                log_window::open(log_window);
+                            }
+                            if ui.button(i18n.t("settings-log-locate")).clicked() {
+                                locate_log_file();
+                            }
+                        },
+                    );
                 },
             );
-            ui.add_space(theme::sp::SM);
-            setting_row(
-                ui,
-                &i18n.t("settings-log-view"),
-                &i18n.t("settings-log-view-hint"),
-                |ui| {
-                    if ui.button(i18n.t("settings-log-open")).clicked() {
-                        log_window::open(log_window);
-                    }
-                    if ui.button(i18n.t("settings-log-locate")).clicked() {
-                        locate_log_file();
-                    }
-                },
-            );
-        },
-    );
 
-    changed
+            changed
+        })
+        .inner
 }
 
 /// 设置分组卡片:标题行(图标 + 标题)+ 内容;
