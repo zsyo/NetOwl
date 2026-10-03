@@ -4,7 +4,7 @@
 use eframe::egui;
 use egui::{Align, Label, Layout, RichText, Stroke};
 
-use super::{BAR_H, BAR_W, BallData, ProcRate, RATE_STEPS, STRIP_W};
+use super::{BAR_H, BAR_W, BallData, Page, ProcRate, RATE_STEPS, STRIP_W};
 use crate::i18n::I18n;
 use crate::model::fmt_bytes;
 use crate::ui::{icons, theme, widgets};
@@ -101,8 +101,8 @@ fn draw_centered(painter: &egui::Painter, cx: f32, top: f32, text: String, color
     painter.galley(egui::pos2(cx - w * 0.5, top), galley, color);
 }
 
-/// 圆角浮层面板底(半透明 bg_float + 细描边)
-fn panel_bg(ui: &mut egui::Ui, rect: egui::Rect) {
+/// 圆角浮层面板底(半透明 bg_float + 细描边;菜单窗口共用)
+pub(super) fn panel_bg(ui: &mut egui::Ui, rect: egui::Rect) {
     let radius = egui::CornerRadius::same(theme::RADIUS_LG);
     ui.painter().rect_filled(rect, radius, theme::c().bg_float);
     ui.painter().rect_stroke(
@@ -119,7 +119,7 @@ pub(super) fn hover_panel(
     rect: egui::Rect,
     data: &BallData,
     i18n: &I18n,
-    show_main: &mut bool,
+    show_main: &mut Option<Page>,
 ) {
     panel_bg(ui, rect);
     // 布局约束在气泡 rect 内:弹性贴底与按钮都以气泡底边为界,
@@ -205,7 +205,7 @@ pub(super) fn hover_panel(
                 )
                 .clicked()
             {
-                *show_main = true;
+                *show_main = Some(Page::Connections);
             }
         });
 }

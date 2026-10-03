@@ -329,6 +329,8 @@ impl NetOwlApp {
                 tray::CMD_SHOW => {
                     self.window_visible = true;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                    // 最小化的窗口样式仍为可见,Visible 是空操作,需显式解除
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
                     ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
                 }
                 tray::CMD_HIDE => {
@@ -1236,13 +1238,14 @@ impl eframe::App for NetOwlApp {
         // 日志浏览窗口(独立 viewport;内存层增量拉取,关闭时停止收集)
         ui::log_window::show(ui.ctx(), &mut self.log_window, &self.i18n);
 
-        // 悬浮球(独立 viewport;主窗口隐藏时低频帧仍维持显示与数据刷新)
+        // 悬浮窗(独立 viewport;主窗口隐藏时低频帧仍维持显示与数据刷新)
         if self.config.floating_ball.enabled {
             let ball = floating_ball::show(
                 ui.ctx(),
                 &mut self.floating_ball,
                 &self.ball_data,
                 &self.i18n,
+                &mut self.config.floating_ball,
             );
             if ball.pos_dirty {
                 let (x, y) = self.floating_ball.pos();
@@ -1250,13 +1253,23 @@ impl eframe::App for NetOwlApp {
                 self.config.floating_ball.y = y.round() as i32;
                 self.mark_config_dirty();
             }
-            if ball.show_main {
-                // 与托盘"显示主窗口"同路径:恢复可见、抢前台并落到连接页
+            if let Some(page) = ball.show_main {
+                // 与托盘"显示主窗口"同路径:恢复可见、解除最小化并落到目标页
                 self.window_visible = true;
-                self.page = Page::Connections;
+                self.page = page;
                 ui.ctx()
                     .send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                ui.ctx()
+                    .send_viewport_cmd(egui::ViewportCommand::Minimized(false));
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::Focus);
+            }
+            if ball.config_touched {
+                self.mark_config_dirty();
+            }
+            if ball.close {
+                // 与设置页开关同一数据源,下一帧起悬浮窗整体不再创建
+                self.config.floating_ball.enabled = false;
+                self.mark_config_dirty();
             }
         }
 

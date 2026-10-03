@@ -35,6 +35,12 @@ pub struct FloatingBallConfig {
     /// 贴边位置 y(逻辑点)
     #[serde(default = "default_pos")]
     pub y: i32,
+    /// 窗口置顶显示(悬浮窗不被其他窗口遮挡)
+    #[serde(default = "default_true")]
+    pub always_on_top: bool,
+    /// 贴边自动隐藏(鼠标离开后收缩为半隐窄条;关闭时常显)
+    #[serde(default = "default_true")]
+    pub auto_hide_edge: bool,
 }
 
 impl Default for FloatingBallConfig {
@@ -43,6 +49,8 @@ impl Default for FloatingBallConfig {
             enabled: false,
             x: WINDOW_POS_UNSET,
             y: WINDOW_POS_UNSET,
+            always_on_top: true,
+            auto_hide_edge: true,
         }
     }
 }

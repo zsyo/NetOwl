@@ -2,7 +2,7 @@
 
 use std::sync::atomic::{AtomicIsize, Ordering};
 
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Dwm::{
     DWMNCRENDERINGPOLICY, DWMNCRP_DISABLED, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE,
     DWMWA_NCRENDERING_POLICY, DwmSetWindowAttribute,
@@ -87,6 +87,19 @@ pub fn cursor_pos_physical() -> Option<(i32, i32)> {
     unsafe { GetCursorPos(&mut pt).ok().map(|_| (pt.x, pt.y)) }
 }
 
+/// 主鼠标按键是否按下(GetAsyncKeyState 最高位;悬浮条窗口收不到
+/// 窗口外的鼠标消息,菜单打开期间靠它检测菜单外点击以关闭菜单)
+pub fn primary_button_down() -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
+    unsafe { GetAsyncKeyState(VK_LBUTTON.0 as i32) < 0 }
+}
+
+/// 副鼠标按键(右键)是否按下
+pub fn secondary_button_down() -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_RBUTTON};
+    unsafe { GetAsyncKeyState(VK_RBUTTON.0 as i32) < 0 }
+}
+
 /// 移除窗口的 DWM 系统边框与非客户区渲染。
 /// Windows 11 会为圆角窗口绘制 1px 系统边框,在透明窗口上表现为
 /// 圆角外圈的一圈方框,需显式禁用;旧系统 BORDER_COLOR 调用失败可忽略
@@ -122,6 +135,34 @@ pub fn fix_toolwindow_style(hwnd: HWND) {
         let patched = (style & !(WS_EX_APPWINDOW.0 as isize)) | WS_EX_TOOLWINDOW.0 as isize;
         if patched != style {
             SetWindowLongPtrW(hwnd, GWL_EXSTYLE, patched);
+        }
+    }
+}
+
+/// 悬浮窗窗口样式对齐(火绒同款):winit undecorated 窗口残留
+/// WS_CAPTION/WS_SYSMENU/WS_THICKFRAME/WS_BORDER(被 NC 计算隐藏但窗口
+/// 身份仍是"有边框窗口",与全屏游戏独立翻转的遮挡让位机制互相作用,
+/// 引发点击游戏时黑屏切换);清除后成为纯 WS_POPUP,并置 WS_EX_LAYERED
+/// 分层合成(火绒同款——悬浮窗由 DWM 独立合成,不参与游戏独占平面的
+/// 让位,可在全屏游戏上显示)。SetLayeredWindowAttributes 保持整窗
+/// 不透明,像素级透明仍由渲染表面 alpha 提供
+pub fn align_floating_style(hwnd: HWND) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GWL_EXSTYLE, GWL_STYLE, GetWindowLongPtrW, LWA_ALPHA, SetLayeredWindowAttributes,
+        SetWindowLongPtrW, WS_BORDER, WS_CAPTION, WS_EX_LAYERED, WS_SYSMENU, WS_THICKFRAME,
+    };
+    unsafe {
+        let style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+        let strip = (WS_CAPTION.0 | WS_SYSMENU.0 | WS_THICKFRAME.0 | WS_BORDER.0) as isize;
+        let cleaned = style & !strip;
+        if cleaned != style {
+            SetWindowLongPtrW(hwnd, GWL_STYLE, cleaned);
+        }
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        if ex & WS_EX_LAYERED.0 as isize == 0 {
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex | WS_EX_LAYERED.0 as isize);
+            // LAYERED 需一次性设置属性,否则窗口不渲染
+            let _ = SetLayeredWindowAttributes(hwnd, COLORREF(0), 255, LWA_ALPHA);
         }
     }
 }

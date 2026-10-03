@@ -140,6 +140,11 @@ ball-realtime-down = Live download
 ball-detail = View details
 ball-no-etw = Running without elevation, per-process rates unavailable
 ball-empty = No active traffic
+ball-menu-show = Show Window
+ball-menu-topmost = Keep on Top
+ball-menu-auto-hide = Auto-hide at Edge
+ball-menu-settings = Settings
+ball-menu-close = Close Floating Widget
 
 settings-log = Logging
 settings-log-level = Log level

@@ -8,6 +8,7 @@
 //! (期间重入跳过);按住拖动(系统级 StartDrag,OS 模态循环期间不产帧,
 //! 恢复渲染即松手)松手按窗口中心吸附左/右屏幕边缘;位置记忆于 config。
 
+mod menu;
 mod view;
 
 use std::collections::HashMap;
@@ -15,11 +16,14 @@ use std::time::{Duration, Instant};
 
 use eframe::egui;
 
+use super::Page;
 use super::conn_visible;
 use crate::i18n::I18n;
 use crate::model::Connection;
 use crate::platform::monitor;
 use crate::storage::config::{Config, FloatingBallConfig};
+
+use menu::{MENU_H, MENU_W, MenuAction};
 
 /// 贴边方向
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -71,11 +75,13 @@ const RETRACT_DELAY: Duration = Duration::from_millis(500);
 const DRAG_THRESHOLD: f32 = 6.0;
 /// 几何命令下发阈值(逻辑点;小于此差异不重发防抖动)
 const GEOM_EPSILON: f32 = 0.5;
-/// 两个 viewport 的唯一 id 与窗口标题(标题仅作 FindWindow 定位锚,不显示)
+/// 三个 viewport 的唯一 id 与窗口标题(标题仅作 FindWindow 定位锚,不显示)
 const BALL_VIEWPORT_ID: &str = "netowl-floating-ball";
 const PANEL_VIEWPORT_ID: &str = "netowl-floating-ball-panel";
+const MENU_VIEWPORT_ID: &str = "netowl-floating-ball-menu";
 const BALL_TITLE: &str = "NetOwl Ball";
 const PANEL_TITLE: &str = "NetOwl Ball Panel";
+const MENU_TITLE: &str = "NetOwl Ball Menu";
 
 /// 单进程实时速率行(浮窗榜单;icon 为图标纹理快照,绘制不回查 App)
 #[derive(Clone)]
@@ -104,11 +110,16 @@ pub struct BallData {
 pub struct BallOutcome {
     /// 位置已变化,需回写 config
     pub pos_dirty: bool,
-    /// 请求唤出主窗口(点击收起条 / 浮窗"查看详情")
-    pub show_main: bool,
+    /// 唤出主窗口并落到指定页(浮窗"查看详情" = 连接页;菜单"显示窗口"
+    /// = 地图页、菜单"设置" = 设置页)
+    pub show_main: Option<Page>,
+    /// 菜单改动过配置开关,需 mark_config_dirty 持久化
+    pub config_touched: bool,
+    /// 菜单"关闭悬浮窗":app 层置 enabled = false
+    pub close: bool,
 }
 
-/// 悬浮球交互状态;持久化位置以 config.floating_ball 为唯一来源,
+/// 悬浮窗交互状态;持久化位置以 config.floating_ball 为唯一来源,
 /// 变更经 BallOutcome::pos_dirty 回写
 pub struct BallState {
     /// 当前贴边方向(None = 尚未完成首次贴边)
@@ -117,6 +128,8 @@ pub struct BallState {
     pos: (f32, f32),
     /// 当前交互阶段(贴边/全显/浮窗)
     phase: Phase,
+    /// 右键菜单是否打开
+    menu_open: bool,
     /// 进入全显的时刻(静默窗 REVEAL_GRACE 计时起点,窗口内不采样)
     revealed_at: Option<Instant>,
     /// 全显内二次移动的最后时刻(停止 EXPAND_DELAY 后弹出浮窗;
@@ -153,7 +166,13 @@ impl BallState {
                 SnapEdge::Right
             }),
             pos: (x, y),
-            phase: Phase::Docked,
+            // 关闭"贴边自动隐藏"时常显(初始即为全显形态)
+            phase: if cfg.auto_hide_edge {
+                Phase::Docked
+            } else {
+                Phase::Revealed
+            },
+            menu_open: false,
             revealed_at: None,
             last_move_at: None,
             stationary_seen: false,
@@ -170,12 +189,13 @@ impl BallState {
     }
 }
 
-/// 悬浮球帧入口(主窗口 ui() 末尾调用;主窗口隐藏时仍按低频帧执行)
+/// 悬浮窗帧入口(主窗口 ui() 末尾调用;主窗口隐藏时仍按低频帧执行)
 pub fn show(
     ctx: &egui::Context,
     state: &mut BallState,
     data: &BallData,
     i18n: &I18n,
+    cfg: &mut FloatingBallConfig,
 ) -> BallOutcome {
     // 窗口样式节流检查:Windows 11 给透明圆角窗口画系统边框(方框残边),
     // 需逐 HWND 禁用;同时修正任务栏样式(egui-winit 的 taskbar(false)
@@ -186,30 +206,34 @@ pub fn show(
         .is_none_or(|t| t.elapsed() >= Duration::from_secs(1))
     {
         state.dwm_retry_at = Some(Instant::now());
-        for title in [BALL_TITLE, PANEL_TITLE] {
+        for title in [BALL_TITLE, PANEL_TITLE, MENU_TITLE] {
             if let Some(hwnd) = monitor::find_window_by_title(title) {
                 monitor::remove_dwm_frame(hwnd);
                 monitor::fix_toolwindow_style(hwnd);
+                monitor::align_floating_style(hwnd);
                 monitor::subclass_full_client(hwnd);
             }
         }
     }
 
     // 几何:球窗口恒为贴边窄条(dock_pos),浮窗窗口尺寸恒定、显隐切换
-    // (panel_pos);均按悬浮条所在显示器的工作区计算,展开/收起只切换
-    // 浮窗可见性,不发生任何 resize
+    // (panel_pos),菜单窗口按贴边方向弹出(menu_pos);均按悬浮条所在
+    // 显示器的工作区计算,展开/收起只切换可见性,不发生任何 resize
     let (ball_x, ball_y) = dock_pos(state);
     let (panel_x, panel_y) = panel_pos(state);
+    let (menu_x, menu_y) = menu_pos(state);
     let panel_visible = state.phase == Phase::Expanded;
+    let menu_visible = state.menu_open;
 
     let mut outcome = BallOutcome::default();
+    let mut menu_action: Option<MenuAction> = None;
 
-    // 浮窗窗口:纯展示与查看详情按钮,不抢焦点
-    let panel_builder = egui::ViewportBuilder::default()
+    // 置顶由 builder 条件设置(窗口新建时生效);运行中切换靠菜单动作
+    // 里的 WindowLevel 命令对三个窗口即时生效
+    let mut panel_builder = egui::ViewportBuilder::default()
         .with_title(PANEL_TITLE)
         .with_decorations(false)
         .with_taskbar(false)
-        .with_always_on_top()
         .with_resizable(false)
         .with_close_button(false)
         .with_active(false)
@@ -217,42 +241,119 @@ pub fn show(
         .with_visible(panel_visible)
         .with_inner_size([HOVER_W, HOVER_H])
         .with_position([panel_x, panel_y]);
+    if cfg.always_on_top {
+        panel_builder = panel_builder.with_always_on_top();
+    }
     ctx.show_viewport_immediate(
         egui::ViewportId(egui::Id::new(PANEL_VIEWPORT_ID)),
         panel_builder,
         |ui, _class| panel_body(ui, data, i18n, &mut outcome.show_main),
     );
 
-    // 球窗口:三态球面绘制与交互状态机
-    let ball_builder = egui::ViewportBuilder::default()
+    // 菜单窗口:自绘右键菜单,不抢焦点(点击菜单项不需要激活)
+    let mut menu_builder = egui::ViewportBuilder::default()
+        .with_title(MENU_TITLE)
+        .with_decorations(false)
+        .with_taskbar(false)
+        .with_resizable(false)
+        .with_close_button(false)
+        .with_active(false)
+        .with_transparent(true)
+        .with_visible(menu_visible)
+        .with_inner_size([MENU_W, MENU_H])
+        .with_position([menu_x, menu_y]);
+    if cfg.always_on_top {
+        menu_builder = menu_builder.with_always_on_top();
+    }
+    ctx.show_viewport_immediate(
+        egui::ViewportId(egui::Id::new(MENU_VIEWPORT_ID)),
+        menu_builder,
+        |ui, _class| menu::menu_body(ui, cfg, i18n, &mut menu_action),
+    );
+
+    // 球窗口:三态球面绘制与交互状态机。with_active(false):点击悬浮
+    // 条不抢前台(全屏游戏时点击条不会引发全屏切换黑屏);系统拖动走
+    // SC_MOUSEMOVE 不依赖窗口焦点
+    let mut ball_builder = egui::ViewportBuilder::default()
         .with_title(BALL_TITLE)
         .with_decorations(false)
         .with_taskbar(false)
-        .with_always_on_top()
         .with_resizable(false)
         .with_close_button(false)
-        // 不设 with_active(false):egui-winit 的 StartDrag 有 has_focus 门控,
-        // 不激活的窗口(WS_EX_NOACTIVATE)永远拿不到焦点,系统拖动不会执行
+        .with_active(false)
         .with_transparent(true)
         .with_inner_size([BALL_WIN_W, BALL_WIN_H])
         .with_position([ball_x, ball_y]);
+    if cfg.always_on_top {
+        ball_builder = ball_builder.with_always_on_top();
+    }
     ctx.show_viewport_immediate(
         egui::ViewportId(egui::Id::new(BALL_VIEWPORT_ID)),
         ball_builder,
-        |ui, _class| ball_body(ui, state, data, panel_visible, &mut outcome),
+        |ui, _class| {
+            ball_body(
+                ui,
+                state,
+                data,
+                panel_visible,
+                cfg.auto_hide_edge,
+                &mut outcome,
+            )
+        },
     );
+
+    // 应用菜单动作(在 viewport 闭包之外,借用已释放)
+    if let Some(action) = menu_action {
+        match action {
+            MenuAction::Show(page) => {
+                outcome.show_main = Some(page);
+                state.menu_open = false;
+            }
+            MenuAction::ToggleTopmost => {
+                cfg.always_on_top = !cfg.always_on_top;
+                outcome.config_touched = true;
+                // builder 只在窗口新建时生效,运行中切换用命令对三个窗口
+                // 即时生效
+                let level = if cfg.always_on_top {
+                    egui::WindowLevel::AlwaysOnTop
+                } else {
+                    egui::WindowLevel::Normal
+                };
+                for id in [BALL_VIEWPORT_ID, PANEL_VIEWPORT_ID, MENU_VIEWPORT_ID] {
+                    ctx.send_viewport_cmd_to(
+                        egui::ViewportId(egui::Id::new(id)),
+                        egui::ViewportCommand::WindowLevel(level),
+                    );
+                }
+            }
+            MenuAction::ToggleAutoHide => {
+                cfg.auto_hide_edge = !cfg.auto_hide_edge;
+                outcome.config_touched = true;
+            }
+            MenuAction::Close => {
+                outcome.close = true;
+                state.menu_open = false;
+            }
+        }
+    }
 
     // 收回倒计时驱动:离开期间维持心跳帧保证按时半隐
     if let Some(left) = state.left_at {
         let remain = RETRACT_DELAY.saturating_sub(left.elapsed());
         ctx.request_repaint_after(remain + Duration::from_millis(10));
     }
+    // 悬停期间维持约 30fps:静态低帧率(约 500ms)下"按下-移动-释放"
+    // 可能整段落在两帧之间,egui 同帧收到按下与释放,拖动判定所需的
+    // down 状态失效,窗口便不跟随鼠标
+    if cursor_over_windows(ctx, panel_visible, state.menu_open) {
+        ctx.request_repaint_after(Duration::from_millis(33));
+    }
     outcome
 }
 
 /// 浮窗窗口帧体:气泡浮层占满窗口;窗口显隐由 show 按 phase 驱动,
 /// 尺寸恒定无 resize,隐藏期间照常绘制保证显示瞬间内容就绪
-fn panel_body(ui: &mut egui::Ui, data: &BallData, i18n: &I18n, show_main: &mut bool) {
+fn panel_body(ui: &mut egui::Ui, data: &BallData, i18n: &I18n, show_main: &mut Option<Page>) {
     egui::CentralPanel::default()
         .frame(
             egui::Frame::new()
@@ -282,6 +383,7 @@ fn ball_body(
     state: &mut BallState,
     data: &BallData,
     panel_visible: bool,
+    auto_hide: bool,
     outcome: &mut BallOutcome,
 ) {
     egui::CentralPanel::default()
@@ -313,7 +415,7 @@ fn ball_body(
                 ),
             };
             view::ball(ui, bar_cx, BALL_WIN_H * 0.5, data, mode);
-            handle_input(ui, state, panel_visible, outcome);
+            handle_input(ui, state, panel_visible, auto_hide, outcome);
         });
 
     // 几何对账:与期望差异超阈值才重发命令(防每帧 SetWindowPos 抖动)
@@ -335,10 +437,10 @@ fn ball_body(
     }
 }
 
-/// 鼠标是否在球窗口或可见浮窗窗口的矩形内(系统级光标查询:窗口矩形
-/// 与光标坐标均为物理像素;egui 的 interact hover 会被上层可交互 widget
-/// 截停,透明像素区域也会打断事件流,均不可靠)
-fn cursor_over_windows(ctx: &egui::Context, panel_visible: bool) -> bool {
+/// 鼠标是否在可见的悬浮窗窗口(条/浮窗/菜单)矩形内(系统级光标查询:
+/// 窗口矩形与光标坐标均为物理像素;egui 的 interact hover 会被上层可交互
+/// widget 截停,透明像素区域也会打断事件流,均不可靠)
+fn cursor_over_windows(ctx: &egui::Context, panel_visible: bool, menu_visible: bool) -> bool {
     let Some((x, y)) = monitor::cursor_pos_physical() else {
         return false;
     };
@@ -349,21 +451,31 @@ fn cursor_over_windows(ctx: &egui::Context, panel_visible: bool) -> bool {
         })
         .is_some_and(|r| r.contains(cur))
     };
-    over(BALL_VIEWPORT_ID) || (panel_visible && over(PANEL_VIEWPORT_ID))
+    over(BALL_VIEWPORT_ID)
+        || (panel_visible && over(PANEL_VIEWPORT_ID))
+        || (menu_visible && over(MENU_VIEWPORT_ID))
 }
 
 /// 交互状态机:贴边 → hover 滑出全显(静止即保持全显,不弹浮窗)→
 /// 全显内二次移动后武装弹出:停止 EXPAND_DELAY 弹出浮窗,移出则取消并
-/// 在 RETRACT_DELAY 后半隐(持续移动不断重置,滑过不弹;期间重入跳过);
-/// 拖动(浮窗态先收浮窗)与点击唤出主窗口
+/// 在 RETRACT_DELAY 后回到收起态(auto_hide_edge 关闭时收起态 = 常显,
+/// 即不收缩);左键原位释放与右键按下 toggle 菜单,菜单外点击关闭菜单;
+/// 拖动交给系统模态循环
 fn handle_input(
     ui: &mut egui::Ui,
     state: &mut BallState,
     panel_visible: bool,
+    auto_hide: bool,
     outcome: &mut BallOutcome,
 ) {
     let ctx = ui.ctx();
-    let hovered = cursor_over_windows(ctx, panel_visible);
+    let hovered = cursor_over_windows(ctx, panel_visible, state.menu_open);
+    // 收起态:开启"贴边自动隐藏"时收缩为半隐窄条,否则保持全显常驻
+    let rest_phase = if auto_hide {
+        Phase::Docked
+    } else {
+        Phase::Revealed
+    };
     let pointer = ctx.pointer_latest_pos();
     let pressed = ui.input(|i| i.pointer.primary_pressed());
     let down = ui.input(|i| i.pointer.primary_down());
@@ -380,7 +492,7 @@ fn handle_input(
             .map(|r| (r.left(), r.top()));
         state.dragging = false;
         state.press_pos = None;
-        state.phase = Phase::Docked;
+        state.phase = rest_phase;
         state.revealed_at = None;
         state.last_move_at = None;
         state.stationary_seen = false;
@@ -396,6 +508,11 @@ fn handle_input(
             Phase::Docked => {
                 state.phase = Phase::Revealed;
                 state.revealed_at = Some(Instant::now());
+                state.last_move_at = None;
+                state.stationary_seen = false;
+            }
+            // 菜单打开期间冻结浮窗弹出逻辑:二次移动不武装、不弹浮窗
+            Phase::Revealed if state.menu_open => {
                 state.last_move_at = None;
                 state.stationary_seen = false;
             }
@@ -426,12 +543,13 @@ fn handle_input(
             }
             Phase::Expanded => {}
         }
-    } else if state.phase != Phase::Docked {
-        // 离开:取消弹出意图,延迟半隐,期间重入(重设 left_at = None)则跳过
+    } else if state.phase != rest_phase {
+        // 离开:取消弹出意图,延迟回到收起态,期间重入(重设 left_at
+        // = None)则跳过;auto_hide_edge 关闭时收起态 = 全显,视觉不变
         state.last_move_at = None;
         let left_at = state.left_at.get_or_insert(Instant::now());
         if left_at.elapsed() >= RETRACT_DELAY && state.press_pos.is_none() {
-            state.phase = Phase::Docked;
+            state.phase = rest_phase;
             state.revealed_at = None;
             state.last_move_at = None;
             state.stationary_seen = false;
@@ -439,9 +557,30 @@ fn handle_input(
         }
     }
 
-    // 拖动判定:按下后位移超阈值交给系统拖动(浮窗若在展示则立即
-    // 隐藏,拖的始终是悬浮条窗口,拖动结束回贴边收起态);原位释放为
-    // 点击(收起条 = 主窗口快速入口,浮窗态由面板按钮自理)
+    // 菜单随悬浮条:鼠标离开条与菜单 RETRACT_DELAY 后一并关闭
+    // (auto_hide_edge 关闭时常显不收回,菜单仍随离开关闭)
+    if state.menu_open && !hovered {
+        let left_at = state.left_at.get_or_insert(Instant::now());
+        if left_at.elapsed() >= RETRACT_DELAY && state.press_pos.is_none() {
+            state.menu_open = false;
+        }
+    }
+
+    // 菜单交互:条上左键原位释放 / 右键按下均 toggle;菜单外按下关闭
+    // (球窗口收不到窗口外的鼠标消息,用系统按键状态检测)
+    if state.menu_open
+        && (monitor::primary_button_down() || monitor::secondary_button_down())
+        && !cursor_over_windows(ctx, panel_visible, true)
+    {
+        state.menu_open = false;
+    }
+    if ui.input(|i| i.pointer.secondary_pressed()) {
+        toggle_menu(state);
+    }
+
+    // 拖动判定:按下后位移超阈值交给系统拖动(浮窗与菜单若在展示则
+    // 立即隐藏,拖的始终是悬浮条窗口,拖动结束回收起态);原位释放为
+    // 弹出菜单(左键与右键同路径)
     if pressed && let Some(p) = pointer {
         state.press_pos = Some(p);
     }
@@ -451,11 +590,14 @@ fn handle_input(
     {
         state.press_pos = None;
         state.left_at = None;
-        if let Some(hwnd) = monitor::find_window_by_title(PANEL_TITLE) {
-            monitor::hide_window(hwnd);
+        for title in [PANEL_TITLE, MENU_TITLE] {
+            if let Some(hwnd) = monitor::find_window_by_title(title) {
+                monitor::hide_window(hwnd);
+            }
         }
+        state.menu_open = false;
         state.dragging = true;
-        state.phase = Phase::Docked;
+        state.phase = rest_phase;
         state.revealed_at = None;
         state.last_move_at = None;
         state.stationary_seen = false;
@@ -464,8 +606,24 @@ fn handle_input(
         if let Some(hwnd) = monitor::find_window_by_title(BALL_TITLE) {
             monitor::begin_system_drag(hwnd);
         }
-    } else if released && state.press_pos.take().is_some() && state.phase != Phase::Expanded {
-        outcome.show_main = true;
+    } else if released && let Some(pp) = state.press_pos.take() {
+        // 同帧收到按下与释放(快速动作落在两帧之间)时,位移超阈值是
+        // 被丢失的拖动,不当点击弹菜单
+        if pointer.is_none_or(|p| (p - pp).length() <= DRAG_THRESHOLD) {
+            toggle_menu(state);
+        }
+    }
+}
+
+/// 打开/关闭右键菜单:打开时若浮窗正在展示则先收起(落回全显,
+/// 避免浮窗干扰菜单操作),并清空弹出武装
+fn toggle_menu(state: &mut BallState) {
+    state.menu_open = !state.menu_open;
+    if state.menu_open && state.phase == Phase::Expanded {
+        state.phase = Phase::Revealed;
+        state.revealed_at = None;
+        state.last_move_at = None;
+        state.stationary_seen = false;
     }
 }
 
@@ -526,6 +684,23 @@ fn dock_pos(state: &BallState) -> (f32, f32) {
     );
     let x = state.pos.0.clamp(wl, (wr - BALL_WIN_W).max(wl));
     let y = state.pos.1.clamp(wt, (wb - BALL_WIN_H).max(wt));
+    (x, y)
+}
+
+/// 菜单窗口位置:贴右缘时弹条左侧、贴左缘时弹条右侧,y 与条顶对齐
+/// 后钳制所在显示器工作区内
+fn menu_pos(state: &BallState) -> (f32, f32) {
+    let (_wl, wt, _wr, wb) = monitor::workarea_of(
+        state.pos.0 + BALL_WIN_W * 0.5,
+        state.pos.1 + BALL_WIN_H * 0.5,
+    );
+    let left = matches!(state.edge, Some(SnapEdge::Left));
+    let x = if left {
+        state.pos.0 + BALL_WIN_W + BUBBLE_GAP
+    } else {
+        state.pos.0 - MENU_W - BUBBLE_GAP
+    };
+    let y = state.pos.1.clamp(wt, (wb - MENU_H).max(wt));
     (x, y)
 }
 

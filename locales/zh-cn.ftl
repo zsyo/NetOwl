@@ -140,6 +140,11 @@ ball-realtime-down = 实时下载
 ball-detail = 查看详情
 ball-no-etw = 未提权运行,无法统计进程速率
 ball-empty = 暂无活跃流量
+ball-menu-show = 显示窗口
+ball-menu-topmost = 窗口置顶显示
+ball-menu-auto-hide = 贴边自动隐藏
+ball-menu-settings = 设置
+ball-menu-close = 关闭悬浮窗
 
 settings-log = 运行日志
 settings-log-level = 日志级别
