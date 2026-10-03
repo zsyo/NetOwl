@@ -5,19 +5,23 @@ use std::time::Instant;
 
 use eframe::egui;
 
-use super::types::{
-    BALL_TITLE, BALL_VIEWPORT_ID, BALL_WIN_H, BALL_WIN_W, DRAG_THRESHOLD, EXPAND_DELAY, GEOM_EPSILON,
-    MENU_TITLE, MENU_VIEWPORT_ID, PANEL_TITLE, PANEL_VIEWPORT_ID, Phase, REVEAL_GRACE,
-    RETRACT_DELAY, SnapEdge,
-};
-use crate::platform::monitor;
 use super::types::BallOutcome;
 use super::types::BallState;
+use super::types::{
+    BALL_TITLE, BALL_VIEWPORT_ID, BALL_WIN_H, BALL_WIN_W, DRAG_THRESHOLD, EXPAND_DELAY,
+    GEOM_EPSILON, MENU_TITLE, MENU_VIEWPORT_ID, PANEL_TITLE, PANEL_VIEWPORT_ID, Phase,
+    RETRACT_DELAY, REVEAL_GRACE, SnapEdge,
+};
+use crate::platform::monitor;
 
 /// 鼠标是否在可见的悬浮窗窗口(条/浮窗/菜单)矩形内(系统级光标查询:
 /// 窗口矩形与光标坐标均为物理像素;egui 的 interact hover 会被上层可交互
 /// widget 截停,透明像素区域也会打断事件流,均不可靠)
-pub(super) fn cursor_over_windows(ctx: &egui::Context, panel_visible: bool, menu_visible: bool) -> bool {
+pub(super) fn cursor_over_windows(
+    ctx: &egui::Context,
+    panel_visible: bool,
+    menu_visible: bool,
+) -> bool {
     let Some((x, y)) = monitor::cursor_pos_physical() else {
         return false;
     };

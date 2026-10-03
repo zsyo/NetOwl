@@ -1,10 +1,8 @@
 //! 悬浮窗三 viewport 几何定位:贴边条位置、浮窗位置(上方/下方择优)
 //! 与菜单弹出位置,均按悬浮条所在显示器的工作区钳制。
 
-use super::types::{
-    BALL_WIN_H, BALL_WIN_W, BUBBLE_GAP, HOVER_H, HOVER_W, REVEAL, SnapEdge,
-};
 use super::menu::{MENU_H, MENU_W};
+use super::types::{BALL_WIN_H, BALL_WIN_W, BUBBLE_GAP, HOVER_H, HOVER_W, REVEAL, SnapEdge};
 use crate::platform::monitor;
 
 /// 浮窗窗口位置:贴边侧与球缘对齐(按悬浮条所在显示器的工作区),

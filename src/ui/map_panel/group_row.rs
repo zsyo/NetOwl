@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use eframe::egui;
 use egui::{Button, CornerRadius, RichText, Vec2};
 
-use super::{ProcGroup, MapPanelState};
+use super::{MapPanelState, ProcGroup};
 use crate::i18n::I18n;
 use crate::rules::Rule;
 use crate::storage::history;

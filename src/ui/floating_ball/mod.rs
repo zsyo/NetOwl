@@ -201,7 +201,12 @@ pub fn show(
 
 /// 浮窗窗口帧体:气泡浮层占满窗口;窗口显隐由 show 按 phase 驱动,
 /// 尺寸恒定无 resize,隐藏期间照常绘制保证显示瞬间内容就绪
-fn panel_body(ui: &mut egui::Ui, data: &BallData, i18n: &I18n, show_main: &mut Option<crate::ui::Page>) {
+fn panel_body(
+    ui: &mut egui::Ui,
+    data: &BallData,
+    i18n: &I18n,
+    show_main: &mut Option<crate::ui::Page>,
+) {
     egui::CentralPanel::default()
         .frame(
             egui::Frame::new()

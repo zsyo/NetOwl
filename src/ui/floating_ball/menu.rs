@@ -3,10 +3,10 @@
 use eframe::egui;
 use egui::{Color32, Rect, Sense, Stroke};
 
-use crate::ui::Page;
 use super::view::panel_bg;
 use crate::i18n::I18n;
 use crate::storage::config::FloatingBallConfig;
+use crate::ui::Page;
 use crate::ui::{icons, theme};
 
 /// 菜单窗口尺寸(逻辑点)

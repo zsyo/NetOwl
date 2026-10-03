@@ -5,9 +5,9 @@ use std::time::{Duration, Instant};
 
 use eframe::egui;
 
-use crate::ui::Page;
 use crate::platform::monitor;
 use crate::storage::config::FloatingBallConfig;
+use crate::ui::Page;
 
 /// 全显控件尺寸(逻辑点):两行速率文字 + 内边距,容纳最长速率形态
 /// (高度同时容纳半隐窄条的上下两组信号格与组间隔)
@@ -173,4 +173,3 @@ impl BallState {
         self.pos
     }
 }
-
