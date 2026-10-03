@@ -5,7 +5,7 @@
 use eframe::egui;
 use egui::{CornerRadius, Label, RichText, Stroke};
 
-use crate::app::ask::{AskItem, Decision, Scope};
+use crate::app::ask::{Decision, Scope};
 use crate::i18n::I18n;
 use crate::platform::monitor::workarea_logical;
 use crate::ui::{icons, theme};
@@ -18,8 +18,26 @@ const MARGIN: f32 = 16.0;
 
 /// 弹出询问;返回用户决策(None = 本帧未决策)。
 /// show_viewport_immediate 的闭包在本帧渲染期同步执行;
-/// 范围选择写入 item.scope(随当前询问跨帧持久,避免每帧重置)
-pub fn show(ctx: &egui::Context, item: &mut AskItem, i18n: &I18n) -> Option<Decision> {
+/// 范围选择写入 item.scope(随当前询问跨帧持久,避免每帧重置)。
+/// viewport 首帧预建常驻,运行中不再新建窗口:eframe 0.36 的定时
+/// 唤醒帧(new_events)未设置 EventLoopGuard,该上下文里新建
+/// immediate viewport 窗口会被静默跳过,egui 断言回调未执行直接
+/// panic——显示与否靠 ViewportCommand::Visible 切换,`applied` 为
+/// app 侧跟踪的已应用可见性(builder 仅在创建窗口时生效)
+pub fn show(
+    ctx: &egui::Context,
+    asker: &mut crate::app::ask::Asker,
+    applied: &mut bool,
+    i18n: &I18n,
+) -> Option<Decision> {
+    let want_visible = asker.active.is_some();
+    if *applied != want_visible {
+        ctx.send_viewport_cmd_to(
+            egui::ViewportId(egui::Id::new("netowl-ask")),
+            egui::ViewportCommand::Visible(want_visible),
+        );
+        *applied = want_visible;
+    }
     let (wa_w, wa_h) = workarea_logical();
     let mut decision: Option<Decision> = None;
 
@@ -31,12 +49,17 @@ pub fn show(ctx: &egui::Context, item: &mut AskItem, i18n: &I18n) -> Option<Deci
         .with_close_button(false)
         .with_active(true)
         .with_inner_size([WIDTH, HEIGHT])
-        .with_position([wa_w - WIDTH - MARGIN, wa_h - HEIGHT - MARGIN]);
+        .with_position([wa_w - WIDTH - MARGIN, wa_h - HEIGHT - MARGIN])
+        .with_visible(want_visible);
 
     ctx.show_viewport_immediate(
         egui::ViewportId(egui::Id::new("netowl-ask")),
         builder,
         |ui, _class| {
+            // 预建态(无待询问项)只维持窗口存在,不渲染内容
+            let Some(item) = asker.active.as_mut() else {
+                return;
+            };
             // CentralPanel 填满整个窗口(Frame 按内容收缩会在底部露出
             // 未绘制背景);面板带 accent 细边框
             egui::CentralPanel::default()

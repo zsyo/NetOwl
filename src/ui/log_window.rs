@@ -16,6 +16,12 @@ const MAX_LINES: usize = 1000;
 /// 窗口状态(会话内,不持久化;关闭即清空本地缓冲)
 pub struct PageState {
     pub open: bool,
+    /// viewport 是否已创建(首帧预建;托盘"打开实时日志"在全隐身
+    /// 状态下据此先恢复主窗口驱动首帧,见 app 层 CMD_LOG_OPEN)
+    created: bool,
+    /// 上次下发给窗口的可见性(builder 仅在创建窗口时生效,
+    /// 之后靠 ViewportCommand::Visible 切换)
+    applied_open: bool,
     /// 内存层增量拉取游标(已读到的最后一条 seq)
     cursor: u64,
     lines: Vec<logging::LogLine>,
@@ -29,6 +35,8 @@ impl PageState {
     pub fn new() -> Self {
         PageState {
             open: false,
+            created: false,
+            applied_open: false,
             cursor: 0,
             lines: Vec::new(),
             shown_level: LogLevel::Info,
@@ -36,6 +44,18 @@ impl PageState {
             auto_scroll: true,
         }
     }
+}
+
+/// 窗口 viewport id(首帧预建常驻,运行中不再新建)
+fn log_viewport_id() -> egui::ViewportId {
+    egui::ViewportId(egui::Id::new("netowl-log-window"))
+}
+
+/// viewport 是否已创建:全隐身状态(主窗口隐藏且悬浮窗关闭)下首帧
+/// 只跑 logic 不跑 ui,viewport 建不出来;托盘"打开实时日志"需据此
+/// 先恢复主窗口
+pub fn is_created(state: &PageState) -> bool {
+    state.created
 }
 
 /// 级别词条键(设置页与日志窗口共用)
@@ -63,47 +83,58 @@ fn close(state: &mut PageState) {
     logging::window_layer::set_shown_level(None);
 }
 
-/// 每帧渲染(主窗口 ui() 末尾调用;未打开时不创建视口)。
-/// immediate 视口在本帧同步执行,闭包内直接借用状态
+/// 每帧渲染(主窗口 ui() 末尾调用)。viewport 首帧预建常驻,运行中
+/// 不再新建窗口:eframe 0.36 的定时唤醒帧(new_events)未设置
+/// EventLoopGuard,该上下文里新建 immediate viewport 窗口会被静默
+/// 跳过,egui 断言回调未执行直接 panic——与悬浮窗同模式,窗口只在
+/// 首帧创建,显示与否靠 ViewportCommand::Visible 切换
 pub fn show(ctx: &egui::Context, state: &mut PageState, i18n: &I18n) {
-    if !state.open {
-        return;
+    state.created = true;
+    if state.open {
+        let fresh = logging::window_layer::read_since(state.cursor);
+        if let Some(last) = fresh.last() {
+            state.cursor = last.seq;
+        }
+        state.lines.extend(fresh);
+        if state.lines.len() > MAX_LINES {
+            let overflow = state.lines.len() - MAX_LINES;
+            state.lines.drain(..overflow);
+        }
     }
-    let fresh = logging::window_layer::read_since(state.cursor);
-    if let Some(last) = fresh.last() {
-        state.cursor = last.seq;
-    }
-    state.lines.extend(fresh);
-    if state.lines.len() > MAX_LINES {
-        let overflow = state.lines.len() - MAX_LINES;
-        state.lines.drain(..overflow);
+    if state.applied_open != state.open {
+        ctx.send_viewport_cmd_to(
+            log_viewport_id(),
+            egui::ViewportCommand::Visible(state.open),
+        );
+        state.applied_open = state.open;
     }
 
     let builder = egui::ViewportBuilder::default()
         .with_title(i18n.t("settings-log"))
-        .with_inner_size([780.0, 520.0]);
-    ctx.show_viewport_immediate(
-        egui::ViewportId(egui::Id::new("netowl-log-window")),
-        builder,
-        |ui, _class| {
-            // 标题栏关闭按钮:停止收集并清空本地缓冲
-            if ui.input(|i| i.viewport().close_requested()) {
-                close(state);
-                return;
-            }
-            egui::CentralPanel::default()
-                .frame(
-                    egui::Frame::new()
-                        .fill(theme::c().bg_base)
-                        .inner_margin(egui::Margin::same(10)),
-                )
-                .show(ui, |ui| {
-                    toolbar(ui, state, i18n);
-                    ui.add_space(8.0);
-                    log_list(ui, state, i18n);
-                });
-        },
-    );
+        .with_inner_size([780.0, 520.0])
+        .with_visible(state.open);
+    ctx.show_viewport_immediate(log_viewport_id(), builder, |ui, _class| {
+        // 预建态(未打开)只维持窗口存在,不渲染内容
+        if !state.open {
+            return;
+        }
+        // 标题栏关闭按钮:停止收集并清空本地缓冲
+        if ui.input(|i| i.viewport().close_requested()) {
+            close(state);
+            return;
+        }
+        egui::CentralPanel::default()
+            .frame(
+                egui::Frame::new()
+                    .fill(theme::c().bg_base)
+                    .inner_margin(egui::Margin::same(10)),
+            )
+            .show(ui, |ui| {
+                toolbar(ui, state, i18n);
+                ui.add_space(8.0);
+                log_list(ui, state, i18n);
+            });
+    });
 }
 
 /// 顶栏:展示级别下拉、自动滚动、过滤输入、清空按钮

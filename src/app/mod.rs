@@ -196,6 +196,8 @@ pub struct NetOwlApp {
     silent_synced: Option<String>,
     /// 新连接询问上次同步值(config 变化后校准托盘勾选态一次)
     ask_synced: Option<bool>,
+    /// 询问弹窗已应用的可见性(builder 仅在创建窗口时生效,切换靠命令)
+    ask_ui_visible: bool,
     /// 局域网设备发现(ARP 轮询 + lan_devices 库合并)
     lan: LanState,
     /// 托盘句柄保活,drop 时移除托盘图标
@@ -325,6 +327,7 @@ impl NetOwlApp {
             tray_tip_at: Instant::now(),
             silent_synced: None,
             ask_synced: None,
+            ask_ui_visible: false,
             lan: LanState::new(),
             _tray,
         }
@@ -345,7 +348,15 @@ impl NetOwlApp {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
                 }
                 tray::CMD_LOG_OPEN => {
-                    // 日志窗口为独立 viewport,主窗口隐藏/最小化时同样可用
+                    // 日志窗口 viewport 在首帧预建;全隐身状态(主窗口
+                    // 隐藏且悬浮窗关闭)下首帧只跑 logic 不跑 ui,
+                    // viewport 建不出来——先恢复主窗口驱动首帧
+                    if !ui::log_window::is_created(&self.log_window) {
+                        self.window_visible = true;
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                    }
                     ui::log_window::open(&mut self.log_window);
                 }
                 tray::CMD_ASK_TOGGLE => {
@@ -1264,12 +1275,13 @@ impl eframe::App for NetOwlApp {
             ui.ctx().set_cursor_icon(h.cursor_icon());
         }
 
-        // 新连接询问弹窗(独立 viewport);决策即时生效
-        let decision = self
-            .asker
-            .active
-            .as_mut()
-            .and_then(|item| ui_ask::show(ui.ctx(), item, &self.i18n));
+        // 新连接询问弹窗(独立 viewport,预建常驻);决策即时生效
+        let decision = ui_ask::show(
+            ui.ctx(),
+            &mut self.asker,
+            &mut self.ask_ui_visible,
+            &self.i18n,
+        );
         if let Some(d) = decision {
             self.apply_decision(d);
         }
