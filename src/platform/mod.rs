@@ -9,3 +9,4 @@ pub mod resize;
 pub mod shutdown_hook;
 pub mod single_instance;
 pub mod tray;
+pub mod tray_pin;
