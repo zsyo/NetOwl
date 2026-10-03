@@ -364,7 +364,7 @@ fn process_view(
 
     section_title(ui, &i18n.t("map-inspector-conns"));
     for c in &rows {
-        conn_row(ui, rules, db, i18n, rdns, c, false);
+        conn_row(ui, rules, db, i18n, rdns, c, None);
     }
 }
 

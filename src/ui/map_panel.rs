@@ -217,7 +217,7 @@ pub fn list_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
             );
             if panels.expanded.contains(&g.name) {
                 for (i, c) in g.conns.iter().enumerate() {
-                    conn_row(ui, rules, db, i18n, rdns, c, i % 2 == 1);
+                    conn_row(ui, rules, db, i18n, rdns, c, Some(i));
                 }
             }
             // 组间分隔线(一级列表行界,子行不画)

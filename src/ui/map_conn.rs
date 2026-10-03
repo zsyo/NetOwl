@@ -27,8 +27,9 @@ const SWITCH_H: f32 = 15.0;
 /// 子行内容预分配高度(远端 Truncate 容器与斑马底共用,改一处须同步)
 const SUBROW_H: f32 = 22.0;
 
-/// 连接明细行:远端(域名/地址)、协议、累计字节与目标级阻断开关;
-/// `zebra` 为真时行底画弱化底色(子列表隔行交替)
+/// 连接明细行:远端(域名/地址)、协议、累计字节与目标级阻断开关。
+/// `zebra` 为 `Some(行序)` 时绘制内嵌底色:整块换 `bg_base` 与面板底
+/// 区分(内嵌凹陷块),行间以 `faint` 交替形成斑马;`None` = 无底色
 pub(crate) fn conn_row(
     ui: &mut egui::Ui,
     rules: &mut crate::rules::RuleSet,
@@ -36,16 +37,21 @@ pub(crate) fn conn_row(
     i18n: &crate::i18n::I18n,
     rdns: &rdns::Rdns,
     c: &Connection,
-    zebra: bool,
+    zebra: Option<usize>,
 ) {
     let row_top = ui.cursor().top();
-    // 斑马底先画(同层先序即垫底);行高与内容预分配高度一致
-    if zebra {
+    // 行底先画(同层先序即垫底);行高与内容预分配高度一致
+    if let Some(i) = zebra {
         let rect = egui::Rect::from_min_max(
             egui::pos2(ui.max_rect().left(), row_top),
             egui::pos2(ui.max_rect().right(), row_top + SUBROW_H + theme::sp::XS),
         );
-        ui.painter().rect_filled(rect, 0.0, theme::c().faint);
+        let bg = if i % 2 == 0 {
+            theme::c().bg_base
+        } else {
+            theme::c().faint
+        };
+        ui.painter().rect_filled(rect, 0.0, bg);
     }
     ui.horizontal(|ui| {
         ui.style_mut().spacing.item_spacing.x = 4.0;
