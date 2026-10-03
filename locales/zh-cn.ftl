@@ -190,6 +190,7 @@ tray-show = 显示主窗口
 tray-hide = 隐藏到托盘
 tray-quit = 退出
 tray-silent = 静默模式
+tray-log = 打开实时日志
 tray-tooltip = NetOwl 网络监控
 
 history-title = 连接历史

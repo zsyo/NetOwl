@@ -194,6 +194,8 @@ pub struct NetOwlApp {
     /// 静默模式上次同步值(config 变化或采集器重建后重同步:兜底规则
     /// 与托盘勾选态一次校准)
     silent_synced: Option<String>,
+    /// 新连接询问上次同步值(config 变化后校准托盘勾选态一次)
+    ask_synced: Option<bool>,
     /// 局域网设备发现(ARP 轮询 + lan_devices 库合并)
     lan: LanState,
     /// 托盘句柄保活,drop 时移除托盘图标
@@ -214,8 +216,12 @@ impl NetOwlApp {
             cc.egui_ctx
                 .send_viewport_cmd(egui::ViewportCommand::Visible(false));
         }
-        let (_tray, tray_rx) =
-            tray::create(cc.egui_ctx.clone(), &i18n, &config.general.silent_mode);
+        let (_tray, tray_rx) = tray::create(
+            cc.egui_ctx.clone(),
+            &i18n,
+            &config.general.silent_mode,
+            config.general.ask_connections,
+        );
         let pending_restore = config.window_position();
         let pending_restore =
             pending_restore.map(|(x, y, w, h)| (x, y, w, h, config.window.maximized));
@@ -318,6 +324,7 @@ impl NetOwlApp {
             ball_data_at: Instant::now(),
             tray_tip_at: Instant::now(),
             silent_synced: None,
+            ask_synced: None,
             lan: LanState::new(),
             _tray,
         }
@@ -326,12 +333,31 @@ impl NetOwlApp {
     fn handle_tray_commands(&mut self, ctx: &egui::Context) {
         for cmd in tray::drain(&self.tray_rx) {
             match cmd.as_str() {
-                tray::CMD_SHOW => {
+                tray::CMD_SHOW | tray::CMD_SETTINGS => {
+                    // 设置项在恢复窗口的基础上落到设置页
+                    if cmd == tray::CMD_SETTINGS {
+                        self.page = Page::Settings;
+                    }
                     self.window_visible = true;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
                     // 最小化的窗口样式仍为可见,Visible 是空操作,需显式解除
                     ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
                     ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                }
+                tray::CMD_LOG_OPEN => {
+                    // 日志窗口为独立 viewport,主窗口隐藏/最小化时同样可用
+                    ui::log_window::open(&mut self.log_window);
+                }
+                tray::CMD_ASK_TOGGLE => {
+                    // CheckMenuItem 点击时 muda 已翻转原生勾选,写回 config
+                    // (唯一来源)后校准勾选态并立即重开菜单
+                    self.config.general.ask_connections = !self.config.general.ask_connections;
+                    self.mark_config_dirty();
+                    self.sync_ask_toggle();
+                    // 原生菜单点击任一项必关闭(TrackPopupMenu 无保持打开
+                    // 模式):翻转后立即重开,锚点复用右键弹出位置,菜单
+                    // 原位重现,视觉等效保持打开
+                    self._tray.reopen_menu();
                 }
                 tray::CMD_HIDE => {
                     self.window_visible = false;
@@ -739,6 +765,17 @@ impl NetOwlApp {
         self.silent_synced = Some(mode);
     }
 
+    /// 新连接询问勾选同步(配置变化后执行一次):设置页与托盘双入口,
+    /// config 是唯一来源
+    fn sync_ask_toggle(&mut self) {
+        let on = self.config.general.ask_connections;
+        if self.ask_synced == Some(on) {
+            return;
+        }
+        self._tray.sync_ask(on);
+        self.ask_synced = Some(on);
+    }
+
     /// 新连接询问:静默模式关闭(ask_connections 开启)时检测未命中规则
     /// 的公网连接并入队;倒计时超时执行默认动作(拒绝·仅本次);
     /// 静默放行/拒绝模式下与询问互斥,队列与弹窗一并清空
@@ -1029,6 +1066,7 @@ impl eframe::App for NetOwlApp {
         self.poll_conns(ctx);
         self.writer.set_retention(self.config.general.history_days);
         self.sync_silent_mode();
+        self.sync_ask_toggle();
         self.poll_wfp();
 
         // 进入设置页时重扫 locales,加载运行期间新增的词条文件;
