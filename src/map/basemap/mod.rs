@@ -4,15 +4,21 @@
 //! 每帧按视口即时构建几何(无缓存):环级包围盒剔除 + 三角形/线段
 //! 视口剔除,保证任意缩放级别下每帧只处理可见部分。名称标签按缩放
 //! 分级显隐,不随底图缩放变形;节点与飞线在屏幕坐标系绘制(见 map.rs)。
+//! 投影与视图状态在 projection,名称标签在 labels。
+
+mod labels;
+mod projection;
 
 use std::sync::Arc;
 
 use eframe::egui;
 use egui::epaint::{Mesh, Vertex, WHITE_UV};
-use egui::{Align2, Color32, CornerRadius, FontId, Pos2, Rect, Shape, Vec2};
+use egui::{Color32, CornerRadius, Pos2, Rect, Shape, Vec2};
 
-use crate::map::world::{LabelKind, MapLabel, MapLevel, RingKind, map_data};
+use crate::map::world::{MapLevel, RingKind, map_data};
 use crate::ui::theme;
+
+pub use projection::{Projection, View};
 
 /// 放大超过该倍数后切换到 50m 精细档
 const DETAIL_ZOOM: f32 = 3.0;
@@ -22,112 +28,6 @@ const COAST_WIDTH: f32 = 1.2;
 const BORDER_WIDTH: f32 = 0.8;
 /// 河流线宽(屏幕像素)
 const RIVER_WIDTH: f32 = 1.1;
-/// 全局适配视图的纬度窗口高度(不显示南极)
-const FIT_LAT_SPAN: f32 = 142.0;
-
-/// 视图:中心经纬度与缩放倍数(1.0 = 全局适配)。
-/// target_* 为滚轮/双击设置的动画目标,每帧向其平滑趋近;拖拽即时生效。
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct View {
-    pub center_lon: f32,
-    pub center_lat: f32,
-    pub zoom: f32,
-    pub target_lon: f32,
-    pub target_lat: f32,
-    pub target_zoom: f32,
-}
-
-impl View {
-    /// 全局适配视图:经度全宽,纬度窗口中心约 +13 度
-    pub fn global() -> Self {
-        View {
-            center_lon: 0.0,
-            center_lat: 13.0,
-            zoom: 1.0,
-            target_lon: 0.0,
-            target_lat: 13.0,
-            target_zoom: 1.0,
-        }
-    }
-
-    /// 向动画目标趋近(k 为每帧插值系数)
-    pub fn animate(&mut self, k: f32) {
-        self.center_lon += (self.target_lon - self.center_lon) * k;
-        self.center_lat += (self.target_lat - self.center_lat) * k;
-        self.zoom += (self.target_zoom - self.zoom) * k;
-    }
-}
-
-impl Default for View {
-    fn default() -> Self {
-        View::global()
-    }
-}
-
-/// 等距圆柱投影:像素/度线性映射,画布中心对应视图中心。
-/// 经度方向以 360 度为周期无缝平铺(wrap-around),世界可按副本循环绘制
-#[derive(Clone, Copy)]
-pub struct Projection {
-    center: Pos2,
-    pub center_lon: f32,
-    pub center_lat: f32,
-    pub ppd: f32,
-    pub zoom: f32,
-}
-
-impl Projection {
-    /// 画布的全局适配基准:像素/度(未乘缩放倍数)
-    pub fn fit_ppd(rect: Rect) -> f32 {
-        (rect.width() / 360.0).min(rect.height() / FIT_LAT_SPAN)
-    }
-
-    pub fn new(rect: Rect, view: View) -> Self {
-        Projection {
-            center: rect.center(),
-            center_lon: view.center_lon,
-            center_lat: view.center_lat,
-            ppd: Self::fit_ppd(rect) * view.zoom,
-            zoom: view.zoom,
-        }
-    }
-
-    pub fn project(&self, lon: f32, lat: f32) -> Pos2 {
-        Pos2::new(
-            self.center.x + (lon - self.center_lon) * self.ppd,
-            self.center.y - (lat - self.center_lat) * self.ppd,
-        )
-    }
-
-    /// 屏幕坐标 -> 经纬度(缩放锚点与视口范围计算用)
-    pub fn unproject(&self, p: Pos2) -> (f32, f32) {
-        (
-            self.center_lon + (p.x - self.center.x) / self.ppd,
-            self.center_lat - (p.y - self.center.y) / self.ppd,
-        )
-    }
-
-    /// 世界横向周期宽度(像素)
-    pub fn cycle_px(&self) -> f32 {
-        360.0 * self.ppd
-    }
-
-    /// 水平平移 n 个世界周期的投影副本:等距圆柱下副本即纯平移,
-    /// project/unproject 在副本坐标系内保持互逆
-    pub fn shifted(&self, n: i32) -> Projection {
-        let mut p = *self;
-        p.center_lon -= n as f32 * 360.0;
-        p
-    }
-
-    /// 屏幕坐标 x 的点可见的世界副本序号区间(边界多画一个,不可见副本由裁剪兜底)
-    pub fn visible_cycles(&self, x: f32, rect: Rect) -> (i32, i32) {
-        let w = self.cycle_px();
-        (
-            ((rect.left() - x) / w).floor() as i32,
-            ((rect.right() - x) / w).floor() as i32,
-        )
-    }
-}
 
 /// 绘制完整底图:海洋底色、网格、世界层(NE)、中国层(DataV 覆盖)、
 /// 十段线与名称标签。中国层陆地填充盖住 NE 中伸入中国境内的邻国
@@ -161,7 +61,7 @@ pub fn draw(painter: &egui::Painter, rect: Rect, proj: &Projection, labels_zh: b
         draw_rivers(painter, rect, &p, &data.rivers[idx]);
 
         draw_south_sea_line(painter, rect, &p, &data.south_sea_line);
-        draw_labels(painter, rect, &p, &data.labels, labels_zh);
+        labels::draw_labels(painter, rect, &p, &data.labels, labels_zh);
     }
 }
 
@@ -340,71 +240,6 @@ fn draw_rivers(painter: &egui::Painter, rect: Rect, proj: &Projection, lines: &[
     painter.add(Shape::Mesh(Arc::new(mesh)));
 }
 
-/// 名称标签:按缩放分级显隐(<1.6x 只显示 rank0,>3.5x 全部),
-/// 国家名英文大写加字距,海洋名蓝色,省名(中国)中性色小一号
-fn draw_labels(
-    painter: &egui::Painter,
-    rect: Rect,
-    proj: &Projection,
-    labels: &[MapLabel],
-    labels_zh: bool,
-) {
-    let max_rank = if proj.zoom < 1.6 {
-        0
-    } else if proj.zoom < 3.5 {
-        1
-    } else {
-        2
-    };
-    for label in labels {
-        if label.rank > max_rank {
-            continue;
-        }
-        let pos = proj.project(label.lon, label.lat);
-        if !rect.contains(pos) {
-            continue;
-        }
-        let (text, color, size) = match label.kind {
-            LabelKind::Country => {
-                let name = if labels_zh {
-                    &label.name_zh
-                } else {
-                    &label.name_en
-                };
-                (name.clone(), theme::c().map_label_country, 11.0)
-            }
-            LabelKind::Sea => {
-                let name = if labels_zh {
-                    &label.name_zh
-                } else {
-                    &label.name_en
-                };
-                (name.clone(), theme::c().map_label_sea, 10.0)
-            }
-            // 省名与国家名同字号逻辑但用弱化色,不与国家名争视觉层级
-            LabelKind::Province => {
-                let name = if labels_zh {
-                    &label.name_zh
-                } else {
-                    &label.name_en
-                };
-                (name.clone(), theme::c().map_label_province, 10.0)
-            }
-        };
-        if label.kind == LabelKind::Country && !labels_zh {
-            draw_spaced_upper(painter, pos, &text, size, color);
-        } else {
-            painter.text(
-                pos,
-                Align2::CENTER_CENTER,
-                &text,
-                FontId::proportional(size),
-                color,
-            );
-        }
-    }
-}
-
 /// 南海断续国界(十段线):独立线宽与颜色,不与海岸/国界混同
 fn draw_south_sea_line(painter: &egui::Painter, rect: Rect, proj: &Projection, segs: &[[f32; 4]]) {
     let mut mesh = Mesh::default();
@@ -422,35 +257,6 @@ fn draw_south_sea_line(painter: &egui::Painter, rect: Rect, proj: &Projection, s
         push_segment(&mut mesh, a, b, 1.0, theme::c().map_south_sea_line);
     }
     painter.add(Shape::Mesh(Arc::new(mesh)));
-}
-
-/// 英文国家名:大写 + 字距(逐字符绘制,egui 无字距 API)
-fn draw_spaced_upper(painter: &egui::Painter, center: Pos2, text: &str, size: f32, color: Color32) {
-    const SPACING: f32 = 1.5;
-    let upper = text.to_uppercase();
-    let font = FontId::proportional(size);
-    let width = |s: &str| {
-        painter
-            .layout_no_wrap(s.to_owned(), font.clone(), color)
-            .rect
-            .width()
-    };
-    let chars: Vec<char> = upper.chars().collect();
-    let total: f32 = chars.iter().map(|c| width(&c.to_string())).sum::<f32>()
-        + SPACING * (chars.len() - 1) as f32;
-    let mut x = center.x - total * 0.5;
-    for c in chars {
-        let s = c.to_string();
-        let cw = width(&s);
-        painter.text(
-            Pos2::new(x, center.y),
-            Align2::LEFT_CENTER,
-            &s,
-            font.clone(),
-            color,
-        );
-        x += cw + SPACING;
-    }
 }
 
 fn tri_visible(a: Pos2, b: Pos2, c: Pos2, rect: Rect) -> bool {
