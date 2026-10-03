@@ -8,8 +8,8 @@ use std::collections::HashSet;
 use rusqlite::Connection as Db;
 use serde::{Deserialize, Serialize};
 
+use super::profile::{parse_action, parse_direction, parse_proto, parse_remote_kind};
 use super::{Action, Direction, RemoteKind, Rule, RuleSet};
-use super::{parse_action, parse_direction, parse_proto, parse_remote_kind};
 use crate::model::Protocol;
 
 /// 当前导出格式版本
