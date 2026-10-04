@@ -49,6 +49,17 @@ cargo run --release
 - **管理员权限可选**:普通权限下为只读监控(无每连接字节统计、拦截与"结束连接"不可用,界面有提示);以管理员运行获得完整能力。ETW 采集与 WFP 拦截均在进程内完成,无需驱动与服务
 - **便携式数据**:数据根为 exe 同级目录——`config.toml`(配置)、`data/netowl.db`(历史与规则)、`logs/`(运行日志),删除目录即完全重置
 
+### 构建安装包
+
+[cargo-packager](https://crates.io/crates/cargo-packager) 生成 NSIS 安装程序:
+
+```bash
+cargo install cargo-packager
+cargo packager --release
+```
+
+产物为 `target/release/netowl_<版本>_x64-setup.exe`:按当前用户安装(免管理员),提供开始菜单/桌面快捷方式与"开机自启动"选项(勾选后由应用自身写入注册表,可随时在设置页关闭),卸载时自动清理。安装包内嵌全部资源,`locales/` 词条目录随包分发(目录缺失时应用回退到内嵌词条)。安装器脚本基于 cargo-packager 默认模板定制(见 `packaging/nsis/installer.nsi`),升级 cargo-packager 时需与上游模板比对同步。
+
 ## 离线数据与授权
 
 程序内嵌两类离线数据,运行时**不调用任何地图/IP 库接口**(公网 IP 探测与 rDNS 除外,均为可选功能):

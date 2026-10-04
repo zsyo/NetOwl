@@ -49,6 +49,17 @@ cargo run --release
 - **Admin rights are optional**: unelevated runs are read-only monitoring (no per-connection bytes, no blocking, no "close connection"; the UI says so); elevated runs get the full capability set. ETW collection and WFP blocking run in-process — no driver, no service
 - **Portable data**: the data root sits next to the exe — `config.toml` (settings), `data/netowl.db` (history and rules), `logs/` (runtime logs); deleting the directory resets everything
 
+### Building the Installer
+
+[cargo-packager](https://crates.io/crates/cargo-packager) produces the NSIS installer:
+
+```bash
+cargo install cargo-packager
+cargo packager --release
+```
+
+The artifact lands at `target/release/netowl_<version>_x64-setup.exe`: per-user install (no admin required), start-menu/desktop shortcuts and a "launch at startup" option (the app writes the registry itself, and the option can be toggled any time in Settings; uninstalled cleanly). The package embeds all resources; the `locales/` catalog ships with it (the app falls back to embedded strings when the directory is missing). The installer script is customized from the cargo-packager default template (see `packaging/nsis/installer.nsi`); re-diff against upstream when bumping cargo-packager.
+
 ## Offline Data & Licensing
 
 Two offline datasets are embedded; the app **never calls a map or IP-database API at runtime** (public-IP probing and rDNS aside, both optional):
