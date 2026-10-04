@@ -193,9 +193,10 @@ impl Etw {
             tracing::info!("[ETW] 流量事件采集会话已停止");
         }
         if let Some(h) = self.consumer.take()
-            && let Err(e) = h.join() {
-                tracing::debug!("[ETW] 消费线程异常退出: {e:?}");
-            }
+            && let Err(e) = h.join()
+        {
+            tracing::debug!("[ETW] 消费线程异常退出: {e:?}");
+        }
     }
 }
 

@@ -199,6 +199,12 @@ impl TableCollector {
             self.sig_pending.remove(&pid);
             if let Some(meta) = self.proc_metas.get_mut(&pid) {
                 meta.signed = signed;
+                if signed == Signing::Invalid {
+                    tracing::debug!(
+                        "[Collector] 签名校验未通过:{}({pid})",
+                        meta.path.as_deref().unwrap_or("?")
+                    );
+                }
             }
         }
     }
@@ -207,6 +213,10 @@ impl TableCollector {
     fn collect_icons(&mut self) {
         while let Ok((path, img)) = self.icon_rx.try_recv() {
             self.icon_inflight.remove(&path);
+            if img.is_none() {
+                // 失败也缓存(Ready(None)),此后不再重试,留痕供排查
+                tracing::debug!("[Collector] 进程图标提取失败:{path}");
+            }
             self.icons.insert(path, IconState::Ready(img.map(Arc::new)));
         }
         // 未派发的 Pending 条目(超出上轮预算的)按上限补齐

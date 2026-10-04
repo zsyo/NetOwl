@@ -74,6 +74,10 @@ impl Rdns {
     pub fn update(&mut self, conns: &[Connection]) {
         while let Ok((ip, name)) = self.rx.try_recv() {
             self.pending.remove(&ip);
+            // 负缓存(失败 2min)天然节流:同一 IP 在 TTL 内不重复查询
+            if name.is_none() {
+                tracing::debug!("[Rdns] PTR 解析失败:{ip}");
+            }
             self.cache.insert(
                 ip,
                 Entry {

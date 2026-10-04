@@ -22,14 +22,20 @@ pub(super) fn do_export(rules: &RuleSet, state: &mut PageState, i18n: &I18n) {
     let n = rules.rules.iter().filter(|r| r.id > 0).count();
     let result = std::fs::write(&path, rules.export_json()).map(|_| n);
     state.feedback = Some(match result {
-        Ok(n) => Feedback::now(
-            false,
-            i18n.t_with_args("rules-export-done", &[("n", n.to_string())]),
-        ),
-        Err(e) => Feedback::now(
-            true,
-            i18n.t_with_args("rules-export-failed", &[("err", e.to_string())]),
-        ),
+        Ok(n) => {
+            tracing::info!("[Rules] 已导出 {n} 条规则到 {}", path.display());
+            Feedback::now(
+                false,
+                i18n.t_with_args("rules-export-done", &[("n", n.to_string())]),
+            )
+        }
+        Err(e) => {
+            tracing::warn!("[Rules] 规则导出失败 {}: {e}", path.display());
+            Feedback::now(
+                true,
+                i18n.t_with_args("rules-export-failed", &[("err", e.to_string())]),
+            )
+        }
     });
 }
 
@@ -45,13 +51,22 @@ pub(super) fn do_import(db: &Db, rules: &mut RuleSet, state: &mut PageState, i18
         .map_err(|e| e.to_string())
         .and_then(|text| rules.import_json(db, &text));
     state.feedback = Some(match result {
-        Ok((n, skipped)) => Feedback::now(
-            false,
-            i18n.t_with_args(
-                "rules-import-done",
-                &[("n", n.to_string()), ("skipped", skipped.to_string())],
-            ),
-        ),
-        Err(e) => Feedback::now(true, i18n.t_with_args("rules-import-failed", &[("err", e)])),
+        Ok((n, skipped)) => {
+            tracing::info!(
+                "[Rules] 从 {} 导入 {n} 条规则(跳过 {skipped} 条)",
+                path.display()
+            );
+            Feedback::now(
+                false,
+                i18n.t_with_args(
+                    "rules-import-done",
+                    &[("n", n.to_string()), ("skipped", skipped.to_string())],
+                ),
+            )
+        }
+        Err(e) => {
+            tracing::warn!("[Rules] 从 {} 导入规则失败: {e}", path.display());
+            Feedback::now(true, i18n.t_with_args("rules-import-failed", &[("err", e)]))
+        }
     });
 }

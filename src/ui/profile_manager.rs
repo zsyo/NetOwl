@@ -36,8 +36,8 @@ pub fn show_modal(
     if !state.open {
         return;
     }
-    // 本帧完成的操作(闭包外统一反馈与草稿清理)
-    let mut done: Option<(bool, String)> = None;
+    // 本帧完成的操作(闭包外统一反馈与草稿清理):(是否失败, 操作名, 名称或错误)
+    let mut done: Option<(bool, &'static str, String)> = None;
 
     let modal = egui::Modal::new(egui::Id::new("profile-manager")).show(ui.ctx(), |ui| {
         ui.set_width(420.0);
@@ -80,8 +80,8 @@ pub fn show_modal(
                 && let Some(name) = trim_draft(state)
             {
                 match RuleSet::create_profile(db, &name) {
-                    Ok(_) => done = Some((false, name)),
-                    Err(e) => done = Some((true, e.to_string())),
+                    Ok(_) => done = Some((false, "新建", name)),
+                    Err(e) => done = Some((true, "新建", e.to_string())),
                 }
             }
         });
@@ -116,8 +116,8 @@ pub fn show_modal(
                     .clicked()
                 {
                     match RuleSet::delete_profile(db, id) {
-                        Ok(()) => done = Some((false, name.clone())),
-                        Err(e) => done = Some((true, e.to_string())),
+                        Ok(()) => done = Some((false, "删除", name.clone())),
+                        Err(e) => done = Some((true, "删除", e.to_string())),
                     }
                     state.confirm_delete = None;
                 }
@@ -131,9 +131,14 @@ pub fn show_modal(
         state.confirm_delete = None;
         state.draft.clear();
     }
-    if let Some((is_err, detail)) = done {
+    if let Some((is_err, op, detail)) = done {
         state.draft.clear();
         state.renaming = None;
+        if is_err {
+            tracing::warn!("[Rules] 配置档{op}失败:{detail}");
+        } else {
+            tracing::info!("[Rules] 配置档{op}完成:{detail}");
+        }
         let key = if is_err {
             "rules-profile-op-failed"
         } else {
@@ -158,7 +163,7 @@ fn profile_row(
     name: &str,
     current: i64,
     rule_count: usize,
-    done: &mut Option<(bool, String)>,
+    done: &mut Option<(bool, &'static str, String)>,
 ) {
     if state.renaming == Some(id) {
         ui.add(
@@ -172,8 +177,8 @@ fn profile_row(
             && let Some(name) = trim_draft(state)
         {
             match RuleSet::rename_profile(db, id, &name) {
-                Ok(()) => *done = Some((false, name)),
-                Err(e) => *done = Some((true, e.to_string())),
+                Ok(()) => *done = Some((false, "重命名", name)),
+                Err(e) => *done = Some((true, "重命名", e.to_string())),
             }
         }
         if ui
@@ -215,8 +220,8 @@ fn profile_row(
         if icon_btn(ui, icons::COPY).clicked() {
             let name = i18n.t_with_args("rules-profile-copy-name", &[("name", name.to_owned())]);
             match RuleSet::copy_profile(db, id, &name) {
-                Ok(_) => *done = Some((false, name)),
-                Err(e) => *done = Some((true, e.to_string())),
+                Ok(_) => *done = Some((false, "复制", name)),
+                Err(e) => *done = Some((true, "复制", e.to_string())),
             }
         }
         if icon_btn(ui, icons::PENCIL).clicked() {

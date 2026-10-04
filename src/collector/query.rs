@@ -180,6 +180,10 @@ pub fn query_process_names() -> HashMap<u32, String> {
             size *= 2;
             continue;
         }
+        // 兜底耗尽:本轮全部进程被当无名,签名/图标无从判定,影响面大须留痕
+        tracing::warn!(
+            "[Collector] 进程名快照枚举失败(status {status:?},缓冲 {size} 字节),本轮进程按无名处理"
+        );
         return HashMap::new();
     }
 }

@@ -25,6 +25,8 @@ pub struct Sampler {
     last: Option<(u64, u64, Instant)>,
     /// 最近速率(字节/秒):(下行, 上行)
     rates: (u64, u64),
+    /// 读表失败已上报:失败期间每次采样都失败,只报首次,恢复时复位
+    read_failed: bool,
 }
 
 impl Sampler {
@@ -32,6 +34,7 @@ impl Sampler {
         Sampler {
             last: None,
             rates: (0, 0),
+            read_failed: false,
         }
     }
 
@@ -43,7 +46,14 @@ impl Sampler {
             return None;
         }
         let now = Instant::now();
-        let (in_octets, out_octets) = interface_octets()?;
+        let Some((in_octets, out_octets)) = interface_octets() else {
+            if !self.read_failed {
+                self.read_failed = true;
+                tracing::debug!("[Traffic] GetIfTable2 读表失败,总速率沿用旧值");
+            }
+            return None;
+        };
+        self.read_failed = false;
         if let Some((last_in, last_out, at)) = self.last.replace((in_octets, out_octets, now)) {
             let dt = now.duration_since(at).as_secs_f32();
             if dt > 0.0 {

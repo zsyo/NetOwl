@@ -32,7 +32,8 @@ impl Probe {
     pub fn new() -> Self {
         let probe = Probe {
             rx: mpsc::channel().1,
-            round_done: false,
+            // 初值 true:首轮 begin_round 不做"上轮全失败"判定
+            round_done: true,
         };
         let mut probe = probe;
         probe.begin_round();
@@ -41,6 +42,12 @@ impl Probe {
 
     /// 发起一轮探测:每个接口一个线程并发请求
     pub fn begin_round(&mut self) {
+        if !self.round_done {
+            tracing::debug!(
+                "[LocalIp] 上一轮 {} 个回显接口全部探测失败,本机点位维持不变",
+                PROBE_URLS.len()
+            );
+        }
         let (tx, rx) = mpsc::channel();
         self.rx = rx;
         self.round_done = false;
