@@ -35,6 +35,14 @@ impl NetOwlApp {
         let Some(item) = self.asker.take() else {
             return;
         };
+        tracing::info!(
+            "[Ask] 决策:{}({:?}) {}({}) -> {}",
+            if d.allow { "允许" } else { "拒绝" },
+            d.scope,
+            item.process,
+            item.pid,
+            item.remote_display()
+        );
         if d.scope == Scope::Once {
             self.asker.unask(&item);
             if d.allow {
@@ -50,7 +58,9 @@ impl NetOwlApp {
         match d.scope {
             Scope::Once => self.rules.insert_temp(rule),
             Scope::Target | Scope::Process => {
-                let _ = self.rules.insert(&self.history_db, rule);
+                if let Err(e) = self.rules.insert(&self.history_db, rule) {
+                    tracing::warn!("[Ask] 决策规则落库失败({}): {e}", item.process);
+                }
             }
         }
     }
@@ -67,6 +77,10 @@ impl NetOwlApp {
             .filter(|r| !self.conns.iter().any(|c| temp_rule_holds(r, c)))
             .map(|r| r.id)
             .collect();
+        if expired.is_empty() {
+            return;
+        }
+        tracing::debug!("[Ask] 清理 {} 条随连接消失的临时规则", expired.len());
         for id in expired {
             self.rules.delete_temp(id);
         }

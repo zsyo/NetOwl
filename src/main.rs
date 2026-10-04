@@ -45,6 +45,7 @@ fn main() -> eframe::Result {
         logging::LogLevel::parse(&app_config.general.log_level),
         app_config.general.log_to_file,
     );
+    tracing::info!("[App] NetOwl 启动(自启动拉起 = {minimized})");
 
     let _db = db::open();
 

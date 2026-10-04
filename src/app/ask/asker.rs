@@ -25,6 +25,8 @@ pub struct Asker {
     /// (休眠唤醒/网络抖动)不得触发重新基线化,否则存量身份被整体静默
     /// 放行,询问功能失效
     baselined: bool,
+    /// 队列超限告警已发:超限期间每轮都有新身份命中,只报首次
+    limit_warned: bool,
 }
 
 impl Asker {
@@ -35,6 +37,7 @@ impl Asker {
             asked: HashSet::new(),
             seen: HashSet::new(),
             baselined: false,
+            limit_warned: false,
         }
     }
 
@@ -58,6 +61,9 @@ impl Asker {
             current.insert(c.id);
         }
         self.seen = current;
+        if baseline {
+            tracing::debug!("[Ask] 启动基线完成,存量 {} 个连接身份放行", fresh.len());
+        }
 
         for c in fresh {
             let key = identity_key(c.proc_path.as_deref(), &c.process, c.remote_ip);
@@ -84,8 +90,21 @@ impl Asker {
                 continue;
             }
             if self.queue.len() >= QUEUE_LIMIT {
+                if !self.limit_warned {
+                    self.limit_warned = true;
+                    tracing::warn!(
+                        "[Ask] 询问队列已达上限 {QUEUE_LIMIT},新连接静默放行(身份已去重,不再询问)"
+                    );
+                }
                 continue;
             }
+            self.limit_warned = false;
+            tracing::info!(
+                "[Ask] 新连接询问入队:{}({}) -> {}",
+                c.process,
+                c.pid,
+                item_remote(&c.remote_ip, c.remote_port, rdns.lookup(c.remote_ip))
+            );
             self.queue.push_back(AskItem {
                 proc_path: c.proc_path.clone(),
                 process: c.process.clone(),
@@ -139,5 +158,13 @@ impl Asker {
             &item.process,
             item.remote_ip,
         ));
+    }
+}
+
+/// 入队日志的远端显示(域名优先,与弹窗 remote_display 同口径)
+fn item_remote(ip: &std::net::Ipv4Addr, port: u16, domain: Option<&str>) -> String {
+    match domain {
+        Some(d) => format!("{d}:{port}"),
+        None => format!("{ip}:{port}"),
     }
 }

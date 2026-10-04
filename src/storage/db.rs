@@ -18,6 +18,14 @@ pub fn open() -> Connection {
     conn.pragma_update(None, "journal_mode", "WAL")
         .unwrap_or_else(|e| panic!("[Db] 设置 WAL 模式失败: {e}"));
     migrate(&conn);
+    let version: i64 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(version), 0) FROM schema_version",
+            [],
+            |row| row.get(0),
+        )
+        .expect("[Db] 读取 schema 版本失败");
+    tracing::info!("[Db] 已打开 {},schema v{version}", path.display());
     conn
 }
 

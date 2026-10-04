@@ -53,9 +53,27 @@ impl NetOwlApp {
         );
         config.general.profile_id = profile_id;
         let rules = rules::RuleSet::load(&history_db, profile_id);
+        tracing::info!(
+            "[Rules] 配置档 {} 已加载 {} 条规则",
+            profile_id,
+            rules.rules.iter().filter(|r| r.id > 0).count()
+        );
         // ETW 流量事件仅在提权进程内可用;失败只记录,字节列退化为 0。
         // 提权状态进程生命周期内不变,顺带给右键"结束连接"等能力判定
         let elevated = wfp::is_elevated();
+        tracing::info!(
+            "[App] 以{}运行{}",
+            if elevated {
+                "管理员权限"
+            } else {
+                "普通权限"
+            },
+            if elevated {
+                ":ETW 流量采集/WFP 拦截/结束连接可用"
+            } else {
+                ":ETW 流量采集/WFP 拦截/结束连接不可用"
+            }
+        );
         let etw = if elevated {
             match etw::Etw::start() {
                 Ok(e) => {

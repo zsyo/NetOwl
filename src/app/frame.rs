@@ -20,6 +20,7 @@ impl NetOwlApp {
     /// 界面语言与配置不一致(设置页切换)时同步进配置
     pub(super) fn sync_language_to_config(&mut self) {
         if self.i18n.current_lang != self.config.general.language {
+            tracing::info!("[App] 界面语言 -> {}", self.i18n.current_lang);
             self.config.set_language(self.i18n.current_lang.clone());
             self.mark_config_dirty();
         }
@@ -29,6 +30,7 @@ impl NetOwlApp {
     pub(super) fn sync_theme_to_config(&mut self) {
         let current = theme::theme_str();
         if current != self.config.general.theme {
+            tracing::info!("[App] 主题 -> {current}");
             self.config.set_theme(current.to_owned());
             self.mark_config_dirty();
         }

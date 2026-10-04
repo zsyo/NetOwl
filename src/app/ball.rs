@@ -27,6 +27,7 @@ impl NetOwlApp {
         }
         if let Some(page) = ball.show_main {
             // 与托盘"显示主窗口"同路径:恢复可见、解除最小化并落到目标页
+            tracing::info!("[Ball] 悬浮窗唤出主窗口 -> {page:?}");
             self.window_visible = true;
             self.page = page;
             ui.ctx()
@@ -40,6 +41,7 @@ impl NetOwlApp {
         }
         if ball.close {
             // 与设置页开关同一数据源,下一帧起悬浮窗整体不再创建
+            tracing::info!("[Ball] 悬浮窗已关闭");
             self.config.floating_ball.enabled = false;
             self.mark_config_dirty();
         }

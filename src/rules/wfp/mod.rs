@@ -17,6 +17,7 @@
 mod filter;
 
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -81,6 +82,8 @@ pub struct Manager {
     tx: Option<Sender<Msg>>,
     handle: Option<JoinHandle<()>>,
     status: Arc<Mutex<Status>>,
+    /// 同步失败已上报:管理线程死亡后 sync 每 1s 都会失败,只报首次
+    send_dead: AtomicBool,
 }
 
 impl Manager {
@@ -96,13 +99,17 @@ impl Manager {
             tx: Some(tx),
             handle: Some(handle),
             status,
+            send_dead: AtomicBool::new(false),
         }
     }
 
     /// 全量同步目标过滤器集合;线程内与当前集合 diff 增删
     pub fn sync(&self, specs: Arc<Vec<Spec>>) {
-        if let Some(tx) = &self.tx {
-            let _ = tx.send(Msg::Sync(specs));
+        if let Some(tx) = &self.tx
+            && tx.send(Msg::Sync(specs)).is_err()
+            && !self.send_dead.swap(true, Ordering::Relaxed)
+        {
+            tracing::error!("[Wfp] 管理线程已退出,过滤器同步停止,拦截不再更新");
         }
     }
 
@@ -120,7 +127,6 @@ impl Drop for Manager {
     }
 }
 
-/// 临时诊断:提权实例 stderr 不可见,验证期间写文件日志(验证后移除)
 fn run(rx: Receiver<Msg>, status: Arc<Mutex<Status>>) {
     let set = |v: Status| {
         if let Ok(mut s) = status.lock() {
@@ -131,6 +137,7 @@ fn run(rx: Receiver<Msg>, status: Arc<Mutex<Status>>) {
     // 直接在入口判定,失败态不持有引擎句柄
     if !is_elevated() {
         set(Status::NoAdmin);
+        tracing::info!("[Wfp] 未提权运行,拦截引擎未启动(规则仅求值标注)");
         // 只读模式:吞掉同步消息直到退出,规则求值标注不受影响
         while rx.recv().is_ok() {}
         return;
@@ -139,12 +146,14 @@ fn run(rx: Receiver<Msg>, status: Arc<Mutex<Status>>) {
         Ok(e) => e,
         Err(OPEN_ACCESS_DENIED) => {
             set(Status::NoAdmin);
+            tracing::warn!("[Wfp] 引擎打开被拒绝(非管理员),拦截引擎未启动");
             // 只读模式:吞掉同步消息直到退出,规则求值标注不受影响
             while rx.recv().is_ok() {}
             return;
         }
         Err(rc) => {
             set(Status::Failed(format!("FwpmEngineOpen0 code {rc}")));
+            tracing::error!("[Wfp] 引擎打开失败 code {rc},拦截引擎未启动");
             while rx.recv().is_ok() {}
             return;
         }
@@ -153,6 +162,7 @@ fn run(rx: Receiver<Msg>, status: Arc<Mutex<Status>>) {
         Ok(()) => {}
         Err(OPEN_ACCESS_DENIED) => {
             set(Status::NoAdmin);
+            tracing::warn!("[Wfp] 子层创建被拒绝(非管理员),拦截引擎未启动");
             unsafe {
                 let _ = FwpmEngineClose0(engine);
             }
@@ -163,6 +173,7 @@ fn run(rx: Receiver<Msg>, status: Arc<Mutex<Status>>) {
             set(Status::Failed(format!(
                 "sublayer: FwpmSubLayerAdd0 code {rc}"
             )));
+            tracing::error!("[Wfp] 子层创建失败 code {rc},拦截引擎未启动");
             unsafe {
                 let _ = FwpmEngineClose0(engine);
             }
@@ -173,6 +184,7 @@ fn run(rx: Receiver<Msg>, status: Arc<Mutex<Status>>) {
 
     let mut live: HashMap<GUID, Spec> = HashMap::new();
     set(Status::Active(0));
+    tracing::info!("[Wfp] 拦截引擎已启动(动态会话,退出自毁)");
     // 收敛到最新目标集合再 reconcile(同步消息可以任意密集)
     while let Ok(Msg::Sync(first)) = rx.recv() {
         let mut latest = first;
@@ -186,6 +198,7 @@ fn run(rx: Receiver<Msg>, status: Arc<Mutex<Status>>) {
     unsafe {
         let _ = FwpmEngineClose0(engine);
     }
+    tracing::info!("[Wfp] 管理线程收尾,动态会话已关闭");
     set(Status::Off);
 }
 
@@ -235,6 +248,7 @@ fn reconcile(engine: HANDLE, live: &mut HashMap<GUID, Spec>, target: &[Spec]) {
         }
     }
     let live_specs: HashSet<Spec> = live.values().cloned().collect();
+    let mut added = 0usize;
     for spec in target {
         if live_specs.contains(spec) {
             continue;
@@ -242,9 +256,17 @@ fn reconcile(engine: HANDLE, live: &mut HashMap<GUID, Spec>, target: &[Spec]) {
         match filter::add_filter(engine, spec) {
             Ok(key) => {
                 live.insert(key, spec.clone());
+                added += 1;
             }
             Err(e) => tracing::warn!("[Wfp] 添加过滤器失败: {e}"),
         }
+    }
+    if added > 0 || !stale.is_empty() {
+        tracing::debug!(
+            "[Wfp] 过滤器同步:增 {added} 删 {},共 {} 条",
+            stale.len(),
+            live.len()
+        );
     }
 }
 

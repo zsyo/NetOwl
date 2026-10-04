@@ -26,6 +26,7 @@ impl NetOwlApp {
     pub(super) fn ensure_collector(&mut self) {
         let kind = CollectorKind::from_config(&self.config.general.collector);
         if kind != self.collector.kind() {
+            tracing::info!("[Collector] 数据源切换 -> {kind:?},重建采集器");
             self.collector = collector::build(kind);
             self.silent_synced = None;
             self.mark_config_dirty();

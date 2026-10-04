@@ -16,6 +16,7 @@ mod decode;
 
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -46,6 +47,10 @@ const UDP_IDLE: Duration = Duration::from_secs(10);
 const TCP_IDLE: Duration = Duration::from_secs(60);
 /// 流表上限保护:内核 close 事件丢失时按最旧强转完结,防无限增长
 const MAX_FLOWS: usize = 4096;
+
+/// 事件回调 try_lock 失败计数(主线程持锁期间到达的事件被丢弃;
+/// 回调在内核消费线程内,不能逐条记日志,累计后随快照输出)
+static LOCK_MISSED: AtomicU64 = AtomicU64::new(0);
 
 /// 一条流(本机进程视角的连接)聚合键
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -137,11 +142,19 @@ impl Etw {
                 g.flows.iter().map(|(k, st)| (*k, st.last)).collect();
             oldest.sort_by_key(|(_, t)| *t);
             let excess = g.flows.len() - MAX_FLOWS;
+            tracing::warn!(
+                "[ETW] 流表超过 {MAX_FLOWS} 上限,强制完结最旧 {excess} 条流(close 事件疑似丢失)"
+            );
             for (k, _) in oldest.into_iter().take(excess) {
                 if let Some(st) = g.flows.remove(&k) {
                     g.finished.push((k, st));
                 }
             }
+        }
+        // 事件回调与快照锁竞争丢弃的计数(仅异常时非零)
+        let missed = LOCK_MISSED.swap(0, Ordering::Relaxed);
+        if missed > 0 {
+            tracing::debug!("[ETW] 缓冲锁竞争,本轮丢弃 {missed} 条事件");
         }
         g.flows
             .iter()
@@ -174,10 +187,15 @@ impl Etw {
 
     /// 停止会话并等待消费线程退出
     pub fn shutdown(&mut self) {
-        let _ = stop_session();
-        if let Some(h) = self.consumer.take() {
-            let _ = h.join();
+        if let Err(e) = stop_session() {
+            tracing::warn!("[ETW] 停止会话失败: {e}");
+        } else {
+            tracing::info!("[ETW] 流量事件采集会话已停止");
         }
+        if let Some(h) = self.consumer.take()
+            && let Err(e) = h.join() {
+                tracing::debug!("[ETW] 消费线程异常退出: {e:?}");
+            }
     }
 }
 
@@ -222,6 +240,11 @@ unsafe fn run_consumer(agg: Arc<Mutex<Agg>>) {
         logfile.Anonymous1.ProcessTraceMode =
             PROCESS_TRACE_MODE_EVENT_RECORD | PROCESS_TRACE_MODE_REAL_TIME;
         let handle = OpenTraceW(&mut logfile);
+        // INVALID_PROCESSTRACE_HANDLE = u64::MAX:消费者注册失败时会话在跑
+        // 但收不到任何事件,字节列静默归零,必须留痕
+        if handle.Value == u64::MAX {
+            tracing::warn!("[ETW] 消费者注册失败(OpenTraceW),流量字节与短命连接不可用");
+        }
         let _ = ProcessTrace(&[handle], None, None);
         let _ = CloseTrace(handle);
         let _ = ControlTraceW(
@@ -290,6 +313,7 @@ unsafe extern "system" fn on_event(record: *mut EVENT_RECORD) {
         }
         let agg = &*(r.UserContext as *const Mutex<Agg>);
         let Ok(mut g) = agg.try_lock() else {
+            LOCK_MISSED.fetch_add(1, Ordering::Relaxed);
             return;
         };
         decode::handle_event(&mut g, r);

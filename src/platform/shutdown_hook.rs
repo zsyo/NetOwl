@@ -77,6 +77,7 @@ fn flush_and_wait() {
     let tracker = unsafe { &mut *(ctx.tracker as *mut Tracker) };
     let writer = unsafe { &mut *(ctx.writer as *mut Writer) };
     let events = tracker.flush(unix_now());
+    tracing::info!("[Shutdown] 系统关机收尾:补写 {} 条活跃连接", events.len());
     writer.send(events);
     writer.shutdown();
 }

@@ -55,8 +55,9 @@ impl NetOwlApp {
                 }
                 tray::CMD_QUIT => {
                     // 退出收尾:仍活跃的连接补写为已完结行,等待写线程清空队列,
-                    // 再把待写配置立即落盘
+                    // 再把待写配置立即落盘(日志须在 logging::flush 之前)
                     let events = self.tracker.flush(history::unix_now());
+                    tracing::info!("[App] 退出收尾:补写 {} 条活跃连接", events.len());
                     self.writer.send(events);
                     self.writer.shutdown();
                     if let Some(e) = self.etw.as_mut() {
@@ -140,6 +141,7 @@ impl NetOwlApp {
         let deny = mode == "deny" && self.collector.kind() == CollectorKind::Real;
         self.rules.set_fallback(deny);
         self._tray.sync_silent(&mode);
+        tracing::info!("[Silent] 静默模式 -> {mode}");
         self.silent_synced = Some(mode);
     }
 
@@ -151,6 +153,7 @@ impl NetOwlApp {
             return;
         }
         self._tray.sync_ask(on);
+        tracing::info!("[Ask] 新连接询问 -> {}", if on { "开" } else { "关" });
         self.ask_synced = Some(on);
     }
 }

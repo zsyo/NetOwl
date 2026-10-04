@@ -10,7 +10,7 @@ mod maintenance;
 
 use std::collections::{HashMap, HashSet};
 use std::net::Ipv4Addr;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, UNIX_EPOCH};
@@ -132,6 +132,8 @@ pub struct Writer {
     handle: Option<JoinHandle<()>>,
     /// 自动清理天数(0 = 不清理),app 侧同步 config
     retention: std::sync::Arc<AtomicU32>,
+    /// 发送失败已上报:写线程死亡后每次 send 都会失败,只报首次
+    send_dead: AtomicBool,
 }
 
 impl Writer {
@@ -147,6 +149,7 @@ impl Writer {
             tx: Some(tx),
             handle: Some(handle),
             retention,
+            send_dead: AtomicBool::new(false),
         }
     }
 
@@ -159,23 +162,31 @@ impl Writer {
         if events.is_empty() {
             return;
         }
-        if let Some(tx) = &self.tx {
-            let _ = tx.send(Msg::Events(events));
-        }
+        self.post(Msg::Events(events));
     }
 
     /// 请求清空 N 天前的历史(写线程执行,完成后由调用方刷新展示)
     pub fn purge(&self, days: u32) {
-        if let Some(tx) = &self.tx {
-            let _ = tx.send(Msg::Purge(days));
+        self.post(Msg::Purge(days));
+    }
+
+    /// 投递消息到写线程;发送失败 = 写线程已死,只报首次防刷屏
+    fn post(&self, msg: Msg) {
+        if let Some(tx) = &self.tx
+            && tx.send(msg).is_err()
+            && !self.send_dead.swap(true, Ordering::Relaxed)
+        {
+            tracing::warn!("[History] 写线程已退出,后续连接历史不再落盘");
         }
     }
 
     /// 关闭通道并等待写线程处理完剩余消息
     pub fn shutdown(&mut self) {
         self.tx = None;
-        if let Some(h) = self.handle.take() {
-            let _ = h.join();
+        if let Some(h) = self.handle.take()
+            && let Err(e) = h.join()
+        {
+            tracing::debug!("[History] 写线程异常退出: {e:?}");
         }
     }
 }
@@ -255,5 +266,7 @@ fn write_batch(conn: &mut Db, events: &[ClosedConn]) {
     }
     if let Err(e) = tx.commit() {
         tracing::warn!("[History] 提交历史事务失败: {e}");
+    } else {
+        tracing::debug!("[History] 批量落盘 {} 条完结连接", events.len());
     }
 }

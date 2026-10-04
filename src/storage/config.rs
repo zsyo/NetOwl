@@ -206,8 +206,11 @@ impl Config {
                         "[Config] 配置文件解析失败: {e},将备份为 {}.bak 并使用默认配置",
                         paths::CONFIG_FILE
                     );
-                    let _ =
-                        std::fs::rename(paths::CONFIG_FILE, format!("{}.bak", paths::CONFIG_FILE));
+                    if let Err(e) =
+                        std::fs::rename(paths::CONFIG_FILE, format!("{}.bak", paths::CONFIG_FILE))
+                    {
+                        tracing::debug!("[Config] 备份损坏配置失败: {e}");
+                    }
                 }
             }
         }
@@ -279,10 +282,13 @@ impl Config {
         );
         let tmp = format!("{}.tmp", paths::CONFIG_FILE);
         let write_result = std::fs::write(&tmp, full).and_then(|_| {
-            if std::fs::metadata(paths::CONFIG_FILE).is_ok() {
-                let _ = std::fs::copy(paths::CONFIG_FILE, format!("{}.bak", paths::CONFIG_FILE));
-                std::fs::remove_file(paths::CONFIG_FILE)?;
+            if std::fs::metadata(paths::CONFIG_FILE).is_ok()
+                && let Err(e) =
+                    std::fs::copy(paths::CONFIG_FILE, format!("{}.bak", paths::CONFIG_FILE))
+            {
+                tracing::debug!("[Config] 写盘前备份 .bak 失败: {e}");
             }
+            std::fs::remove_file(paths::CONFIG_FILE)?;
             std::fs::rename(&tmp, paths::CONFIG_FILE)
         });
         if let Err(e) = write_result {

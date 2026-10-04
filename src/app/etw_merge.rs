@@ -113,6 +113,7 @@ impl NetOwlApp {
             events.push(short_lived_event(&f));
         }
         if !events.is_empty() {
+            tracing::debug!("[ETW] 短命连接落库 {} 条", events.len());
             self.writer.send(events);
         }
     }

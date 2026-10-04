@@ -64,10 +64,15 @@ impl RuleSet {
                     "INSERT INTO profiles (id, name, created_at) VALUES (1, ?1, ?2)",
                     params![default_name, history::unix_now() as i64],
                 )?;
+                tracing::info!("[Rules] 已创建默认配置档「{default_name}」(id 1)");
             }
             let known = db
                 .query_row("SELECT 1 FROM profiles WHERE id = ?1", [requested], |_| {
                     Ok(())
+                })
+                .map(|_| ())
+                .inspect_err(|e| {
+                    tracing::debug!("[Rules] 查询配置档 {requested} 存在性失败: {e}");
                 })
                 .is_ok();
             Ok(if known { requested } else { 1 })
@@ -134,6 +139,11 @@ impl RuleSet {
         self.sticky_paths.clear();
         let temps: Vec<Rule> = self.rules.iter().filter(|r| r.id < 0).cloned().collect();
         let mut persisted = Self::load_rules(db, id);
+        tracing::info!(
+            "[Rules] 切换配置档 -> id {id},加载 {} 条规则,保留 {} 条会话临时规则",
+            persisted.len(),
+            temps.len()
+        );
         persisted.extend(temps);
         self.rules = persisted;
     }
