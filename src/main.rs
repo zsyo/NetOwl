@@ -29,6 +29,8 @@ fn main() -> eframe::Result {
 
     // 自启动拉起(Run 键写入的参数,见 platform::autostart):静默启动到托盘
     let minimized = std::env::args().any(|a| a == autostart::MINIMIZED_ARG);
+    // 安装器 Finish 页"开机自启"勾选交接:交由 NetOwlApp::new 置位 config
+    let autostart_on = std::env::args().any(|a| a == autostart::AUTOSTART_ON_ARG);
 
     let mut i18n = i18n::I18n::new();
     let available: Vec<String> = i18n
@@ -81,6 +83,14 @@ fn main() -> eframe::Result {
     eframe::run_native(
         APP_NAME,
         options,
-        Box::new(move |cc| Ok(Box::new(NetOwlApp::new(cc, i18n, app_config, minimized)))),
+        Box::new(move |cc| {
+            Ok(Box::new(NetOwlApp::new(
+                cc,
+                i18n,
+                app_config,
+                minimized,
+                autostart_on,
+            )))
+        }),
     )
 }

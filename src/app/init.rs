@@ -27,6 +27,7 @@ impl NetOwlApp {
         i18n: I18n,
         mut config: Config,
         minimized: bool,
+        autostart_on: bool,
     ) -> Self {
         theme::install(&cc.egui_ctx, &config.general.theme);
         // 静默启动兜底:main.rs 已 with_visible(false),此处再补发一次隐藏,
@@ -34,6 +35,11 @@ impl NetOwlApp {
         if minimized {
             cc.egui_ctx
                 .send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        }
+        // 安装器 Finish 页"开机自启"勾选交接(见 platform::autostart):置位
+        // config 并标记落盘,Run 键由本实例 sync_autostart 写入,config 单源不变
+        if autostart_on {
+            config.general.autostart = true;
         }
         let (_tray, tray_rx) = tray::create(
             cc.egui_ctx.clone(),
@@ -150,7 +156,7 @@ impl NetOwlApp {
             pending_restore,
             restore_active: false,
             restore_started: Instant::now(),
-            config_dirty: false,
+            config_dirty: autostart_on,
             config_dirty_since: Instant::now(),
             tray_pinned_applied: None,
             tray_pin_retry_at: Instant::now(),

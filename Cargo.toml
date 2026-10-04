@@ -88,3 +88,11 @@ identifier = "com.zephyr.netowl"
 # 无 Network),非法值直接反序列化报错
 category = "Utilities"
 icons = ["assets/app_icon.ico", "assets/app_icon.png"]
+
+# NSIS 安装器:自定义模板在默认模板(0.11.8)基础上加了 Finish 页
+# "开机自启动"复选框(--autostart-on 参数交接,见 packaging/nsis/installer.nsi
+# 头注释与 src/platform/autostart.rs);升 cargo-packager 时需与上游模板 diff
+[package.metadata.packager.nsis]
+template = "packaging/nsis/installer.nsi"
+# 简体中文优先(系统语言命中即中文界面),回退英文
+languages = ["SimpChinese", "English"]

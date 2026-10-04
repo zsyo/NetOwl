@@ -11,6 +11,9 @@ use windows::core::{HSTRING, PCWSTR};
 const RUN_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 /// 静默启动参数:自启动拉起时主窗口不弹出,仅托盘运行(main.rs 解析)
 pub const MINIMIZED_ARG: &str = "--minimized";
+/// 安装器交接参数:NSIS 安装包 Finish 页勾选"开机自启动"后以此参数启动,
+/// 应用置位 config.general.autostart 并经 sync_autostart 落注册表
+pub const AUTOSTART_ON_ARG: &str = "--autostart-on";
 
 /// 设置开机自启动:开启 = 写 Run 值(值名 = 应用名,内容 = 带引号 exe 路径 +
 /// 静默参数),关闭 = 删除该值。返回是否达成目标态;失败由调用方择机重试,

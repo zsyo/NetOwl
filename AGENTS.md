@@ -422,6 +422,10 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
 ### 打包
 - cargo packager --release(配置在 Cargo.toml [package.metadata.packager]):
   Windows 产出 NSIS 安装程序 target/release/netowl_<version>_x64-setup.exe
+- NSIS 用自定义模板 packaging/nsis/installer.nsi(拷自 cargo-packager 0.11.8
+  默认模板):Finish 页"开机自启动"复选框勾选后以 --autostart-on 启动应用,
+  由 NetOwlApp 置 config.general.autostart 落注册表(安装器不直接写 Run 键);
+  卸载时清 Run 键值;升 cargo-packager 需与上游模板 diff 同步
 - category 合法值为 LSApplicationCategory 风格枚举(GraphicsAndDesign/
   Utilities 等,无 Network);identifier com.zephyr.netowl 为占位域名,可再改
 - 发布产物不携带 assets(图标/底图编译期内嵌),locales 词条外置,
