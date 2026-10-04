@@ -2,6 +2,8 @@
 //! (任一接口失效不影响探测)。手写最小 HTTP/1.1 GET(std TcpStream,不走
 //! 系统代理),全部接口为 http 明文端点以避免引入 TLS 依赖;探测结果为公网
 //! 视角的出口 IP(代理环境即代理出口)。全部失败时调用方回退默认点位。
+//! NETOWL_IP 环境变量可指定固定本机 IP(演示/截图场景隐藏真实位置):
+//! 非空合法 IPv4 生效,全程不发起任何真实探测;非法值告警后按未指定处理。
 
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, TcpStream, ToSocketAddrs};
@@ -21,27 +23,47 @@ const PROBE_URLS: &[&str] = &[
 /// 单请求连接/读写超时
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(4);
 
+/// NETOWL_IP 指定固定本机 IP 时,poll 送达结果的来源标注
+const PINNED_SOURCE: &str = "NETOWL_IP";
+
 /// 周期探测器:每轮 begin_round 后,首个到达的结果经 poll 送达,其余丢弃
 pub struct Probe {
     rx: Receiver<(Ipv4Addr, &'static str)>,
     round_done: bool,
+    /// NETOWL_IP 固定 IP 模式:不发起任何真实探测(含 10 分钟周期重探)
+    pinned: bool,
 }
 
 impl Probe {
-    /// 创建并立即发起第一轮探测
+    /// 创建并立即发起第一轮探测;NETOWL_IP 为非空合法 IPv4 时改为固定 IP
+    /// 模式:指定值经通道送达一次即断流,不发起任何真实探测
     pub fn new() -> Self {
-        let probe = Probe {
+        let mut probe = Probe {
             rx: mpsc::channel().1,
             // 初值 true:首轮 begin_round 不做"上轮全失败"判定
             round_done: true,
+            pinned: false,
         };
-        let mut probe = probe;
-        probe.begin_round();
+        match env_pinned_ip() {
+            Some(ip) => {
+                let (tx, rx) = mpsc::channel();
+                // 接收端随本结构存活,发送必达;round_done 复位 false 让
+                // poll 可送达该值(送达后通道断流,后续 poll 恒 None)
+                let _ = tx.send((ip, PINNED_SOURCE));
+                probe.rx = rx;
+                probe.pinned = true;
+                probe.round_done = false;
+            }
+            None => probe.begin_round(),
+        }
         probe
     }
 
-    /// 发起一轮探测:每个接口一个线程并发请求
+    /// 发起一轮探测:每个接口一个线程并发请求;固定 IP 模式下为 no-op
     pub fn begin_round(&mut self) {
+        if self.pinned {
+            return;
+        }
         if !self.round_done {
             tracing::debug!(
                 "[LocalIp] 上一轮 {} 个回显接口全部探测失败,本机点位维持不变",
@@ -107,6 +129,25 @@ fn probe_url(url: &'static str) -> Option<Ipv4Addr> {
     let text = String::from_utf8_lossy(&buf);
     let body = text.split("\r\n\r\n").nth(1).unwrap_or(&text);
     extract_ipv4(body)
+}
+
+/// 读取 NETOWL_IP(启动时一次):非空合法 IPv4 视作固定本机 IP;
+/// 非法值告警并视作未指定,空值/未设置静默按未指定处理
+fn env_pinned_ip() -> Option<Ipv4Addr> {
+    let Ok(raw) = std::env::var("NETOWL_IP") else {
+        return None;
+    };
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    match raw.parse::<Ipv4Addr>() {
+        Ok(ip) => Some(ip),
+        Err(_) => {
+            tracing::warn!("[LocalIp] NETOWL_IP=\"{raw}\" 不是合法 IPv4,忽略,继续真实探测");
+            None
+        }
+    }
 }
 
 /// 从文本中提取第一个形如 a.b.c.d 且各段 0-255 的 IPv4

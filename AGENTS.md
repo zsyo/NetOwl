@@ -122,7 +122,8 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   为地图与列表的统一归属坐标/显示名入口,显示名双语内嵌不走词条);
   local_ip.rs:本机公网 IP 探测(6 个知名公共回显接口并发,手写 HTTP/1.1 GET
   不走系统代理、不引 TLS 依赖,最先返回的合法 IPv4 胜出;app 层每 10 分钟重探,
-  经 geoip 得到本机地图点位,失败回退 map::world::LOCAL);rdns.rs:rDNS 域名
+  经 geoip 得到本机地图点位,失败回退 map::world::LOCAL;NETOWL_IP 环境变量
+  可指定固定本机 IP 隐藏真实位置[截图场景],生效时不发起任何真实探测);rdns.rs:rDNS 域名
   解析(异步 PTR:getnameinfo NI_NAMEREQD 于独立线程执行,app 每帧 update 收割;
   并发上限 8 + 每 250ms 派发 2 个限流,成功/失败分别 10min/2min TTL 缓存,失效
   仅对仍活跃连接重查;回环/私网/保留段不查;lookup 供列表与地图信息卡域名优先
