@@ -32,8 +32,8 @@ rusqlite = { version = "0.40.2", features = ["bundled"] }
 # WindowsFilteringPlatform 与 Security[TOKEN_ELEVATION/条件结构门控];
 # ETW 流量事件采集需 Diagnostics_Etw feature;进程名兜底反查需
 # Wdk_System_SystemInformation[NtQuerySystemInformation] 与
-# WindowsProgramming[SYSTEM_PROCESS_INFORMATION]);
-# 版本与依赖树中 tray-icon 的 windows 0.62 保持一致,避免双份 windows crate
+# WindowsProgramming[SYSTEM_PROCESS_INFORMATION])
+# 注:tray-icon 0.26 起改用 windows-sys,依赖树中已无第二个 windows crate
 windows = { version = "0.62.2", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
@@ -52,7 +52,6 @@ windows = { version = "0.62.2", features = [
     "Win32_System_WindowsProgramming",
     "Win32_System_Time",
     "Win32_System_Rpc",
-    "Win32_System_Time",
     "Win32_Storage_FileSystem",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
@@ -62,14 +61,14 @@ windows = { version = "0.62.2", features = [
 # 配置持久化(serde + config.toml,参照 wallwarp 实际实现)
 serde = { version = "1.0.229", features = ["derive"] }
 # 规则导入导出的 JSON 序列化(serde 生态标准实现)
-serde_json = "1.0.145"
+serde_json = "1.0.151"
 # 规则导入导出的文件选择对话框(egui 生态标准方案,仅在此功能使用)
-rfd = "0.15"
+rfd = "0.17"
 sys-locale = "0.3.2"
 toml = "1.1.6"
 # 托盘与原生菜单(muda 经 tray-icon re-export);default features 在 Windows 下无额外负担,
 # 扩展 Linux 时需评估 default-features = false + 显式后端(AGENTS.md 扩展备忘)
-tray-icon = "0.25.1"
+tray-icon = "0.26.0"
 unic-langid = "0.9"
 # 日志(AGENTS.md 日志规范):RUST_LOG 控制应用自身档位,默认 info 且第三方库收敛 warn;
 # env-filter 支持 RUST_LOG=netowl=debug 定向调试;appender 支撑文件日志开关
