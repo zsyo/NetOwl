@@ -77,7 +77,7 @@ pub(super) fn view(
             .cmp(&rank_value(a))
             .then_with(|| a.name.cmp(&b.name))
     });
-    let max_rank = groups.first().map(&rank_value).unwrap_or(0);
+    let max_rank = groups.first().map(rank_value).unwrap_or(0);
     for g in groups.iter().take(5) {
         let ratio = if max_rank > 0 {
             rank_value(g) as f32 / max_rank as f32
