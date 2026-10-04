@@ -3,11 +3,13 @@
 ; (crates/packager/src/package/nsis/installer.nsi @ tag cargo-packager-v0.11.8).
 ; Local changes vs upstream:
 ;   1. Standalone nsDialogs options page (PageOptions) before install: the
-;      "launch at startup" checkbox. On check, FinishRun starts the app with
-;      --autostart-on and the app enables config.general.autostart (registry
-;      stays app-managed). A self-drawn control on the finish page itself was
-;      tried first and abandoned: MUI2's finish-page show callback never fired
-;      when the wizard navigated into the page (control created but invisible).
+;      "launch at startup" checkbox. On check, FinishRun kills any lingering
+;      instance (single-instance guard would drop the argument otherwise) and
+;      starts the app with --autostart-on; the app enables
+;      config.general.autostart (registry stays app-managed). A self-drawn
+;      control on the finish page itself was tried first and abandoned: MUI2's
+;      finish-page show callback never fired when the wizard navigated into
+;      the page (control created but invisible).
 ;   2. Uninstaller deletes the HKCU Run value written by the app/option.
 ;   3. Reinstall detection page disabled via !if 0: its PRE-Abort page skip
 ;      is what breaks the finish-page show callback (see 1); upgrade installs
@@ -734,7 +736,12 @@ FunctionEnd
 ; highestAvailable manifest, so a plain Exec (CreateProcess) from this
 ; unelevated installer fails with ERROR_ELEVATION_REQUIRED (740). ShellExecute
 ; shows the UAC prompt for admin users and starts normally for standard users.
+; A lingering instance must be killed first: the single-instance guard would
+; otherwise hand the launch over to it and drop the --autostart-on argument.
 Function FinishRun
+    nsis_tauri_utils::KillProcess "${MAINBINARYNAME}.exe"
+    Pop $R0
+    Sleep 500
     ${If} $AutostartState == ${BST_CHECKED}
       ExecShell open '"$INSTDIR\${MAINBINARYNAME}.exe"' '--autostart-on'
     ${Else}

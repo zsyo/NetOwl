@@ -288,7 +288,13 @@ impl Config {
             {
                 tracing::debug!("[Config] 写盘前备份 .bak 失败: {e}");
             }
-            std::fs::remove_file(paths::CONFIG_FILE)?;
+            // 首次写盘时原文件不存在,remove 的 NotFound 须容忍,否则会中断
+            // 后面的 rename(现象:tmp 残留、config.toml 永远写不出来)
+            match std::fs::remove_file(paths::CONFIG_FILE) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e),
+            }
             std::fs::rename(&tmp, paths::CONFIG_FILE)
         });
         if let Err(e) = write_result {

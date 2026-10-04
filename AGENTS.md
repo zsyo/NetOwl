@@ -424,11 +424,12 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   Windows 产出 NSIS 安装程序 target/release/netowl_<version>_x64-setup.exe
 - NSIS 用自定义模板 packaging/nsis/installer.nsi(拷自 cargo-packager 0.11.8
   默认模板):向导新增 nsDialogs"附加选项"页(开始菜单页后),勾选"开机自
-  启动"则完成后以 --autostart-on 启动应用,由 NetOwlApp 置
-  config.general.autostart 落注册表(安装器不直接写 Run 键);卸载时清 Run
-  键值;自绘 Finish 页复选框(创建成功但不显示)与 Reinstall 页 PRE-Abort
-  均实测不可行,Reinstall 检测页经 !if 0 禁用;升 cargo-packager 需与上游
-  模板 diff 同步
+  启动"则完成后先杀残留实例再以 --autostart-on 启动应用(单实例守卫会吞掉
+  参数),由 NetOwlApp 置 config.general.autostart 落注册表(安装器不直接写
+  Run 键);启动必须走 ExecShell(Exec=CreateProcess 对 highestAvailable
+  manifest 报 740 静默失败);卸载时清 Run 键值;自绘 Finish 页复选框
+  (创建成功但不显示)与 Reinstall 页 PRE-Abort 均实测不可行,Reinstall 检测
+  页经 !if 0 禁用;升 cargo-packager 需与上游模板 diff 同步
 - category 合法值为 LSApplicationCategory 风格枚举(GraphicsAndDesign/
   Utilities 等,无 Network);identifier com.zephyr.netowl 为占位域名,可再改
 - 发布产物不携带 assets(图标/底图编译期内嵌),locales 词条外置,

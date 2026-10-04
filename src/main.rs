@@ -48,6 +48,7 @@ fn main() -> eframe::Result {
         app_config.general.log_to_file,
     );
     tracing::info!("[App] NetOwl 启动(自启动拉起 = {minimized})");
+    tracing::debug!("[App] 启动参数: {:?}", std::env::args().collect::<Vec<_>>());
 
     let _db = db::open();
 
