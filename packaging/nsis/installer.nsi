@@ -2,10 +2,16 @@
 ; Forked from cargo-packager 0.11.8 default template
 ; (crates/packager/src/package/nsis/installer.nsi @ tag cargo-packager-v0.11.8).
 ; Local changes vs upstream:
-;   1. Finish page "launch at startup" checkbox (FinishShow/FinishLeave/FinishRun):
-;      checked finish-run starts the app with --autostart-on and the app then
-;      enables config.general.autostart (registry stays app-managed).
+;   1. Standalone nsDialogs options page (PageOptions) before install: the
+;      "launch at startup" checkbox. On check, FinishRun starts the app with
+;      --autostart-on and the app enables config.general.autostart (registry
+;      stays app-managed). A self-drawn control on the finish page itself was
+;      tried first and abandoned: MUI2's finish-page show callback never fired
+;      when the wizard navigated into the page (control created but invisible).
 ;   2. Uninstaller deletes the HKCU Run value written by the app/option.
+;   3. Reinstall detection page disabled via !if 0: its PRE-Abort page skip
+;      is what breaks the finish-page show callback (see 1); upgrade installs
+;      simply overwrite files, portable data is untouched.
 ; Re-diff against upstream when bumping cargo-packager.
 
 ; Set the compression algorithm.
@@ -138,6 +144,12 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 
 ; 4. Custom page to ask user if he wants to reinstall/uninstall
 ;    only if a previous installtion was detected
+; DISABLED: PageReinstall 的 PRE 在无旧安装时 Abort 跳页,而该跳页会令
+; Finish 页的 CUSTOM SHOW(FinishShow,创建"开机自启动"复选框)失效
+; (实测 SkipIfPassive 执行而 FinishShow 未被调用)。重装检测是便利功能,
+; 升级安装默认覆盖文件且便携数据不受影响,故舍弃以保自启选项。
+; 连同下方 Reinstall 三个函数一起经 !if 0 禁用(函数引用 $ReinstallPageCheck)
+!if 0
 Var ReinstallPageCheck
 Page custom PageReinstall PageLeaveReinstall
 Function PageReinstall
@@ -303,6 +315,7 @@ Function PageLeaveReinstall
     ${EndIf}
   reinst_done:
 FunctionEnd
+!endif
 
 ; 5. Choose install directoy page
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
@@ -312,6 +325,33 @@ FunctionEnd
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
 Var AppStartMenuFolder
 !insertmacro MUI_PAGE_STARTMENU Application $AppStartMenuFolder
+
+; 6.5 Options page (nsDialogs): launch at startup checkbox. A standard custom
+; page is used instead of a self-drawn control on the finish page, whose show
+; callback proved unreliable when the wizard navigates into it (control was
+; created but never shown). Passive/silent installs skip this page.
+Var AutostartCheckbox
+Var AutostartState
+!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
+Page custom PageOptions PageLeaveOptions
+
+Function PageOptions
+    nsDialogs::Create 1018
+    Pop $0
+    ${If} $LANGUAGE == 2052
+      !insertmacro MUI_HEADER_TEXT "附加选项" "配置 NetOwl 的可选行为。"
+      ${NSD_CreateCheckbox} 0u 40u 100% 12u "开机自启动(登录后静默启动到托盘)"
+    ${Else}
+      !insertmacro MUI_HEADER_TEXT "Options" "Configure optional NetOwl behavior."
+      ${NSD_CreateCheckbox} 0u 40u 100% 12u "Launch NetOwl at startup (silent to tray)"
+    ${EndIf}
+    Pop $AutostartCheckbox
+    nsDialogs::Show
+FunctionEnd
+
+Function PageLeaveOptions
+    ${NSD_GetState} $AutostartCheckbox $AutostartState
+FunctionEnd
 
 ; 7. Installation page
 !insertmacro MUI_PAGE_INSTFILES
@@ -325,16 +365,11 @@ Var AppStartMenuFolder
 !define MUI_FINISHPAGE_SHOWREADME
 !define MUI_FINISHPAGE_SHOWREADME_TEXT "$(createDesktop)"
 !define MUI_FINISHPAGE_SHOWREADME_FUNCTION CreateDesktopShortcut
-; Show run app after installation. A custom "launch at startup" checkbox is
-; created in FinishShow (MUI_FINISHPAGE_SHOWREADME slot is taken by the
-; desktop-shortcut option); when checked, FinishRun starts the app with
-; --autostart-on so the app enables its own autostart on first launch.
-Var AutostartCheckbox
-Var AutostartState
+; Show run app after installation. When the options-page checkbox was checked,
+; FinishRun starts the app with --autostart-on so the app enables its own
+; autostart on first launch (registry stays app-managed).
 !define MUI_FINISHPAGE_RUN
 !define MUI_FINISHPAGE_RUN_FUNCTION FinishRun
-!define MUI_PAGE_CUSTOMFUNCTION_SHOW FinishShow
-!define MUI_PAGE_CUSTOMFUNCTION_LEAVE FinishLeave
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
 !insertmacro MUI_PAGE_FINISH
 
@@ -691,37 +726,9 @@ Function CreateStartMenuShortcut
   ApplicationID::Set "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk" "${IDENTIFIER}"
 FunctionEnd
 
-; Create the "launch at startup" checkbox on the finish page (same
-; CreateWindowEx approach as the upstream appdata checkbox on the uninstall
-; confirm page; the MUI_FINISHPAGE_SHOWREADME slot is taken by the desktop
-; shortcut option). Position follows the MUI2 checkbox column (x = 120u)
-; right below the show-readme/run checkboxes; values are pixels and assume
-; 96 DPI like the upstream uninstall-page controls.
-Function FinishShow
-    FindWindow $1 "#32770" "" $HWNDPARENT ; Find inner dialog
-    ${If} $LANGUAGE == 2052
-      StrCpy $2 "开机自启动"
-    ${Else}
-      StrCpy $2 "Launch NetOwl at startup"
-    ${EndIf}
-    ${If} $(^RTL) == 1
-      System::Call 'USER32::CreateWindowEx(i${__NSD_CheckBox_EXSTYLE}|${WS_EX_LAYOUTRTL},t"${__NSD_CheckBox_CLASS}",t "$2",i${__NSD_CheckBox_STYLE},i 192,i 208,i 312, i 20,i$1,i0,i0,i0)i.s'
-    ${Else}
-      System::Call 'USER32::CreateWindowEx(i${__NSD_CheckBox_EXSTYLE},t"${__NSD_CheckBox_CLASS}",t "$2",i${__NSD_CheckBox_STYLE},i 192,i 208,i 312, i 20,i$1,i0,i0,i0)i.s'
-    ${EndIf}
-    Pop $AutostartCheckbox
-    SendMessage $HWNDPARENT ${WM_GETFONT} 0 0 $1
-    SendMessage $AutostartCheckbox ${WM_SETFONT} $1 1
-FunctionEnd
-
-; Snapshot the checkbox state before the page closes; FinishRun runs after it
-Function FinishLeave
-    SendMessage $AutostartCheckbox ${BM_GETCHECK} 0 0 $AutostartState
-FunctionEnd
-
-; The app is started with --autostart-on when the checkbox was checked;
-; the app then sets config.general.autostart and writes the HKCU Run value
-; itself (single source of truth stays in the app config)
+; The app is started with --autostart-on when the options-page checkbox was
+; checked; the app then sets config.general.autostart and writes the HKCU Run
+; value itself (single source of truth stays in the app config)
 Function FinishRun
     ${If} $AutostartState == ${BST_CHECKED}
       Exec '"$INSTDIR\${MAINBINARYNAME}.exe" --autostart-on'
