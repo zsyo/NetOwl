@@ -18,6 +18,7 @@ use crate::ui::{self, Page};
 impl NetOwlApp {
     pub(super) fn handle_tray_commands(&mut self, ctx: &egui::Context) {
         for cmd in tray::drain(&self.tray_rx) {
+            tracing::debug!("[Tray] 托盘命令: {cmd}");
             match cmd.as_str() {
                 tray::CMD_SHOW | tray::CMD_SETTINGS => {
                     // 设置项在恢复窗口的基础上落到设置页
@@ -97,8 +98,9 @@ impl NetOwlApp {
         }
     }
 
-    /// 开机自启动:配置开关变化时写/删 HKCU Run 键;失败定时重试,
-    /// 直到达成目标态(config 为唯一来源,注册表残留态会被纠正)
+    /// 开机自启动:配置开关变化时注册计划任务(管理员令牌)或写 Run 键
+    /// (标准用户);失败定时重试,直到达成目标态(config 为唯一来源,
+    /// 注册表/任务残留态会被纠正)
     pub(super) fn sync_autostart(&mut self) {
         let want = self.config.general.autostart;
         if self.autostart_applied == Some(want) || Instant::now() < self.autostart_retry_at {
@@ -107,6 +109,10 @@ impl NetOwlApp {
         if autostart::set_enabled(want) {
             self.autostart_applied = Some(want);
         } else {
+            tracing::debug!(
+                "[Autostart] 自启动应用失败,{:?} 后重试",
+                AUTOSTART_RETRY_INTERVAL
+            );
             self.autostart_retry_at = Instant::now() + AUTOSTART_RETRY_INTERVAL;
         }
     }

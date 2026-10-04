@@ -23,29 +23,35 @@ pub fn set_pinned(enable: bool) -> bool {
     let exe = match std::env::current_exe() {
         Ok(p) => norm_path(&p.to_string_lossy()),
         Err(e) => {
-            tracing::debug!("[Tray] 读取本进程路径失败,托盘常驻未应用: {e}");
+            tracing::warn!("[Tray] 读取本进程路径失败,托盘常驻未应用: {e}");
             return false;
         }
     };
     unsafe {
         let root_name = HSTRING::from(NOTIFY_KEY);
         let mut root = HKEY::default();
-        if RegOpenKeyExW(
+        let opened = RegOpenKeyExW(
             HKEY_CURRENT_USER,
             PCWSTR(root_name.as_ptr()),
             None,
             KEY_READ,
             &mut root,
-        )
-        .is_err()
-        {
-            tracing::debug!("[Tray] 打开 NotifyIconSettings 失败,托盘常驻未应用");
+        );
+        if opened.is_err() {
+            tracing::warn!("[Tray] 打开 NotifyIconSettings 失败,托盘常驻未应用: {opened:?}");
             return false;
         }
         let done = match find_key_by_path(root, &exe) {
             Some(subkey) => apply_promoted(root, &subkey, enable),
-            // 关闭态下项不存在即已还原系统默认
-            None => !enable,
+            // 开启态下项尚未注册(Explorer 刚启动/图标刚注册的数秒内
+            // 可能发生)属预期瞬态,交由调用方定时重试;关闭态下项不
+            // 存在即已还原系统默认
+            None => {
+                if enable {
+                    tracing::debug!("[Tray] 托盘设置项尚未注册,等待重试");
+                }
+                !enable
+            }
         };
         let _ = RegCloseKey(root);
         if done {
@@ -60,38 +66,41 @@ fn apply_promoted(root: HKEY, subkey: &str, enable: bool) -> bool {
     unsafe {
         let name = HSTRING::from(subkey);
         let mut key = HKEY::default();
-        if RegOpenKeyExW(
+        let opened = RegOpenKeyExW(
             root,
             PCWSTR(name.as_ptr()),
             None,
             KEY_READ | KEY_SET_VALUE,
             &mut key,
-        )
-        .is_err()
-        {
-            tracing::debug!("[Tray] 打开托盘设置项 {subkey} 失败");
+        );
+        if opened.is_err() {
+            tracing::warn!("[Tray] 打开托盘设置项 {subkey} 失败: {opened:?}");
             return false;
         }
         let value_name = HSTRING::from(IS_PROMOTED);
         let done = if enable {
-            RegSetValueExW(
+            let written = RegSetValueExW(
                 key,
                 PCWSTR(value_name.as_ptr()),
                 None,
                 REG_DWORD,
                 Some(&1u32.to_ne_bytes()),
-            )
-            .is_ok()
+            );
+            if written.is_err() {
+                tracing::warn!("[Tray] 写入 IsPromoted 失败,保持系统默认行为: {written:?}");
+                false
+            } else {
+                true
+            }
         } else {
-            matches!(
-                RegDeleteValueW(key, PCWSTR(value_name.as_ptr())),
-                ERROR_SUCCESS | ERROR_FILE_NOT_FOUND
-            )
+            let result = RegDeleteValueW(key, PCWSTR(value_name.as_ptr()));
+            let ok = matches!(result, ERROR_SUCCESS | ERROR_FILE_NOT_FOUND);
+            if !ok {
+                tracing::warn!("[Tray] 删除 IsPromoted 失败: {result:?}");
+            }
+            ok
         };
         let _ = RegCloseKey(key);
-        if !done {
-            tracing::debug!("[Tray] 写入 IsPromoted 失败,保持系统默认行为");
-        }
         done
     }
 }

@@ -4,6 +4,14 @@
 //! 可开关)、内存层(日志浏览窗口数据源,见 window_layer)。档位经 reload
 //! 句柄运行时调整(设置页);RUST_LOG 环境变量在启动时优先于配置档位。
 //! 默认应用自身 info、其余(第三方库)warn,避免依赖树噪音。
+//!
+//! 级别语义(全项目统一,排查时按 debug → trace 逐级展开):
+//! - ERROR:最终失败,功能不可用且无恢复
+//! - WARN:可恢复失败的事实一句话(细节不进 WARN,避免双记)
+//! - INFO:状态迁移与用户可见动作的结果(默认档,保持少量)
+//! - DEBUG:操作流转细节与失败细节——机制选择、外部命令行与退出码、
+//!   注册表操作结果、分支决策、配置写盘、设置项变更
+//! - TRACE:高频细节与帧事件——页面切换、重绘节奏切换、帧耗时统计
 
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -88,6 +96,8 @@ pub fn init(level: LogLevel, file_enabled: bool) {
     let file_layer: FileLayer = Box::new(
         fmt::layer()
             .with_target(false)
+            .with_file(true)
+            .with_line_number(true)
             .with_thread_ids(false)
             .with_ansi(false)
             .with_timer(LocalTimer)
@@ -98,6 +108,8 @@ pub fn init(level: LogLevel, file_enabled: bool) {
     let (console_reload, console_handle) = reload::Layer::new(startup_filter(level));
     let console_layer = fmt::layer()
         .with_target(false)
+        .with_file(true)
+        .with_line_number(true)
         .with_thread_ids(false)
         .with_timer(LocalTimer)
         .with_filter(console_reload);

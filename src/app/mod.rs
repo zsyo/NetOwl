@@ -53,6 +53,8 @@ const REPAINT_IDLE: Duration = Duration::from_millis(500);
 const REPAINT_STATIC: Duration = Duration::from_millis(1000);
 /// 配置写盘防抖:合并连续变更(窗口拖动/缩放每帧都在变)
 const CONFIG_SAVE_DEBOUNCE: Duration = Duration::from_millis(500);
+/// TRACE 帧耗时统计的汇总周期
+const FRAME_STATS_INTERVAL: Duration = Duration::from_secs(5);
 /// 窗口几何恢复完成判定:超时放弃匹配(避免命令未生效时永久跳过捕获)
 const RESTORE_TIMEOUT: Duration = Duration::from_secs(2);
 /// 恢复匹配容差(物理像素)
@@ -176,6 +178,15 @@ pub struct NetOwlApp {
     restore_started: Instant,
     config_dirty: bool,
     config_dirty_since: Instant,
+    /// 帧统计窗口起点(TRACE 帧耗时统计,每 FRAME_STATS_INTERVAL 汇总一条)
+    frame_stats_at: Instant,
+    frame_stats_frames: u32,
+    frame_stats_logic_us: u64,
+    frame_stats_ui_us: u64,
+    frame_stats_logic_max_us: u64,
+    frame_stats_ui_max_us: u64,
+    /// 上次下发的重绘间隔(TRACE 输出节奏变化用;None = 尚未输出)
+    last_repaint_ms: Option<u64>,
     /// 已写入注册表的托盘常驻状态(None = 尚未成功达成目标态)
     tray_pinned_applied: Option<bool>,
     /// 托盘常驻下次重试时刻(写入失败后定时重试)

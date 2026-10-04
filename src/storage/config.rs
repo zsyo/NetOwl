@@ -281,6 +281,7 @@ impl Config {
              # ====================================================\n\n{content}"
         );
         let tmp = format!("{}.tmp", paths::CONFIG_FILE);
+        let content_len = full.len();
         let write_result = std::fs::write(&tmp, full).and_then(|_| {
             if std::fs::metadata(paths::CONFIG_FILE).is_ok()
                 && let Err(e) =
@@ -299,6 +300,8 @@ impl Config {
         });
         if let Err(e) = write_result {
             tracing::warn!("[Config] 配置文件写入失败: {e}");
+        } else {
+            tracing::debug!("[Config] 配置已写盘({content_len} 字节)");
         }
     }
 }

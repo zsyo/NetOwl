@@ -54,6 +54,7 @@ pub(super) fn section(ui: &mut egui::Ui, config: &mut Config, i18n: &I18n, chang
                 &i18n.t("settings-history-days-hint"),
                 |ui| {
                     // 0 = 不自动清理
+                    let before = config.general.history_days;
                     *changed |= ui
                         .add(
                             egui::DragValue::new(&mut config.general.history_days)
@@ -61,6 +62,12 @@ pub(super) fn section(ui: &mut egui::Ui, config: &mut Config, i18n: &I18n, chang
                                 .suffix(format!(" {}", i18n.t("settings-history-days-unit"))),
                         )
                         .changed();
+                    if config.general.history_days != before {
+                        tracing::debug!(
+                            "[Settings] 历史保留期 -> {} 天",
+                            config.general.history_days
+                        );
+                    }
                 },
             );
             ui.add_space(theme::sp::SM);

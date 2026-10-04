@@ -7,8 +7,8 @@ use std::time::Instant;
 use eframe::egui;
 
 use super::{
-    CONFIG_SAVE_DEBOUNCE, MIN_WINDOW_SIZE, NetOwlApp, REPAINT_ANIMATED, REPAINT_IDLE,
-    REPAINT_STATIC,
+    CONFIG_SAVE_DEBOUNCE, FRAME_STATS_INTERVAL, MIN_WINDOW_SIZE, NetOwlApp, REPAINT_ANIMATED,
+    REPAINT_IDLE, REPAINT_STATIC,
 };
 use crate::map::world;
 use crate::net::geoip;
@@ -72,6 +72,7 @@ impl NetOwlApp {
 
 impl eframe::App for NetOwlApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let t0 = Instant::now();
         self.handle_tray_commands(ctx);
         self.calibrate_window_visible();
         self.sync_tray_pinned();
@@ -101,11 +102,14 @@ impl eframe::App for NetOwlApp {
 
         // 进入设置页时重扫 locales,加载运行期间新增的词条文件;
         // 进入历史页时标记重新加载(结果与库大小)
-        if self.page == Page::Settings && self.last_page != Page::Settings {
-            self.i18n.refresh_languages();
-        }
-        if self.page == Page::History && self.last_page != Page::History {
-            self.history.dirty = true;
+        if self.page != self.last_page {
+            tracing::trace!("[Frame] 页面 {:?} -> {:?}", self.last_page, self.page);
+            if self.page == Page::Settings {
+                self.i18n.refresh_languages();
+            }
+            if self.page == Page::History {
+                self.history.dirty = true;
+            }
         }
         self.last_page = self.page;
 
@@ -117,6 +121,7 @@ impl eframe::App for NetOwlApp {
         // 点关闭按钮 = 隐藏到托盘;仅托盘"退出"命令置位后才放行
         let close_requested = ctx.input(|i| i.viewport().close_requested());
         if close_requested && !self.should_exit {
+            tracing::info!("[Window] 关闭到托盘,主窗口隐藏");
             self.window_visible = false;
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
@@ -127,9 +132,37 @@ impl eframe::App for NetOwlApp {
             self.config.save_to_file();
             self.config_dirty = false;
         }
+
+        // TRACE 帧统计:累计本帧 logic 耗时,按周期汇总输出(全隐身帧
+        // 只有 logic,ui 耗时按实际发生帧均摊)
+        let logic_us = t0.elapsed().as_micros() as u64;
+        self.frame_stats_frames += 1;
+        self.frame_stats_logic_us += logic_us;
+        self.frame_stats_logic_max_us = self.frame_stats_logic_max_us.max(logic_us);
+        if self.frame_stats_at.elapsed() >= FRAME_STATS_INTERVAL {
+            let frames = self.frame_stats_frames;
+            if frames > 0 {
+                let n = u64::from(frames);
+                tracing::trace!(
+                    "[Frame] 近 {:?}: {frames} 帧, logic 平均 {:.2}/峰值 {:.2} ms, ui 平均 {:.2}/峰值 {:.2} ms",
+                    FRAME_STATS_INTERVAL,
+                    self.frame_stats_logic_us as f64 / n as f64 / 1000.0,
+                    self.frame_stats_logic_max_us as f64 / 1000.0,
+                    self.frame_stats_ui_us as f64 / n as f64 / 1000.0,
+                    self.frame_stats_ui_max_us as f64 / 1000.0,
+                );
+            }
+            self.frame_stats_at = Instant::now();
+            self.frame_stats_frames = 0;
+            self.frame_stats_logic_us = 0;
+            self.frame_stats_ui_us = 0;
+            self.frame_stats_logic_max_us = 0;
+            self.frame_stats_ui_max_us = 0;
+        }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ui_t0 = Instant::now();
         // 页面与重绘判定先行(page 借用持续到帧末,后续不能碰 self)
         let shown = self.is_shown(ui.ctx());
         let log_open = self.log_window.open;
@@ -266,6 +299,15 @@ impl eframe::App for NetOwlApp {
                 _ => REPAINT_STATIC,
             }
         };
+        // 节奏变化(页面切换/显示隐藏)输出 TRACE;稳定节奏不重复输出
+        let repaint_ms = u64::try_from(repaint.as_millis()).unwrap_or(u64::MAX);
+        if self.last_repaint_ms != Some(repaint_ms) {
+            tracing::trace!(
+                "[Frame] 重绘间隔 -> {repaint_ms} ms(主窗口{}可见)",
+                if shown { "" } else { "不" }
+            );
+            self.last_repaint_ms = Some(repaint_ms);
+        }
         ui.ctx().request_repaint_after(repaint);
 
         self.resize_hotspots(ui);
@@ -289,5 +331,10 @@ impl eframe::App for NetOwlApp {
         if config_changed {
             self.mark_config_dirty();
         }
+
+        // ui 耗时累计进帧统计(logic 侧汇总输出)
+        let ui_us = ui_t0.elapsed().as_micros() as u64;
+        self.frame_stats_ui_us += ui_us;
+        self.frame_stats_ui_max_us = self.frame_stats_ui_max_us.max(ui_us);
     }
 }

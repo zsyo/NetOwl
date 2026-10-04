@@ -30,40 +30,55 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// Run 值(普通权限运行);关闭 = 删除任务并清理 Run 键残留,各自"已不
 /// 存在"均视作达成。返回是否达成目标态;失败由调用方择机重试
 pub fn set_enabled(enable: bool) -> bool {
-    let done = if enable {
+    if enable {
         let exe = match std::env::current_exe() {
             Ok(p) => p,
             Err(e) => {
-                tracing::debug!("[Autostart] 读取本进程路径失败,自启动未应用: {e}");
+                tracing::warn!("[Autostart] 读取本进程路径失败,自启动未应用: {e}");
                 return false;
             }
         };
         let command = format!("\"{}\" {MINIMIZED_ARG}", exe.display());
-        if is_elevated() {
-            run_schtasks(&[
+        let done = if is_elevated() {
+            tracing::debug!("[Autostart] 管理员令牌:注册登录触发计划任务 {command}");
+            let created = match run_schtasks(&[
                 "/Create", "/TN", TASK_NAME, "/TR", &command, "/SC", "ONLOGON", "/RL", "HIGHEST",
                 "/F",
-            ]) && delete_run_value()
+            ]) {
+                Ok(()) => true,
+                Err(e) => {
+                    tracing::warn!("[Autostart] 注册自启动计划任务失败: {e}");
+                    false
+                }
+            };
+            created && delete_run_value()
         } else {
+            tracing::debug!("[Autostart] 标准用户令牌:写 Run 键 {command}");
             write_run_value(&command)
+        };
+        if done {
+            tracing::info!("[Autostart] 开机自启动已开启");
         }
+        done
     } else {
+        tracing::debug!("[Autostart] 关闭自启动:清理计划任务与 Run 键");
         let task_gone = if task_exists() {
-            run_schtasks(&["/Delete", "/TN", TASK_NAME, "/F"])
+            match run_schtasks(&["/Delete", "/TN", TASK_NAME, "/F"]) {
+                Ok(()) => true,
+                Err(e) => {
+                    tracing::warn!("[Autostart] 删除自启动计划任务失败: {e}");
+                    false
+                }
+            }
         } else {
             true
         };
-        task_gone && delete_run_value()
-    };
-    if done {
-        tracing::info!(
-            "[Autostart] 开机自启动已{}",
-            if enable { "开启" } else { "关闭" }
-        );
-    } else {
-        tracing::debug!("[Autostart] 写入自启动失败,自启动未应用");
+        let done = task_gone && delete_run_value();
+        if done {
+            tracing::info!("[Autostart] 开机自启动已关闭");
+        }
+        done
     }
-    done
 }
 
 /// 当前进程是否以管理员令牌运行(与 rules::wfp::is_elevated 同源;平台层
@@ -71,36 +86,55 @@ pub fn set_enabled(enable: bool) -> bool {
 fn is_elevated() -> bool {
     unsafe {
         let mut token = HANDLE::default();
-        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token).is_err() {
+        if let Err(e) = OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) {
+            tracing::debug!("[Autostart] 打开进程令牌失败,按标准用户处理: {e}");
             return false;
         }
         let mut elev = TOKEN_ELEVATION::default();
         let mut ret = 0u32;
-        let ok = GetTokenInformation(
+        if let Err(e) = GetTokenInformation(
             token,
             TokenElevation,
             Some(&mut elev as *mut _ as *mut core::ffi::c_void),
             std::mem::size_of::<TOKEN_ELEVATION>() as u32,
             &mut ret,
-        )
-        .is_ok();
+        ) {
+            tracing::debug!("[Autostart] 读取令牌提权状态失败,按标准用户处理: {e}");
+            let _ = CloseHandle(token);
+            return false;
+        }
         let _ = CloseHandle(token);
-        ok && elev.TokenIsElevated != 0
+        elev.TokenIsElevated != 0
     }
 }
 
-/// 执行 schtasks(隐藏控制台窗口),返回退出码是否为 0
-fn run_schtasks(args: &[&str]) -> bool {
-    std::process::Command::new("schtasks")
+/// 执行 schtasks(隐藏控制台窗口);Err = 失败摘要(退出码 + stderr)
+fn run_schtasks(args: &[&str]) -> Result<(), String> {
+    let output = std::process::Command::new("schtasks")
         .args(args)
         .creation_flags(CREATE_NO_WINDOW)
         .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+        .map_err(|e| format!("启动 schtasks 失败: {e}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    Err(format!(
+        "退出码 {:?},stderr: {}",
+        output.status.code(),
+        stderr.trim().chars().take(200).collect::<String>()
+    ))
 }
 
 fn task_exists() -> bool {
-    run_schtasks(&["/Query", "/TN", TASK_NAME])
+    // 查询失败(含任务不存在)一律按不存在处理;失败细节降为 debug
+    match run_schtasks(&["/Query", "/TN", TASK_NAME]) {
+        Ok(()) => true,
+        Err(e) => {
+            tracing::debug!("[Autostart] 计划任务查询失败,按不存在处理: {e}");
+            false
+        }
+    }
 }
 
 /// 写 Run 键值(标准用户路径):值名 = 应用名,内容 = 带引号 exe 路径 +
@@ -109,16 +143,15 @@ fn write_run_value(command: &str) -> bool {
     unsafe {
         let key_name = HSTRING::from(RUN_KEY);
         let mut key = HKEY::default();
-        if RegOpenKeyExW(
+        let opened = RegOpenKeyExW(
             HKEY_CURRENT_USER,
             PCWSTR(key_name.as_ptr()),
             None,
             KEY_SET_VALUE,
             &mut key,
-        )
-        .is_err()
-        {
-            tracing::debug!("[Autostart] 打开 Run 键失败,自启动未应用");
+        );
+        if opened.is_err() {
+            tracing::warn!("[Autostart] 打开 Run 键失败,自启动未应用: {opened:?}");
             return false;
         }
         let value_name = HSTRING::from(crate::APP_NAME);
@@ -127,10 +160,14 @@ fn write_run_value(command: &str) -> bool {
             .flat_map(|u| u.to_le_bytes())
             .collect();
         data.extend_from_slice(&[0, 0]);
-        let done =
-            RegSetValueExW(key, PCWSTR(value_name.as_ptr()), None, REG_SZ, Some(&data)).is_ok();
+        let written = RegSetValueExW(key, PCWSTR(value_name.as_ptr()), None, REG_SZ, Some(&data));
+        if written.is_err() {
+            tracing::warn!("[Autostart] 写入 Run 键值失败,自启动未应用: {written:?}");
+            let _ = RegCloseKey(key);
+            return false;
+        }
         let _ = RegCloseKey(key);
-        done
+        true
     }
 }
 
@@ -139,6 +176,7 @@ fn delete_run_value() -> bool {
     unsafe {
         let key_name = HSTRING::from(RUN_KEY);
         let mut key = HKEY::default();
+        // 打不开 Run 键通常意味着无值可删,视作达成
         if RegOpenKeyExW(
             HKEY_CURRENT_USER,
             PCWSTR(key_name.as_ptr()),
@@ -151,11 +189,12 @@ fn delete_run_value() -> bool {
             return true;
         }
         let value_name = HSTRING::from(crate::APP_NAME);
-        let done = matches!(
-            RegDeleteValueW(key, PCWSTR(value_name.as_ptr())),
-            ERROR_SUCCESS | ERROR_FILE_NOT_FOUND
-        );
+        let result = RegDeleteValueW(key, PCWSTR(value_name.as_ptr()));
         let _ = RegCloseKey(key);
+        let done = matches!(result, ERROR_SUCCESS | ERROR_FILE_NOT_FOUND);
+        if !done {
+            tracing::warn!("[Autostart] 删除 Run 键值失败: {result:?}");
+        }
         done
     }
 }

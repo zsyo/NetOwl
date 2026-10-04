@@ -19,6 +19,7 @@ impl NetOwlApp {
             return;
         };
         let ppp = ctx.pixels_per_point();
+        tracing::debug!("[Window] 恢复窗口几何 {x},{y} {w}x{h}(最大化 {maximized},ppp {ppp:.2})");
         ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::Pos2::new(
             x as f32 / ppp,
             y as f32 / ppp,
@@ -102,6 +103,7 @@ impl NetOwlApp {
     pub(super) fn calibrate_window_visible(&mut self) {
         let visible = single_instance::is_window_visible(self.main_hwnd);
         if visible != self.window_visible {
+            tracing::debug!("[Window] 可见性外部变更校准 -> {visible}(单实例唤出或系统操作)");
             self.window_visible = visible;
         }
     }

@@ -62,6 +62,7 @@ pub(super) fn section(
                                 {
                                     config.general.log_level = level.as_str().to_owned();
                                     crate::logging::set_level(level);
+                                    tracing::info!("[Log] 日志档位 -> {}", level.as_str());
                                     *changed = true;
                                 }
                             }
