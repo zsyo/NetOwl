@@ -33,7 +33,7 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   回填、UDP 按 (pid,本地端口) 归并回填远端+字节、udp_last_remote 缓存回退、
   每连接实时速率、短命连接收割落盘;window.rs:窗口几何恢复/捕获、可见性
   跟踪与单实例唤出校准;tray.rs:托盘命令分发[显示/设置/日志/询问开关/
-  静默三态/退出收尾]、托盘常驻与自启动注册表写入(失败定时重试)、tooltip
+  静默三态/退出收尾]、托盘常驻与自启动写入(管理员令牌经计划任务、标准用户经 Run 键;失败定时重试)、tooltip
   速率刷新、双入口勾选态校准;poll.rs:采集编排——连接快照 1s 轮询
   [UDP 无远端过滤/去重→rDNS→图标→历史→询问→临时规则]、公网 IP 重探、
   总速率采样、图标纹理缓存(键=映像路径,ColorImage::from_rgba_unmultiplied

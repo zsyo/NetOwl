@@ -690,7 +690,10 @@ Section Uninstall
 
   DeleteRegValue HKCU "${MANUPRODUCTKEY}" "Installer Language"
 
-  ; Remove the autostart Run value (written by the app's autostart option)
+  ; Remove the autostart task (admin users; see PageOptions) and the legacy
+  ; autostart Run value (standard users / older versions)
+  nsExec::Exec 'schtasks /Delete /TN "${PRODUCTNAME}" /F'
+  Pop $0
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRODUCTNAME}"
 
   ; Delete app data
