@@ -614,7 +614,8 @@ Function .onInstSuccess
   check_r_flag:
     ${GetOptions} $CMDLINE "/R" $R0
     IfErrors run_done 0
-      Exec '"$INSTDIR\${MAINBINARYNAME}.exe"'
+      ; ExecShell instead of Exec: see FinishRun for the elevation rationale
+      ExecShell open '"$INSTDIR\${MAINBINARYNAME}.exe"'
   run_done:
 FunctionEnd
 
@@ -728,11 +729,15 @@ FunctionEnd
 
 ; The app is started with --autostart-on when the options-page checkbox was
 ; checked; the app then sets config.general.autostart and writes the HKCU Run
-; value itself (single source of truth stays in the app config)
+; value itself (single source of truth stays in the app config).
+; ExecShell (ShellExecute) is required here: the release binary embeds a
+; highestAvailable manifest, so a plain Exec (CreateProcess) from this
+; unelevated installer fails with ERROR_ELEVATION_REQUIRED (740). ShellExecute
+; shows the UAC prompt for admin users and starts normally for standard users.
 Function FinishRun
     ${If} $AutostartState == ${BST_CHECKED}
-      Exec '"$INSTDIR\${MAINBINARYNAME}.exe" --autostart-on'
+      ExecShell open '"$INSTDIR\${MAINBINARYNAME}.exe"' '--autostart-on'
     ${Else}
-      Exec '"$INSTDIR\${MAINBINARYNAME}.exe"'
+      ExecShell open '"$INSTDIR\${MAINBINARYNAME}.exe"'
     ${EndIf}
 FunctionEnd
