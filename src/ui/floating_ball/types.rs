@@ -131,6 +131,11 @@ pub struct BallState {
     pub(super) dragging: bool,
     /// DWM 去边框下次检查时刻(None = 立即;viewport 重建后随节流重设)
     pub(super) dwm_retry_at: Option<Instant>,
+    /// 浮窗本次显示周期内已提升过 z 序(显示上升沿置位,隐藏复位;
+    /// 未找到 HWND 视为未提升,下一帧重试)
+    pub(super) panel_raised: bool,
+    /// 右键菜单本次显示周期内已提升过 z 序(同上)
+    pub(super) menu_raised: bool,
 }
 
 impl BallState {
@@ -165,6 +170,8 @@ impl BallState {
             press_pos: None,
             dragging: false,
             dwm_retry_at: None,
+            panel_raised: false,
+            menu_raised: false,
         }
     }
 

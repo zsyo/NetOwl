@@ -73,6 +73,30 @@ pub fn show(
     let panel_visible = state.phase == Phase::Expanded;
     let menu_visible = state.menu_open;
 
+    // 显示上升沿提升 z 序:自启动实例无前台激活权限,egui-winit 显隐
+    // 切换的 ShowWindow 激活失败时窗口只显示不提升 z 序,被激活窗口
+    // 压住(手动启动的实例带前台权,激活成功,所以无法复现);HWND_TOP
+    // 不激活不抢焦点,与 with_active(false) 的设计一致。窗口延迟创建
+    // 时首帧找不到 HWND,保持未置位下一帧重试(悬停期间 30fps)
+    if panel_visible
+        && !state.panel_raised
+        && let Some(hwnd) = monitor::find_window_by_title(PANEL_TITLE)
+    {
+        monitor::raise_no_activate(hwnd);
+        state.panel_raised = true;
+    } else if !panel_visible {
+        state.panel_raised = false;
+    }
+    if menu_visible
+        && !state.menu_raised
+        && let Some(hwnd) = monitor::find_window_by_title(MENU_TITLE)
+    {
+        monitor::raise_no_activate(hwnd);
+        state.menu_raised = true;
+    } else if !menu_visible {
+        state.menu_raised = false;
+    }
+
     let mut outcome = BallOutcome::default();
     let mut menu_action: Option<MenuAction> = None;
 

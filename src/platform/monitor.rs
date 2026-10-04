@@ -199,6 +199,28 @@ pub fn hide_window(hwnd: HWND) {
     }
 }
 
+/// 提升窗口到 z 序顶(不激活、不改位置尺寸):自启动实例没有前台激活
+/// 权限,egui-winit 显隐切换的 ShowWindow 激活失败时窗口只显示不提升
+/// z 序,被当时的激活窗口压住(悬浮球右键菜单/展开浮窗的"显示在其它
+/// 软件窗口下方"即此因)。HWND_TOP 只做 z 序提升,无需前台权限,对
+/// 置顶(TOPMOST)窗口无副作用
+pub fn raise_no_activate(hwnd: HWND) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        HWND_TOP, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos,
+    };
+    unsafe {
+        let _ = SetWindowPos(
+            hwnd,
+            Some(HWND_TOP),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        );
+    }
+}
+
 /// 悬浮球窗口原过程地址;0 = 未安装
 static BALL_OLD_WNDPROC: AtomicIsize = AtomicIsize::new(0);
 
