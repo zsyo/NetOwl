@@ -1,7 +1,7 @@
 name: Release
 
-# 发布工作流:推送 v* tag 时构建 Windows x64 便携包并创建 GitHub Release;
-# 也可手动触发仅构建与打包演练(不创建 Release)。
+# 发布工作流:推送 v* tag 时构建 Windows x64/arm64 的 NSIS 安装器与便携 zip,
+# 并创建 GitHub Release;也可手动触发仅构建与打包演练(不创建 Release)。
 # 发布前 Cargo.toml 的 version 应与 tag 对齐(如 tag v0.1.0 ↔ version = "0.1.0");
 # tag 版本号含 '_'(如 v1.0.0_beta.1)时 Release 标记为预发布。
 
@@ -16,12 +16,27 @@ permissions:
 
 jobs:
   build:
-    name: Build windows-x64
-    runs-on: windows-latest
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
 
     outputs:
-      # 跨 job 传递预发布标志(release job 使用)
+      # 跨 job 传递预发布标志(release job 使用;矩阵各任务输出相同取其一)
       prerelease: ${{ steps.version.outputs.prerelease }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Windows x64:NSIS 安装器 + 便携 zip
+          - name: windows-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            arch: x64
+          # Windows arm64:NSIS 安装器 + 便携 zip(原生 arm runner)
+          - name: windows-arm64
+            os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            arch: arm64
 
     steps:
       - name: Checkout code
@@ -31,8 +46,16 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
+          # 输入名为 target(支持逗号分隔)
+          target: ${{ matrix.target }}
           # 自动开启依赖缓存
           cache: true
+
+      - name: Install Tools
+        # 使用快速安装工具,避免从源码编译 cargo-packager
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-packager
 
       - name: Get version
         id: version
@@ -56,17 +79,26 @@ jobs:
       # 全部资源(底图/GeoIP/图标字体/词条)编译期内嵌,产物仅 exe;
       # release 构建嵌入 UAC/DPI manifest(build.rs 按 PROFILE 判定)
       - name: Build
-        run: cargo build --release --target x86_64-pc-windows-msvc
+        run: cargo build --release --target ${{ matrix.target }}
+
+      # NSIS 安装器走自定义模板 packaging/nsis/installer.nsi(含开机自启
+      # 选项页,见模板头注释);产物默认名 netowl_{v}_{arch}-setup.exe
+      - name: Package
+        run: >
+          cargo packager --release --formats nsis
+          --target ${{ matrix.target }}
 
       - name: Create portable zip
-        # 命名与本地 tools/package_release.ps1 对齐:netowl_{v}_windows_x64-portable.zip
+        # 命名与本地 tools/package_release.ps1 对齐:netowl_{v}_windows_{arch}-portable.zip;
+        # 仅装 exe:图标/底图编译期内嵌,locales 目录缺失时运行时内嵌兜底
         shell: pwsh
         run: |
           $version = "${{ steps.version.outputs.version }}"
-          $portableDir = "netowl_${version}_windows_x64-portable"
+          $arch = "${{ matrix.arch }}"
+          $portableDir = "netowl_${version}_windows_${arch}-portable"
           New-Item -ItemType Directory -Force -Path $portableDir
 
-          $exe = "target/x86_64-pc-windows-msvc/release/netowl.exe"
+          $exe = "target/${{ matrix.target }}/release/netowl.exe"
           if (-not (Test-Path $exe)) {
               Write-Error "Required file $exe not found!"
               exit 1
@@ -75,13 +107,37 @@ jobs:
 
           Compress-Archive -Path "$portableDir/*" -DestinationPath "$portableDir.zip"
 
+      - name: Rename installers
+        # 统一产物命名:版本号替换为 tag 版本(Cargo.toml 恒为干净版本,
+        # 预发布身份仅体现在 tag),并在架构前补平台名:
+        #   NSIS  netowl_{v}_{arch}-setup.exe -> netowl_{tv}_windows_{arch}-setup.exe
+        shell: bash
+        env:
+          TAG_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          cargo_version=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)"/\1/')
+          echo "Cargo.toml 版本: $cargo_version -> tag 版本: $TAG_VERSION"
+          mkdir -p dist
+          for f in target/${{ matrix.target }}/release/*-setup.exe; do
+            [ -e "$f" ] || continue
+            base=$(basename "$f")
+            new="${base/$cargo_version/$TAG_VERSION}"
+            new="${new/_x64-setup.exe/_windows_x64-setup.exe}"
+            new="${new/_arm64-setup.exe/_windows_arm64-setup.exe}"
+            cp "$f" "dist/$new"
+          done
+          ls -la dist/
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: release-packages-windows-x64
-          path: netowl_*-portable.zip
+          name: release-packages-${{ matrix.name }}
+          path: |
+            dist/*
+            netowl_*-portable.zip
 
-  # 独立发布 job:仅 tag 触发时执行,创建 GitHub Release 并挂便携包
+  # 独立发布 job:仅 tag 触发时执行,创建 GitHub Release 并挂全部产物
   release:
     name: Create Release
     needs: build
