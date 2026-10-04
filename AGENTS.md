@@ -419,6 +419,14 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
 - 每完成一个功能点:在 TODO 文件中勾掉对应项,并为该功能点做一次 git commit
 - TODO.md 命中用户全局 gitignore,为本地工作文件,不提交入库,README 也不引用
 
+### 打包
+- cargo packager --release(配置在 Cargo.toml [package.metadata.packager]):
+  Windows 产出 NSIS 安装程序 target/release/netowl_<version>_x64-setup.exe
+- category 合法值为 LSApplicationCategory 风格枚举(GraphicsAndDesign/
+  Utilities 等,无 Network);identifier com.zephyr.netowl 为占位域名,可再改
+- 发布产物不携带 assets(图标/底图编译期内嵌),locales 词条外置,
+  目录缺失时运行时用内嵌兜底
+
 ## 验证规范
 - 每次改动 cargo build 通过;界面改动 cargo run 冒烟确认无 panic
 - GUI 无法自动断言的视觉项,说明验证方式并交用户确认

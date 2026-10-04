@@ -75,3 +75,16 @@ unic-langid = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
+
+# cargo-packager 打包配置(cargo packager --release):
+# Windows 产出 NSIS 安装程序到 dist/;图标与底图数据已编译期内嵌,
+# 发布产物不携带 assets,仅 locales 词条外置(运行时扫描 exe 同级
+# locales/,目录缺失时使用编译期内嵌兜底,见 src/i18n)
+[package.metadata.packager]
+resources = ["locales"]
+product_name = "NetOwl"
+identifier = "com.zephyr.netowl"
+# 合法值为 LSApplicationCategory 风格枚举(GraphicsAndDesign/Utilities 等,
+# 无 Network),非法值直接反序列化报错
+category = "Utilities"
+icons = ["assets/app_icon.ico", "assets/app_icon.png"]
