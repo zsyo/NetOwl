@@ -105,7 +105,9 @@ impl RuleSet {
         Ok(())
     }
 
-    /// 上移/下移:与相邻规则交换 priority(delta -1 上移 / +1 下移)
+    /// 上移/下移:与相邻规则交换 priority(delta -1 上移 / +1 下移)。
+    /// 交换的是 priority 值本身,内存与库同步后按 priority 重排,
+    /// 保证数组顺序与排序键(求值/加载顺序)一致
     pub fn move_rule(&mut self, db: &Db, id: i64, delta: i64) -> rusqlite::Result<()> {
         let idx = match self.rules.iter().position(|r| r.id == id) {
             Some(i) => i,
@@ -116,16 +118,18 @@ impl RuleSet {
             return Ok(());
         }
         let t = target as usize;
-        let (a, b) = (self.rules[idx].clone(), self.rules[t].clone());
-        self.rules.swap(idx, t);
+        let (a_pri, b_pri) = (self.rules[idx].priority, self.rules[t].priority);
+        self.rules[idx].priority = b_pri;
+        self.rules[t].priority = a_pri;
         db.execute(
             "UPDATE rules SET priority=?1 WHERE id=?2",
-            params![b.priority, b.id],
+            params![b_pri, self.rules[idx].id],
         )?;
         db.execute(
             "UPDATE rules SET priority=?1 WHERE id=?2",
-            params![a.priority, a.id],
+            params![a_pri, self.rules[t].id],
         )?;
+        self.rules.sort_by_key(|r| (r.priority, r.id));
         Ok(())
     }
 }
