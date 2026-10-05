@@ -146,22 +146,36 @@ impl PageState {
             hide_lan,
         };
         self.rows = match self.view {
-            ViewMode::Detail => Rows::Detail(query_detail(db, &filter).unwrap_or_default()),
+            ViewMode::Detail => Rows::Detail(query_or_warn("明细", query_detail(db, &filter))),
             ViewMode::Aggregate => {
                 let (sort, asc) = self.aggregate_sort;
-                Rows::Aggregate(query_aggregate(db, &filter, sort, asc).unwrap_or_default())
+                Rows::Aggregate(query_or_warn(
+                    "聚合",
+                    query_aggregate(db, &filter, sort, asc),
+                ))
             }
             ViewMode::Summary => {
                 let (sort, asc) = self.summary_sort;
-                Rows::Summary(query_summary(db, &filter, sort, asc).unwrap_or_default())
+                Rows::Summary(query_or_warn("汇总", query_summary(db, &filter, sort, asc)))
             }
-            ViewMode::Usage => Rows::Usage(
-                query_usage(db, &filter, self.usage_bucket, local_tz_offset_secs())
-                    .unwrap_or_default(),
-            ),
+            ViewMode::Usage => Rows::Usage(query_or_warn(
+                "用量",
+                query_usage(db, &filter, self.usage_bucket, local_tz_offset_secs()),
+            )),
         };
         self.db_size = db_size();
         self.summary_merged = None;
         self.dirty = false;
+    }
+}
+
+/// 查询失败告警后降级为空结果:库损坏/磁盘满等不应静默显示为"无数据"
+fn query_or_warn<T>(what: &str, r: rusqlite::Result<Vec<T>>) -> Vec<T> {
+    match r {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("[History] {what}查询失败: {e}");
+            Vec::new()
+        }
     }
 }
