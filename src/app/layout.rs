@@ -87,6 +87,8 @@ impl NetOwlApp {
             rate_hist: &self.rate_hist,
             conn_rates: &self.conn_rates,
             conn_sort: &mut self.conn_sort,
+            conn_view: &mut self.conn_view,
+            listens: &self.listens,
             conn_search: &mut self.conn_search,
             conn_row_hover: &mut self.conn_row_hover,
             rules_row_hover: &mut self.rules_row_hover,

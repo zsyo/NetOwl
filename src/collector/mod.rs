@@ -15,7 +15,7 @@ pub use windows_table::TableCollector;
 
 use std::sync::Arc;
 
-use crate::model::Connection;
+use crate::model::{Connection, ListenEntry};
 
 /// 进程映像图标状态(按映像路径查询;None 表示已提取且无图标)
 pub enum IconState {
@@ -29,6 +29,11 @@ pub enum IconState {
 pub trait Collector {
     /// 推进内部状态并返回当前连接快照
     fn snapshot(&mut self) -> Vec<Connection>;
+    /// 监听条目快照(TCP LISTEN + UDP 绑定);随采集同频刷新,
+    /// 默认空(模拟数据源另行实现)
+    fn listening(&mut self) -> Vec<ListenEntry> {
+        Vec::new()
+    }
     /// 数据源种类(导航状态与设置页展示用)
     fn kind(&self) -> CollectorKind;
     /// 查询映像路径的图标;默认(模拟数据)恒为提取中

@@ -1,9 +1,12 @@
 //! 连接列表页:过滤/搜索、表头排序编排与规则求值标注。
 //! 行渲染在 rows,行右键菜单在 menu,排序在 sort。
 
+mod listen;
 mod menu;
 mod rows;
 mod sort;
+
+use super::ConnView;
 
 use eframe::egui;
 use egui::RichText;
@@ -25,6 +28,8 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     let UiCtx {
         conns,
         i18n,
+        conn_view,
+        listens: _,
         rdns,
         icon_tex,
         default_icon_tex,
@@ -45,9 +50,35 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     widgets::header::page_header(ui, &i18n.t("conns-title"), &i18n.t("conns-subtitle"));
     ui.add_space(theme::sp::SM);
 
+    let mut changed = false;
+    // &mut UiCtx 解构出的引用字段带两层 &mut,借类型注解 coerce 回单层
+    let conn_view: &mut ConnView = conn_view;
+    // 视图切换:活动连接 / 端口监听
+    let view_items = [
+        (i18n.t("conns-view-conns"), icons::LIST_UL),
+        (i18n.t("conns-view-listen"), icons::ETHERNET),
+    ];
+    let view_items: Vec<(&str, &str)> = view_items.iter().map(|(t, g)| (t.as_str(), *g)).collect();
+    if let Some(i) = widgets::segmented::segmented(
+        ui,
+        &view_items,
+        usize::from(*conn_view == ConnView::Listens),
+    ) {
+        *conn_view = if i == 0 {
+            ConnView::Conns
+        } else {
+            ConnView::Listens
+        };
+    }
+    ui.add_space(theme::sp::XS);
+
+    if *conn_view == ConnView::Listens {
+        listen::listen_table(ui, ctx);
+        return changed;
+    }
+
     // 本地/局域网远端噪音过滤(config 持久化,连接页与历史页共享)
     // + 搜索框(进程/映像路径/远端 IP/rDNS 域名包含匹配,会话态)
-    let mut changed = false;
     ui.horizontal(|ui| {
         ui.label(
             RichText::new(icons::FUNNEL)

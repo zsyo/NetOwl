@@ -7,7 +7,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::collector::{Collector, CollectorKind};
 use crate::map::world::CITIES;
-use crate::model::{Connection, Place, Protocol, Signing};
+use crate::model::{Connection, ListenEntry, Place, Protocol, Signing};
 
 /// xorshift64* 伪随机数:骨架期避免引入 rand 依赖(AGENTS.md 规范 8)
 struct Rng(u64);
@@ -178,6 +178,27 @@ impl MockCollector {
 }
 
 impl Collector for MockCollector {
+    fn listening(&mut self) -> Vec<ListenEntry> {
+        vec![
+            ListenEntry {
+                pid: 4,
+                process: "System".into(),
+                proc_path: None,
+                proto: Protocol::Udp,
+                local_addr: Ipv4Addr::LOCALHOST,
+                local_port: 5353,
+            },
+            ListenEntry {
+                pid: 1234,
+                process: "mockd.exe".into(),
+                proc_path: Some(r"C:\\Program Files\\mockd\\mockd.exe".into()),
+                proto: Protocol::Tcp,
+                local_addr: Ipv4Addr::UNSPECIFIED,
+                local_port: 8443,
+            },
+        ]
+    }
+
     fn snapshot(&mut self) -> Vec<Connection> {
         let now = Instant::now();
         self.advance(now);

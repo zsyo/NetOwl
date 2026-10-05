@@ -14,9 +14,11 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use super::icon::{self, IconImage};
-use super::query::{ConnKey, query_process_names, query_process_path, query_tcp, query_udp};
+use super::query::{
+    ConnKey, query_process_names, query_process_path, query_tcp, query_tcp_listen, query_udp,
+};
 use super::{Collector, CollectorKind, IconState, signature};
-use crate::model::{Connection, Place, Signing};
+use crate::model::{Connection, ListenEntry, Place, Signing};
 
 /// 表快照间隔:连接增减的可见延迟上限(与任务管理器刷新节奏相当)
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
@@ -41,6 +43,8 @@ struct ProcMeta {
 pub struct TableCollector {
     /// 有序连接快照(累计流量降序),非轮询帧直接返回
     ordered: Vec<Connection>,
+    /// 监听条目(TCP LISTEN + UDP 绑定,随 poll 重建)
+    listening_rows: Vec<ListenEntry>,
     /// 连接身份 -> 最近快照(保留 first_seen)
     live: HashMap<ConnKey, Connection>,
     /// PID -> 进程元数据(仅存活于连接表中的进程)
@@ -67,6 +71,7 @@ impl TableCollector {
         let (icon_tx, icon_rx) = mpsc::channel();
         TableCollector {
             ordered: Vec::new(),
+            listening_rows: Vec::new(),
             live: HashMap::new(),
             proc_metas: HashMap::new(),
             sig_tx,
@@ -97,6 +102,7 @@ impl TableCollector {
                 return;
             }
         };
+        let listen = query_tcp_listen().unwrap_or_default();
 
         self.collect_signatures();
         self.collect_icons();
@@ -107,6 +113,20 @@ impl TableCollector {
             HashMap::with_capacity(tcp.len() + udp.len());
         // 名字兜底枚举按轮懒执行:存在路径反查失败的 PID 才枚举一次,行间复用
         let mut nt_names: Option<HashMap<u32, String>> = None;
+
+        // 监听条目:TCP LISTEN 行 + UDP 绑定行(进程元数据与连接共用缓存)
+        let mut listening = Vec::with_capacity(listen.len() + udp.len());
+        for key in listen.iter().chain(udp.iter()) {
+            let meta = self.proc_meta(key.pid, &mut nt_names);
+            listening.push(ListenEntry {
+                pid: key.pid,
+                process: meta.name,
+                proc_path: meta.path,
+                proto: key.proto,
+                local_addr: key.local_addr_ipv4(),
+                local_port: key.local_port,
+            });
+        }
 
         for key in tcp.into_iter().chain(udp) {
             let pid = key.pid;
@@ -140,9 +160,15 @@ impl TableCollector {
             );
         }
 
-        // 进程元数据缓存只保留本轮出现在连接表中的进程(PID 复用随行消失而自然失效)
-        let live_pids: HashSet<u32> = new_live.keys().map(|k| k.pid).collect();
+        // 进程元数据缓存只保留本轮出现在连接表与监听表中的进程
+        // (PID 复用随行消失而自然失效)
+        let live_pids: HashSet<u32> = new_live
+            .keys()
+            .map(|k| k.pid)
+            .chain(listening.iter().map(|l| l.pid))
+            .collect();
         self.proc_metas.retain(|pid, _| live_pids.contains(pid));
+        self.listening_rows = listening;
 
         self.dispatch_signature_queries(&live_pids);
 
@@ -275,6 +301,10 @@ impl Collector for TableCollector {
         // 调用方(1s 节流的采集编排)每次取走快照,下轮 poll 重建;
         // 契约:两次调用间隔不小于 POLL_INTERVAL,取走后不会有读到空的调用
         std::mem::take(&mut self.ordered)
+    }
+
+    fn listening(&mut self) -> Vec<ListenEntry> {
+        std::mem::take(&mut self.listening_rows)
     }
 
     fn icon_image(&mut self, path: &str) -> IconState {

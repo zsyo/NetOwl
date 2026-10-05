@@ -53,6 +53,13 @@ pub enum ConnSort {
 /// 连接列表排序状态:(键, 是否正序);点击已激活表头反转方向
 pub type ConnSortState = Option<(ConnSort, bool)>;
 
+/// 连接页视图形态:活动连接 / 端口监听
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ConnView {
+    Conns,
+    Listens,
+}
+
 /// 主窗口页面
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Page {
@@ -95,6 +102,10 @@ pub struct UiCtx<'a> {
     pub conn_rates: &'a HashMap<u64, (u64, u64)>,
     /// 连接列表表头排序状态(表头点击切换)
     pub conn_sort: &'a mut ConnSortState,
+    /// 连接页视图形态(连接/端口监听 segmented 切换)
+    pub conn_view: &'a mut ConnView,
+    /// 监听条目快照(TCP LISTEN + UDP 绑定,与连接采集同频)
+    pub listens: &'a [crate::model::ListenEntry],
     /// 连接页搜索词(进程/远端/域名包含过滤,会话态)
     pub conn_search: &'a mut String,
     /// 连接页行悬停辅助(跨帧行高,行首垫底用)

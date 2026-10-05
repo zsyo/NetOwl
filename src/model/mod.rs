@@ -28,6 +28,18 @@ pub enum Place {
     Geo(u32),
 }
 
+/// 监听条目:TCP LISTEN / UDP 绑定端点(无远端语义,独立于连接快照)
+#[derive(Clone, Debug)]
+pub struct ListenEntry {
+    pub pid: u32,
+    pub process: String,
+    /// 进程映像完整路径;受保护/系统进程等无法读取时为 None
+    pub proc_path: Option<String>,
+    pub proto: Protocol,
+    pub local_addr: Ipv4Addr,
+    pub local_port: u16,
+}
+
 /// 一条网络连接(进程 -> 远端)。
 /// 地理归属由 `city` 键索引;归属未知(内网/保留段/未收录)时为 None,
 /// 地图跳过该连接,连接列表位置列显示占位。

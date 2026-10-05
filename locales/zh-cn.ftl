@@ -329,3 +329,10 @@ conns-count-suffix = ({$count})
 lan-notify-toast = 新设备接入 {$ip}
 settings-lan-notify = 新设备接入提醒
 settings-lan-notify-hint = 局域网出现新设备时右下角通知
+
+# 端口监听视图
+conns-view-conns = 连接
+conns-view-listen = 端口监听
+listen-col-local = 本地地址:端口
+listen-col-pid = PID
+listen-empty = 未发现监听端口

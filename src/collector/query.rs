@@ -11,8 +11,9 @@ use windows::Win32::Foundation::{
 };
 use windows::Win32::NetworkManagement::IpHelper::{
     GetExtendedTcpTable, GetExtendedUdpTable, MIB_TCP_STATE_DELETE_TCB, MIB_TCP_STATE_LAST_ACK,
-    MIB_TCP_STATE_SYN_SENT, MIB_TCPROW_LH, MIB_TCPROW_LH_0, MIB_TCPTABLE_OWNER_PID,
-    MIB_UDPTABLE_OWNER_PID, SetTcpEntry, TCP_TABLE_OWNER_PID_ALL, UDP_TABLE_OWNER_PID,
+    MIB_TCP_STATE_LISTEN, MIB_TCP_STATE_SYN_SENT, MIB_TCPROW_LH, MIB_TCPROW_LH_0,
+    MIB_TCPTABLE_OWNER_PID, MIB_UDPTABLE_OWNER_PID, SetTcpEntry, TCP_TABLE_OWNER_PID_ALL,
+    UDP_TABLE_OWNER_PID,
 };
 use windows::Win32::Networking::WinSock::AF_INET;
 use windows::Win32::System::Threading::{
@@ -105,6 +106,31 @@ pub fn query_tcp() -> Result<Vec<ConnKey>, String> {
             local_port: u16::from_be(row.dwLocalPort as u16),
             remote_addr: row.dwRemoteAddr,
             remote_port: u16::from_be(row.dwRemotePort as u16),
+            pid: row.dwOwningPid,
+        });
+    }
+    Ok(out)
+}
+
+/// TCP 监听表查询:仅 LISTEN 状态行(端口监听视图用)
+pub fn query_tcp_listen() -> Result<Vec<ConnKey>, String> {
+    let buf = query_table(|p, size| unsafe {
+        GetExtendedTcpTable(p, size, false, AF_INET.0 as u32, TCP_TABLE_OWNER_PID_ALL, 0)
+    })?;
+    let table = unsafe { &*(buf.as_ptr() as *const MIB_TCPTABLE_OWNER_PID) };
+    let rows =
+        unsafe { std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize) };
+    let mut out = Vec::new();
+    for row in rows {
+        if row.dwState != MIB_TCP_STATE_LISTEN.0 as u32 {
+            continue;
+        }
+        out.push(ConnKey {
+            proto: Protocol::Tcp,
+            local_addr: row.dwLocalAddr,
+            local_port: u16::from_be(row.dwLocalPort as u16),
+            remote_addr: 0,
+            remote_port: 0,
             pid: row.dwOwningPid,
         });
     }

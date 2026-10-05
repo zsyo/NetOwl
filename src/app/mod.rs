@@ -135,6 +135,10 @@ pub struct NetOwlApp {
     self_path: Option<String>,
     /// 右下角 toast 通知队列(新设备接入/用量配额告警)
     toasts: Vec<crate::ui::toast::Toast>,
+    /// 监听条目快照(采集同频;端口监听视图用)
+    listens: Vec<crate::model::ListenEntry>,
+    /// 连接页视图形态(会话态)
+    conn_view: ui::ConnView,
     /// 曾被表快照合并覆盖的 ETW 流键:完结流命中此集合说明表快照
     /// 跟踪器已记录,不按短命连接重复落盘
     etw_seen: HashSet<etw::FlowKey>,

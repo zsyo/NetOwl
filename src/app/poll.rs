@@ -45,6 +45,7 @@ impl NetOwlApp {
         }
         self.conns_refresh_at = Instant::now();
         self.conns = self.collector.snapshot();
+        self.listens = self.collector.listening();
         self.poll_etw();
         // UDP 表行无远端且 ETW 合并后仍无回退值(未提权/从未通信/启动前
         // 已存在),无归属无流量,只余噪音;列表/地图/历史一并排除

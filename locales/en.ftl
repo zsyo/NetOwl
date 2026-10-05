@@ -328,3 +328,10 @@ conns-count-suffix = ({$count})
 lan-notify-toast = New device joined: {$ip}
 settings-lan-notify = New device alert
 settings-lan-notify-hint = Show a toast when a new device joins the LAN
+
+# Listening ports view
+conns-view-conns = Connections
+conns-view-listen = Listening
+listen-col-local = Local address:port
+listen-col-pid = PID
+listen-empty = No listening ports found

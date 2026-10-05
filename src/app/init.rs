@@ -135,6 +135,8 @@ impl NetOwlApp {
                 .ok()
                 .map(|p| p.to_string_lossy().into_owned()),
             toasts: Vec::new(),
+            listens: Vec::new(),
+            conn_view: crate::ui::ConnView::Conns,
             etw_seen: HashSet::new(),
             conn_rates: HashMap::new(),
             udp_last_remote: HashMap::new(),
