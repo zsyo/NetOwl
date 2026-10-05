@@ -12,6 +12,7 @@ mod ball;
 mod etw_merge;
 mod frame;
 mod init;
+mod layout;
 mod poll;
 mod tray;
 mod window;

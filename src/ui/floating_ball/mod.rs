@@ -9,8 +9,9 @@
 //! 恢复渲染即松手)松手按窗口中心吸附左/右屏幕边缘;位置记忆于 config。
 //!
 //! 类型与刻度常量在 types,交互状态机在 interaction,viewport 定位在
-//! layout,速率榜聚合在 data。
+//! layout,速率榜聚合在 data,viewport 帧体在 body。
 
+mod body;
 mod data;
 mod interaction;
 mod layout;
@@ -29,12 +30,12 @@ use crate::storage::config::FloatingBallConfig;
 pub use data::collect_proc_rates;
 pub use types::{BallData, BallOutcome, BallState, ProcRate, SnapEdge};
 
-use interaction::{cursor_over_windows, handle_input};
+use interaction::cursor_over_windows;
 use layout::{dock_pos, menu_pos, panel_pos};
 use menu::{MENU_H, MENU_W, MenuAction};
 use types::{
-    BALL_TITLE, BALL_VIEWPORT_ID, BALL_WIN_H, BALL_WIN_W, GEOM_EPSILON, HOVER_H, HOVER_W,
-    MENU_TITLE, MENU_VIEWPORT_ID, PANEL_TITLE, PANEL_VIEWPORT_ID, Phase, REVEAL, STRIP_W,
+    BALL_TITLE, BALL_VIEWPORT_ID, BALL_WIN_H, BALL_WIN_W, HOVER_H, HOVER_W, MENU_TITLE,
+    MENU_VIEWPORT_ID, PANEL_TITLE, PANEL_VIEWPORT_ID, Phase,
 };
 
 /// 悬浮窗帧入口(主窗口 ui() 末尾调用;主窗口隐藏时仍按低频帧执行)
@@ -119,7 +120,7 @@ pub fn show(
     ctx.show_viewport_immediate(
         egui::ViewportId(egui::Id::new(PANEL_VIEWPORT_ID)),
         panel_builder,
-        |ui, _class| panel_body(ui, data, i18n, &mut outcome.show_main),
+        |ui, _class| body::panel_body(ui, data, i18n, &mut outcome.show_main),
     );
 
     // 菜单窗口:自绘右键菜单,不抢焦点(点击菜单项不需要激活)
@@ -163,7 +164,7 @@ pub fn show(
         egui::ViewportId(egui::Id::new(BALL_VIEWPORT_ID)),
         ball_builder,
         |ui, _class| {
-            ball_body(
+            body::ball_body(
                 ui,
                 state,
                 data,
@@ -221,95 +222,4 @@ pub fn show(
         ctx.request_repaint_after(Duration::from_millis(33));
     }
     outcome
-}
-
-/// 浮窗窗口帧体:气泡浮层占满窗口;窗口显隐由 show 按 phase 驱动,
-/// 尺寸恒定无 resize,隐藏期间照常绘制保证显示瞬间内容就绪
-fn panel_body(
-    ui: &mut egui::Ui,
-    data: &BallData,
-    i18n: &I18n,
-    show_main: &mut Option<crate::ui::Page>,
-) {
-    egui::CentralPanel::default()
-        .frame(
-            egui::Frame::new()
-                .fill(egui::Color32::TRANSPARENT)
-                .inner_margin(0.0),
-        )
-        .show(ui, |ui| {
-            let rect = ui.max_rect();
-            view::hover_panel(ui, rect, data, i18n, show_main);
-        });
-
-    // 几何对账:与期望差异超阈值才重发命令(防每帧 SetWindowPos 抖动)
-    let ctx = ui.ctx();
-    if let Some(r) = ctx.input(|i| i.viewport().outer_rect)
-        && ((r.width() - HOVER_W).abs() > GEOM_EPSILON
-            || (r.height() - HOVER_H).abs() > GEOM_EPSILON)
-    {
-        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
-            HOVER_W, HOVER_H,
-        )));
-    }
-}
-
-/// 球窗口帧体:三态球面绘制 + 交互状态机 + 几何对账
-fn ball_body(
-    ui: &mut egui::Ui,
-    state: &mut BallState,
-    data: &BallData,
-    panel_visible: bool,
-    auto_hide: bool,
-    outcome: &mut BallOutcome,
-) {
-    egui::CentralPanel::default()
-        .frame(
-            egui::Frame::new()
-                .fill(egui::Color32::TRANSPARENT)
-                .inner_margin(0.0),
-        )
-        .show(ui, |ui| {
-            // 贴边态控件移向贴边侧,只露 STRIP_W 窄条(其余被窗口裁剪),
-            // 全显态滑向屏内侧成完整长条(距屏缘 REVEAL)
-            let left = matches!(state.edge, Some(types::SnapEdge::Left));
-            let (bar_cx, mode) = match state.phase {
-                Phase::Docked => (
-                    if left {
-                        STRIP_W - types::BAR_W * 0.5
-                    } else {
-                        BALL_WIN_W - STRIP_W + types::BAR_W * 0.5
-                    },
-                    view::BallMode::Docked { bars_left: !left },
-                ),
-                _ => (
-                    if left {
-                        REVEAL + types::BAR_W * 0.5
-                    } else {
-                        BALL_WIN_W - REVEAL - types::BAR_W * 0.5
-                    },
-                    view::BallMode::Full,
-                ),
-            };
-            view::ball(ui, bar_cx, BALL_WIN_H * 0.5, data, mode);
-            handle_input(ui, state, panel_visible, auto_hide, outcome);
-        });
-
-    // 几何对账:与期望差异超阈值才重发命令(防每帧 SetWindowPos 抖动)
-    let ctx = ui.ctx();
-    if let Some(r) = ctx.input(|i| i.viewport().outer_rect) {
-        if (r.width() - BALL_WIN_W).abs() > GEOM_EPSILON
-            || (r.height() - BALL_WIN_H).abs() > GEOM_EPSILON
-        {
-            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
-                BALL_WIN_W, BALL_WIN_H,
-            )));
-        }
-        let want = dock_pos(state);
-        if (r.left() - want.0).abs() > GEOM_EPSILON || (r.top() - want.1).abs() > GEOM_EPSILON {
-            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
-                want.0, want.1,
-            )));
-        }
-    }
 }
