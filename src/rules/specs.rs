@@ -29,6 +29,12 @@ impl RuleSet {
             .collect();
         applicable.sort_by_key(|r| (r.priority, r.id));
 
+        // 本轮连接完整路径的小写化预计算(O(conns) 一次),供全部进程规则复用
+        let conn_paths: Vec<(&str, String)> = conns
+            .iter()
+            .filter_map(|c| c.proc_path.as_ref().map(|p| (p.as_str(), p.to_lowercase())))
+            .collect();
+
         let mut specs = Vec::new();
         for (rank, r) in applicable.iter().enumerate() {
             // weight 布局:15 = 询问 pending / 静默自身放行(WEIGHT_RESERVED_HIGH),
@@ -38,7 +44,8 @@ impl RuleSet {
             let weight = (MAX_WEIGHT - 1 - rank.min(MAX_WEIGHT - 2)) as u8;
             let remote = match r.remote_kind {
                 RemoteKind::Any => None,
-                RemoteKind::Ip => match super::parse_net(&r.remote_value) {
+                // 网段区间取预计算缓存;None = 非法值,与求值一致跳过
+                RemoteKind::Ip => match self.eval_cache.get(&r.id).and_then(|m| m.remote_range) {
                     Some(v) => Some(v),
                     None => continue,
                 },
@@ -48,14 +55,13 @@ impl RuleSet {
                 self.sticky_paths.remove(&r.id);
                 vec![None]
             } else {
+                if let Some(m) = self.eval_cache.get(&r.id)
+                    && !m.process_lower.is_empty()
                 {
-                    let needle = format!("\\{}", r.process.trim().to_lowercase());
-                    let exact = r.process.trim().to_lowercase();
                     let known = self.sticky_paths.entry(r.id).or_default();
-                    for p in conns.iter().filter_map(|c| c.proc_path.as_ref()) {
-                        let lp = p.to_lowercase();
-                        if lp.ends_with(&needle) || lp == exact {
-                            known.insert(p.clone());
+                    for (p, lp) in &conn_paths {
+                        if lp == &m.process_lower || super::ends_with_path(lp, &m.process_lower) {
+                            known.insert((*p).to_owned());
                         }
                     }
                 }

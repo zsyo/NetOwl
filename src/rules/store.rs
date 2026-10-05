@@ -4,8 +4,7 @@
 use rusqlite::Connection as Db;
 use rusqlite::params;
 
-use super::Rule;
-use super::RuleSet;
+use super::{Rule, RuleMatch, RuleSet};
 use crate::storage::history;
 
 impl RuleSet {
@@ -15,6 +14,7 @@ impl RuleSet {
         rule.id = self.next_temp_id;
         self.next_temp_id -= 1;
         rule.priority = self.rules.first().map_or(0, |r| r.priority - 10);
+        self.eval_cache.insert(rule.id, RuleMatch::of(&rule));
         self.rules.insert(0, rule);
     }
 
@@ -46,6 +46,7 @@ impl RuleSet {
             ],
         )?;
         rule.id = db.last_insert_rowid();
+        self.eval_cache.insert(rule.id, RuleMatch::of(&rule));
         self.rules.push(rule);
         Ok(())
     }
@@ -79,6 +80,7 @@ impl RuleSet {
         if old_process.as_deref() != Some(rule.process.as_str()) {
             self.sticky_paths.remove(&rule.id);
         }
+        self.eval_cache.insert(rule.id, RuleMatch::of(rule));
         if let Some(slot) = self.rules.iter_mut().find(|r| r.id == rule.id) {
             *slot = rule.clone();
         }
@@ -89,6 +91,7 @@ impl RuleSet {
     pub fn delete(&mut self, db: &Db, id: i64) -> rusqlite::Result<()> {
         db.execute("DELETE FROM rules WHERE id = ?1", [id])?;
         self.rules.retain(|r| r.id != id);
+        self.eval_cache.remove(&id);
         self.sticky_paths.remove(&id);
         Ok(())
     }

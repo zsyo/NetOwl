@@ -111,43 +111,6 @@ pub struct Rule {
 }
 
 impl Rule {
-    /// 全部条件均满足才命中;非法网段值永不命中(UI 侧已拦截)
-    pub fn matches(&self, req: &MatchReq) -> bool {
-        if self.direction != Direction::Any && self.direction != req.direction {
-            return false;
-        }
-        if let Some(p) = self.proto
-            && p != req.proto
-        {
-            return false;
-        }
-        if self.port != 0 && self.port != req.remote_port {
-            return false;
-        }
-        if self.local_port != 0 && self.local_port != req.local_port {
-            return false;
-        }
-        if !self.process.is_empty() && !match_process(&self.process, req.process, req.proc_path) {
-            return false;
-        }
-        match self.remote_kind {
-            RemoteKind::Any => {}
-            RemoteKind::Ip => {
-                let Some((lo, hi)) = parse_net(&self.remote_value) else {
-                    return false;
-                };
-                if req.remote_ip < lo || req.remote_ip > hi {
-                    return false;
-                }
-            }
-            RemoteKind::Domain => match req.domain {
-                Some(d) if match_domain(&self.remote_value, d) => {}
-                _ => return false,
-            },
-        }
-        true
-    }
-
     /// 构造持久阻断规则(地图面板一键阻断):`remote` 传 None 阻断整个
     /// 进程,传目标 IP 只阻断该进程到此远端(不限端口);方向/协议任意,
     /// process 填映像名(规则语义:映像名或路径结尾)
@@ -180,30 +143,33 @@ impl Rule {
     }
 }
 
-/// 求值输入:从连接与 rDNS 域名构造
-pub struct MatchReq<'a> {
-    pub process: &'a str,
-    pub proc_path: Option<&'a str>,
+/// 求值输入:从连接与 rDNS 域名构造。进程/路径/域名的比较基准在构造时
+/// 小写化一次(每连接一次,供全部规则复用),求值路径零分配
+pub struct MatchReq {
+    /// 进程映像名小写
+    pub process_lower: String,
+    /// 完整路径小写
+    pub proc_path_lower: Option<String>,
+    /// rDNS 域名小写(未解析/无 PTR 为 None)
+    pub domain_lower: Option<String>,
     pub proto: Protocol,
     pub remote_ip: u32,
     pub remote_port: u16,
     /// 本地端口(临时规则的连接级精确匹配用)
     pub local_port: u16,
-    /// rDNS 域名(未解析/无 PTR 为 None)
-    pub domain: Option<&'a str>,
     pub direction: Direction,
 }
 
-impl<'a> MatchReq<'a> {
-    pub fn from_conn(conn: &'a Connection, domain: Option<&'a str>) -> Self {
+impl MatchReq {
+    pub fn from_conn(conn: &Connection, domain: Option<&str>) -> Self {
         MatchReq {
-            process: &conn.process,
-            proc_path: conn.proc_path.as_deref(),
+            process_lower: conn.process.to_lowercase(),
+            proc_path_lower: conn.proc_path.as_deref().map(str::to_lowercase),
+            domain_lower: domain.map(str::to_lowercase),
             proto: conn.proto,
             remote_ip: u32::from(conn.remote_ip),
             remote_port: conn.remote_port,
             local_port: conn.local_port,
-            domain,
             direction: conn_direction(conn),
         }
     }
@@ -246,23 +212,47 @@ pub fn parse_net(input: &str) -> Option<(u32, u32)> {
     }
 }
 
-/// 进程匹配:完整路径结尾(前带分隔符,避免误匹配同级前缀名)或映像名精确相等
-fn match_process(value: &str, process: &str, proc_path: Option<&str>) -> bool {
-    let v = value.trim().to_lowercase();
-    if let Some(path) = proc_path {
-        let p = path.to_lowercase();
-        if p == v || p.ends_with(&format!("\\{v}")) {
-            return true;
-        }
+/// 进程条件命中:规则值与连接侧小写基准比较——完整路径结尾(前带分隔符,
+/// 避免误匹配同级前缀名)或映像名精确相等
+pub(super) fn process_hit(v: &str, name_lower: &str, path_lower: Option<&str>) -> bool {
+    if let Some(p) = path_lower
+        && (p == v || ends_with_path(p, v))
+    {
+        return true;
     }
-    process.to_lowercase() == v
+    name_lower == v
 }
 
-/// 域名匹配:精确相等或子域名后缀(.value)
-fn match_domain(value: &str, host: &str) -> bool {
-    let v = value.trim().to_lowercase();
-    let h = host.to_lowercase();
-    h == v || h.ends_with(&format!(".{v}"))
+/// 路径结尾匹配:p 以分隔符 + v 结尾(字节判定,零分配)
+pub(super) fn ends_with_path(p: &str, v: &str) -> bool {
+    p.len() > v.len() && p.ends_with(v) && p.as_bytes()[p.len() - v.len() - 1] == b'\\'
+}
+
+/// 子域名匹配:精确相等或以 .v 结尾(字节判定,零分配)
+pub(super) fn is_subdomain(h: &str, v: &str) -> bool {
+    h == v || (h.len() > v.len() && h.ends_with(v) && h.as_bytes()[h.len() - v.len() - 1] == b'.')
+}
+
+/// 规则匹配条件的预计算派生数据(经 RuleSet::eval_cache 随规则增删改
+/// 同步刷新,求值路径零分配)
+#[derive(Clone, Debug)]
+struct RuleMatch {
+    process_lower: String,
+    remote_lower: String,
+    /// RemoteKind::Ip 的网段区间;None = 非法值永不命中
+    remote_range: Option<(u32, u32)>,
+}
+
+impl RuleMatch {
+    fn of(r: &Rule) -> Self {
+        RuleMatch {
+            process_lower: r.process.trim().to_lowercase(),
+            remote_lower: r.remote_value.trim().to_lowercase(),
+            remote_range: (r.remote_kind == RemoteKind::Ip)
+                .then(|| parse_net(&r.remote_value))
+                .flatten(),
+        }
+    }
 }
 
 /// 内存规则集(priority 升序、同值按 id),变更同步落库。
@@ -275,6 +265,8 @@ pub struct RuleSet {
     /// 静默拒绝兜底(全通配 Block):仅内存,不入 rules 列表(规则页不显示),
     /// evaluate 在用户规则未命中时返回它——连接标注/地图阻断状态自动联动
     fallback: Option<Rule>,
+    /// 规则求值预计算(id -> 小写化条件与网段区间)
+    eval_cache: HashMap<i64, RuleMatch>,
     /// 进程规则的路径粘滞缓存(规则 id -> 已命中过的完整路径):
     /// 连接被阻断后快照可能抓不到进程行,已展开路径保持,避免
     /// 拦截窗口抖动;规则删除/改进程条件时清理

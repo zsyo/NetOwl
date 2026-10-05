@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use rusqlite::Connection as Db;
 use rusqlite::params;
 
-use super::{Action, Direction, RemoteKind, Rule, RuleSet};
+use super::{Action, Direction, RemoteKind, Rule, RuleMatch, RuleSet};
 use crate::model::Protocol;
 use crate::storage::history;
 
@@ -123,8 +123,10 @@ impl RuleSet {
     }
 
     pub fn load(db: &Db, profile_id: i64) -> RuleSet {
+        let rules = Self::load_rules(db, profile_id);
         RuleSet {
-            rules: Self::load_rules(db, profile_id),
+            eval_cache: rules.iter().map(|r| (r.id, RuleMatch::of(r))).collect(),
+            rules,
             active_profile: profile_id,
             fallback: None,
             sticky_paths: HashMap::new(),
@@ -145,6 +147,7 @@ impl RuleSet {
             temps.len()
         );
         persisted.extend(temps);
+        self.eval_cache = persisted.iter().map(|r| (r.id, RuleMatch::of(r))).collect();
         self.rules = persisted;
     }
 
