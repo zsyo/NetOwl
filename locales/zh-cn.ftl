@@ -320,3 +320,7 @@ settings-datasource = 数据源
 datasource-real = 真实采集
 datasource-mock = 模拟演示
 settings-datasource-hint = 模拟数据仅供演示与测试,切换立即生效并保存到配置文件
+
+# 通用格式后缀
+pid-suffix = (PID {$pid})
+conns-count-suffix = ({$count})

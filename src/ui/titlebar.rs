@@ -95,12 +95,20 @@ fn sys_button(ui: &mut egui::Ui, glyph: &str, danger: bool) -> bool {
     let p = theme::c();
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(BUTTON_W, HEIGHT), Sense::click());
     let hovered = resp.hovered();
+    let pressed = resp.is_pointer_button_down_on();
     if hovered {
-        let bg = if danger { p.danger } else { p.hover_bg };
+        // 按下加深底色(关闭钮按下时警示色更醒目)
+        let bg = match (danger, pressed) {
+            (true, _) => p.danger,
+            (false, true) => p.open_bg,
+            (false, false) => p.hover_bg,
+        };
         ui.painter().rect_filled(rect, 0.0, bg);
     }
     let color = if danger && hovered {
         p.on_accent
+    } else if pressed {
+        p.text
     } else {
         p.text_dim
     };

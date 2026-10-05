@@ -71,7 +71,7 @@ pub fn show(
                 )
                 .show(ui, |ui| {
                     let process = if item.process.is_empty() {
-                        format!("PID {}", item.pid)
+                        i18n.t_with_args("pid-suffix", &[("pid", item.pid.to_string())])
                     } else {
                         item.process.clone()
                     };

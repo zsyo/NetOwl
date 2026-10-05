@@ -319,3 +319,7 @@ settings-datasource = Data source
 datasource-real = Live collection
 datasource-mock = Mock
 settings-datasource-hint = Mock data is for demo and testing only; switching applies immediately and is saved to the config file
+
+# Common format suffixes
+pid-suffix = (PID {$pid})
+conns-count-suffix = ({$count})

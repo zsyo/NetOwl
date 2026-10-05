@@ -53,14 +53,24 @@ pub(super) fn group_row(
         } else {
             icons::CHEVRON_RIGHT
         };
-        let fold = Button::new(
-            RichText::new(arrow)
-                .size(theme::font::MICRO)
-                .color(theme::c().text_dim),
-        )
-        .frame(false)
-        .min_size(Vec2::new(14.0, ROW_H));
-        let fold_clicked = ui.add(fold).clicked();
+        let (fold_rect, fold_resp) =
+            ui.allocate_exact_size(Vec2::new(14.0, ROW_H), egui::Sense::click());
+        if fold_resp.hovered() {
+            ui.painter()
+                .rect_filled(fold_rect, 0.0, theme::c().hover_bg);
+        }
+        ui.painter().text(
+            fold_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            arrow,
+            egui::FontId::proportional(theme::font::MICRO),
+            if fold_resp.hovered() {
+                theme::c().text
+            } else {
+                theme::c().text_dim
+            },
+        );
+        let fold_clicked = fold_resp.clicked();
         // 未展开(remove 失败)则展开,已展开则收起
         if fold_clicked && !panels.expanded.remove(&g.name) {
             panels.expanded.insert(g.name.clone());

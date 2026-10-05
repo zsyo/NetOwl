@@ -162,13 +162,19 @@ pub(crate) fn proc_rank_row(
         }
         let name_w = (ui.available_width() - in_w - out_w - 4.0 * 3.0).max(60.0);
         ui.allocate_ui(egui::vec2(name_w, 20.0), |ui| {
-            let text = RichText::new(format!("{display} ({})", g.conns.len()))
-                .size(theme::font::SM)
-                .color(if selected {
-                    theme::c().accent
-                } else {
-                    theme::c().text
-                });
+            let text = RichText::new(format!(
+                "{display} {}",
+                i18n.t_with_args(
+                    "conns-count-suffix",
+                    &[("count", g.conns.len().to_string())]
+                )
+            ))
+            .size(theme::font::SM)
+            .color(if selected {
+                theme::c().accent
+            } else {
+                theme::c().text
+            });
             let btn = Button::new(text)
                 .truncate()
                 .frame(false)

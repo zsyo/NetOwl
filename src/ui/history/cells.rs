@@ -80,11 +80,16 @@ pub(super) fn proc_cell(
         let tex = path.and_then(|p| icon_tex.get(p)).and_then(|t| t.as_ref());
         widgets::process::proc_icon(ui, tex, default_icon_tex, 16.0);
         let text = match (name.is_empty(), pid) {
-            (true, Some(pid)) => {
-                format!("{} (PID {pid})", i18n.t("conn-proc-unknown"))
-            }
+            (true, Some(pid)) => format!(
+                "{} {}",
+                i18n.t("conn-proc-unknown"),
+                i18n.t_with_args("pid-suffix", &[("pid", pid.to_string())])
+            ),
             (true, None) => i18n.t("conn-proc-unknown"),
-            (false, Some(pid)) => format!("{name} ({pid})"),
+            (false, Some(pid)) => format!(
+                "{name} {}",
+                i18n.t_with_args("pid-suffix", &[("pid", pid.to_string())])
+            ),
             (false, None) => name.to_owned(),
         };
         ui.add(

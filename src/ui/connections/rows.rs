@@ -48,7 +48,11 @@ pub(super) fn conn_row(
     );
     row_resp.context_menu(|ui| menu::conn_menu(ui, conn, elevated, i18n));
     let process = if conn.process.is_empty() {
-        format!("{} (PID {})", i18n.t("conn-proc-unknown"), conn.pid)
+        format!(
+            "{} {}",
+            i18n.t("conn-proc-unknown"),
+            i18n.t_with_args("pid-suffix", &[("pid", conn.pid.to_string())])
+        )
     } else {
         conn.process.clone()
     };

@@ -230,6 +230,11 @@ fn panel_toggle(ui: &mut egui::Ui, on: &mut bool, glyph: &str, tip: &str) {
                 .min_size(egui::vec2(24.0, 24.0)),
         )
         .on_hover_text(tip);
+    // frame(false) 无系统悬停底色,自绘垫底(绘制顺序在后,悬停帧可见)
+    if resp.hovered() {
+        ui.painter()
+            .rect_filled(resp.rect, theme::RADIUS_SM, theme::c().hover_bg);
+    }
     if resp.clicked() {
         *on = !*on;
     }

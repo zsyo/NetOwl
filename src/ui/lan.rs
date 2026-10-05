@@ -83,6 +83,10 @@ pub(super) fn lan_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                             egui::Id::new(("lan_row", &d.mac)),
                             egui::Sense::click(),
                         );
+                        // 行悬停垫底(与其他表格页一致;斑马纹之上)
+                        if row_resp.hovered() {
+                            ui.painter().rect_filled(row_rect, 0.0, theme::c().hover_bg);
+                        }
                         row_resp.context_menu(|ui| device_menu(ui, &d.mac, d.ip, i18n));
                         widgets::table::fixed_cell(ui, flex_w, 18.0, |ui| {
                             ui.add(
