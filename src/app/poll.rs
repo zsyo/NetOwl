@@ -121,8 +121,9 @@ impl NetOwlApp {
         let keys: Vec<String> = self
             .conns
             .iter()
-            .filter_map(|c| c.proc_path.clone())
-            .filter(|p| !self.icon_tex.contains_key(p))
+            .filter_map(|c| c.proc_path.as_deref())
+            .filter(|p| !self.icon_tex.contains_key(*p))
+            .map(str::to_owned)
             .collect();
         for path in keys {
             if let collector::IconState::Ready(img) = self.collector.icon_image(&path) {
@@ -169,15 +170,13 @@ impl NetOwlApp {
         // spec 互斥:deny 下询问关闭,pending 不存在
         if self.config.general.silent_mode == "deny" && self.collector.kind() == CollectorKind::Real
         {
-            let self_path = std::env::current_exe()
-                .ok()
-                .map(|p| p.to_string_lossy().into_owned());
+            // 自身路径启动时缓存一次(进程路径不变),不逐秒系统调用
             for layer in [wfp::Layer::Out, wfp::Layer::In] {
                 specs.push(wfp::Spec {
                     layer,
                     weight: rules::WEIGHT_RESERVED_HIGH,
                     block: false,
-                    app_path: self_path.clone(),
+                    app_path: self.self_path.clone(),
                     remote: None,
                     proto: None,
                     port: None,

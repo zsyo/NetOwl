@@ -53,6 +53,8 @@ pub struct Rdns {
     pending: HashSet<Ipv4Addr>,
     /// 待派发队列(活跃且缓存过期的 IP)
     queue: VecDeque<Ipv4Addr>,
+    /// 队列成员集合(与 queue 同步维护,查重免线性扫描)
+    queued: HashSet<Ipv4Addr>,
     cache: HashMap<Ipv4Addr, Entry>,
     last_dispatch: Instant,
 }
@@ -65,6 +67,7 @@ impl Rdns {
             rx,
             pending: HashSet::new(),
             queue: VecDeque::new(),
+            queued: HashSet::new(),
             cache: HashMap::new(),
             last_dispatch: Instant::now(),
         }
@@ -96,6 +99,7 @@ impl Rdns {
 
         // 连接已消失的不再派发;不活跃且过期的缓存释放,防止无限积累
         self.queue.retain(|ip| wanted.contains(ip));
+        self.queued.retain(|ip| wanted.contains(ip));
         self.cache
             .retain(|ip, e| wanted.contains(ip) || !e.expired(now));
 
@@ -104,7 +108,8 @@ impl Rdns {
                 Some(e) => e.expired(now),
                 None => true,
             };
-            if stale && !self.pending.contains(ip) && !self.queue.contains(ip) {
+            if stale && !self.pending.contains(ip) && !self.queued.contains(ip) {
+                self.queued.insert(*ip);
                 self.queue.push_back(*ip);
             }
         }
@@ -118,6 +123,7 @@ impl Rdns {
             && let Some(ip) = self.queue.pop_front()
         {
             ensure_winsock();
+            self.queued.remove(&ip);
             self.pending.insert(ip);
             dispatched += 1;
             let tx = self.tx.clone();

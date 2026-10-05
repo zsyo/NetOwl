@@ -242,27 +242,34 @@ fn write_batch(conn: &mut Db, events: &[ClosedConn]) {
             return;
         }
     };
-    for e in events {
-        if let Err(e) = tx.execute(
-            "INSERT INTO conn_events (event_id, first_seen, last_seen, pid, process, proc_path, signed, proto, remote_ip, remote_port, bytes_in, bytes_out)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-            params![
-                e.event_id as i64,
-                e.first_seen as i64,
-                e.last_seen as i64,
-                e.pid,
-                e.process,
-                e.proc_path,
-                e.signed.as_str(),
-                e.proto.as_str(),
-                u32::from(e.remote_ip),
-                e.remote_port,
-                e.bytes_in as i64,
-                e.bytes_out as i64
-            ],
-        ) {
-            tracing::warn!("[History] 写入连接历史失败: {e}");
+    let insert = |stmt: &mut rusqlite::Statement, e: &ClosedConn| {
+        stmt.execute(params![
+            e.event_id as i64,
+            e.first_seen as i64,
+            e.last_seen as i64,
+            e.pid,
+            e.process,
+            e.proc_path,
+            e.signed.as_str(),
+            e.proto.as_str(),
+            u32::from(e.remote_ip),
+            e.remote_port,
+            e.bytes_in as i64,
+            e.bytes_out as i64
+        ])
+    };
+    match tx.prepare(
+        "INSERT INTO conn_events (event_id, first_seen, last_seen, pid, process, proc_path, signed, proto, remote_ip, remote_port, bytes_in, bytes_out)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+    ) {
+        Ok(mut stmt) => {
+            for e in events {
+                if let Err(e) = insert(&mut stmt, e) {
+                    tracing::warn!("[History] 写入连接历史失败: {e}");
+                }
+            }
         }
+        Err(e) => tracing::warn!("[History] 预编译写入语句失败: {e}"),
     }
     if let Err(e) = tx.commit() {
         tracing::warn!("[History] 提交历史事务失败: {e}");

@@ -251,7 +251,7 @@ impl TableCollector {
                     && !self.sig_pending.contains(*pid)
             })
             .map(|(pid, meta)| (*pid, meta.path.clone().expect("path is some")))
-            .take(budget.max(SIG_DISPATCH_PER_POLL.min(budget)))
+            .take(budget.min(SIG_DISPATCH_PER_POLL))
             .collect::<Vec<_>>();
         for (pid, path) in candidates {
             if self.sig_pending.len() >= SIG_MAX_INFLIGHT {
@@ -272,7 +272,9 @@ impl Collector for TableCollector {
             self.pending_poll = false;
             self.poll();
         }
-        self.ordered.clone()
+        // 调用方(1s 节流的采集编排)每次取走快照,下轮 poll 重建;
+        // 契约:两次调用间隔不小于 POLL_INTERVAL,取走后不会有读到空的调用
+        std::mem::take(&mut self.ordered)
     }
 
     fn icon_image(&mut self, path: &str) -> IconState {

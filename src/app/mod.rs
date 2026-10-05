@@ -131,6 +131,8 @@ pub struct NetOwlApp {
     etw_poll_at: Instant,
     /// 连接快照上次刷新时刻(1s 节流,高帧率帧内跳过 O(连接数) 逻辑)
     conns_refresh_at: Instant,
+    /// 自身可执行文件路径(启动时缓存一次;静默拒绝模式的自身放行规则用)
+    self_path: Option<String>,
     /// 曾被表快照合并覆盖的 ETW 流键:完结流命中此集合说明表快照
     /// 跟踪器已记录,不按短命连接重复落盘
     etw_seen: HashSet<etw::FlowKey>,

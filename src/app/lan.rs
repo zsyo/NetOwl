@@ -59,15 +59,20 @@ impl LanState {
     /// ARP 条目合并进 lan_devices:新 MAC 插入(日志留痕),已知项刷新
     /// last_seen 与最近已知 IP
     fn merge(&self, db: &rusqlite::Connection, entries: &[lan::ArpEntry], now: u64) {
+        // 现有 MAC 一次读出:免每条设备一次存在性查询,且区分空表与库错误
+        let known: HashSet<String> = match (|| -> rusqlite::Result<HashSet<String>> {
+            let mut stmt = db.prepare("SELECT mac FROM lan_devices")?;
+            let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+            Ok(rows.filter_map(|r| r.ok()).collect())
+        })() {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!("[Lan] 设备表读取失败,本轮合并跳过: {e}");
+                return;
+            }
+        };
         for (ip, mac) in entries {
-            let exists = db
-                .query_row(
-                    "SELECT 1 FROM lan_devices WHERE mac = ?1",
-                    [mac],
-                    |_| Ok(()),
-                )
-                .is_ok();
-            let result = if exists {
+            let result = if known.contains(mac) {
                 db.execute(
                     "UPDATE lan_devices SET last_seen = ?1, ip = ?2 WHERE mac = ?3",
                     params![now as i64, u32::from(*ip) as i64, mac],

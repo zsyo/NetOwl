@@ -131,6 +131,9 @@ impl NetOwlApp {
             etw_poll_at: Instant::now(),
             // 首帧立即拉取快照:把起点回拨一个周期
             conns_refresh_at: Instant::now() - CONNS_REFRESH_INTERVAL,
+            self_path: std::env::current_exe()
+                .ok()
+                .map(|p| p.to_string_lossy().into_owned()),
             etw_seen: HashSet::new(),
             conn_rates: HashMap::new(),
             udp_last_remote: HashMap::new(),

@@ -25,6 +25,8 @@ type RawWndProc = unsafe extern "system" fn(HWND, u32, WPARAM, LPARAM) -> LRESUL
 
 /// 已安装标志(防重复子类化)
 static INSTALLED: AtomicBool = AtomicBool::new(false);
+/// hwnd 缺失告警只发一次(逻辑每帧调用 install,避免找不到窗口时刷屏)
+static WARNED: AtomicBool = AtomicBool::new(false);
 /// 原窗口过程地址;0 = 未安装
 static OLD_WNDPROC: AtomicIsize = AtomicIsize::new(0);
 /// 收尾对象指针(裸指针转 isize 存放,满足 static 的 Send 约束)
@@ -39,7 +41,9 @@ struct Ctx {
 /// 关机时行为回退为未装钩子(数据丢失,与无钩子一致)
 pub fn install(hwnd: isize, tracker: &mut Tracker, writer: &mut Writer) {
     if hwnd == 0 {
-        tracing::warn!("[Shutdown] 未找到主窗口,关机落库钩子未安装");
+        if !WARNED.swap(true, Ordering::AcqRel) {
+            tracing::warn!("[Shutdown] 未找到主窗口,关机落库钩子未安装");
+        }
         return;
     }
     if INSTALLED.swap(true, Ordering::AcqRel) {
