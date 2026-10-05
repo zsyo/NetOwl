@@ -176,10 +176,11 @@ fn toolbar(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n) {
             &i18n.t("log-window-filter"),
             theme::font::BODY,
         ));
-        ui.add(
-            egui::TextEdit::singleline(&mut state.filter)
-                .desired_width(ui.available_width() - 90.0)
-                .hint_text(i18n.t("log-window-filter-placeholder")),
+        crate::ui::widgets::search_box::search_box(
+            ui,
+            &mut state.filter,
+            i18n.t("log-window-filter-placeholder"),
+            ui.available_width() - 90.0,
         );
         if clear.clicked() {
             state.lines.clear();

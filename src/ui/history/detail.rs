@@ -38,24 +38,21 @@ pub(super) fn table(
     let flex_total =
         (table_w - (D_PROTO_W + D_LOC_W + D_SEEN_W + D_DUR_W + D_BYTES_W * 2.0)).max(320.0);
     let flex_w = flex_total * 0.5;
-    egui::Grid::new("history_detail_header")
-        .num_columns(8)
-        .spacing([0.0, 0.0])
-        .show(ui, |ui| {
-            for (key, w, right) in [
-                ("history-col-process", flex_w, false),
-                ("col-proto", D_PROTO_W, false),
-                ("col-remote", flex_w, false),
-                ("col-location", D_LOC_W, false),
-                ("history-col-first", D_SEEN_W, false),
-                ("history-col-duration", D_DUR_W, false),
-                ("col-down-total", D_BYTES_W, true),
-                ("col-up-total", D_BYTES_W, true),
-            ] {
-                widgets::table::header_cell_w(ui, w, &i18n.t(key), right);
-            }
-            ui.end_row();
-        });
+    widgets::table::header_grid(
+        ui,
+        "history_detail_header",
+        &[
+            ("history-col-process", flex_w, false),
+            ("col-proto", D_PROTO_W, false),
+            ("col-remote", flex_w, false),
+            ("col-location", D_LOC_W, false),
+            ("history-col-first", D_SEEN_W, false),
+            ("history-col-duration", D_DUR_W, false),
+            ("col-down-total", D_BYTES_W, true),
+            ("col-up-total", D_BYTES_W, true),
+        ],
+        &|k| i18n.t(k),
+    );
     egui::ScrollArea::vertical().auto_shrink(false).show_rows(
         ui,
         22.0,

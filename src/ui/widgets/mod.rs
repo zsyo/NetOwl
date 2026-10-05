@@ -5,10 +5,12 @@
 
 pub mod badge;
 pub mod bar_chart;
+pub mod button;
 pub mod card;
 pub mod header;
 pub mod menu;
 pub mod process;
+pub mod search_box;
 pub mod segmented;
 pub mod sparkline;
 pub mod table;

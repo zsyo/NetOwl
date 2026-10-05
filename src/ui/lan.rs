@@ -49,17 +49,18 @@ pub(super) fn lan_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     let flex_w = (table_w - (C_MAC_W + C_SEEN_W * 2.0 + C_STATUS_W)).max(120.0);
 
     // 表头固定在滚动区外(与历史页同形态)
-    egui::Grid::new("lan_header")
-        .num_columns(5)
-        .spacing([0.0, 0.0])
-        .show(ui, |ui| {
-            widgets::table::header_cell_w(ui, flex_w, &i18n.t("lan-col-ip"), false);
-            widgets::table::header_cell_w(ui, C_MAC_W, &i18n.t("lan-col-mac"), false);
-            widgets::table::header_cell_w(ui, C_SEEN_W, &i18n.t("lan-col-last"), false);
-            widgets::table::header_cell_w(ui, C_SEEN_W, &i18n.t("history-col-first"), false);
-            widgets::table::header_cell_w(ui, C_STATUS_W, &i18n.t("lan-col-status"), false);
-            ui.end_row();
-        });
+    widgets::table::header_grid(
+        ui,
+        "lan_header",
+        &[
+            ("lan-col-ip", flex_w, false),
+            ("lan-col-mac", C_MAC_W, false),
+            ("lan-col-last", C_SEEN_W, false),
+            ("history-col-first", C_SEEN_W, false),
+            ("lan-col-status", C_STATUS_W, false),
+        ],
+        &|k| i18n.t(k),
+    );
     egui::ScrollArea::vertical()
         .auto_shrink(false)
         .show(ui, |ui| {

@@ -39,3 +39,15 @@ pub fn badge(ui: &mut egui::Ui, text: &str, kind: BadgeKind) -> egui::Response {
         })
         .response
 }
+
+/// 定宽格内居中徽章:徽章为自适应宽 Frame,egui 的格内居中布局对其
+/// 不生效(Frame 实测贴格左),先测文字宽再补前导间距
+/// (16.0 = badge 水平内边距 Margin::symmetric(8, ..) 两侧之和)
+pub fn badge_centered(ui: &mut egui::Ui, w: f32, h: f32, text: &str, kind: BadgeKind) {
+    let badge_w = crate::ui::text_width(ui, text, theme::font::MICRO) + 16.0;
+    super::table::fixed_cell(ui, w, h, |ui| {
+        let content_w = w - 2.0 * super::table::CELL_PAD_X;
+        ui.add_space(((content_w - badge_w) / 2.0).max(0.0));
+        badge(ui, text, kind);
+    });
+}

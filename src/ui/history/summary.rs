@@ -82,40 +82,48 @@ pub(super) fn table(
     let summary_sort = &mut state.summary_sort;
     // 表头固定在滚动区外(虚拟化行定位不含表头);全部数字列数据右对齐,
     // 表头贴右
-    egui::Grid::new("history_summary_header")
-        .num_columns(5)
-        .spacing([0.0, 0.0])
-        .show(ui, |ui| {
-            widgets::table::header_cell_w(ui, flex_w, &i18n.t("history-col-process"), false);
-            let mut sort_clicked = false;
-            let mut sort_header = |ui: &mut egui::Ui, key: &str, sort: SummarySort, w: f32| {
-                let (cur, asc) = *summary_sort;
-                let r =
-                    widgets::table::header_sort_cell(ui, &i18n.t(key), cur == sort, asc, true, w);
-                if r.clicked() {
-                    *summary_sort = if cur == sort {
-                        (sort, !asc)
-                    } else {
-                        (sort, false)
-                    };
-                    true
-                } else {
-                    false
-                }
-            };
-            for (key, sort, w) in [
-                ("col-up-total", SummarySort::BytesOut, SUM_UP_W),
-                ("col-down-total", SummarySort::BytesIn, SUM_DOWN_W),
-                ("history-col-count", SummarySort::Count, SUM_CNT_W),
-                ("history-col-total", SummarySort::TotalSecs, SUM_DUR_W),
-            ] {
-                sort_clicked |= sort_header(ui, key, sort, w);
-            }
-            if sort_clicked {
-                state.dirty = true;
-            }
-            ui.end_row();
-        });
+    let mut sort_clicked = false;
+    widgets::table::sort_header_grid(
+        ui,
+        "history_summary_header",
+        &[
+            widgets::table::SortCol::new("history-col-process", None::<SummarySort>, flex_w, false),
+            widgets::table::SortCol::new(
+                "col-up-total",
+                Some(SummarySort::BytesOut),
+                SUM_UP_W,
+                true,
+            ),
+            widgets::table::SortCol::new(
+                "col-down-total",
+                Some(SummarySort::BytesIn),
+                SUM_DOWN_W,
+                true,
+            ),
+            widgets::table::SortCol::new(
+                "history-col-count",
+                Some(SummarySort::Count),
+                SUM_CNT_W,
+                true,
+            ),
+            widgets::table::SortCol::new(
+                "history-col-total",
+                Some(SummarySort::TotalSecs),
+                SUM_DUR_W,
+                true,
+            ),
+        ],
+        Some(*summary_sort),
+        |s| {
+            let (cur, asc) = *summary_sort;
+            *summary_sort = if cur == s { (s, !asc) } else { (s, false) };
+            sort_clicked = true;
+        },
+        &|k| i18n.t(k),
+    );
+    if sort_clicked {
+        state.dirty = true;
+    }
     egui::ScrollArea::vertical().auto_shrink(false).show_rows(
         ui,
         22.0,

@@ -11,7 +11,7 @@ mod group_row;
 use std::collections::HashSet;
 
 use eframe::egui;
-use egui::{Button, CornerRadius, Frame, Label, Margin, RichText, ScrollArea, Stroke, TextEdit};
+use egui::{Button, Label, RichText, ScrollArea};
 
 use crate::model::{Connection, Place};
 use crate::net::geoip;
@@ -177,17 +177,11 @@ pub fn list_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
         });
     }
 
-    ui.add(
-        TextEdit::singleline(&mut panels.search)
-            .hint_text(RichText::new(i18n.t("map-panel-search")).size(theme::font::SM))
-            .desired_width(ui.available_width())
-            .frame(
-                Frame::new()
-                    .fill(theme::c().bg_card)
-                    .stroke(Stroke::new(1.0, theme::c().stroke))
-                    .corner_radius(CornerRadius::same(theme::RADIUS_MD))
-                    .inner_margin(Margin::symmetric(8, 6)),
-            ),
+    crate::ui::widgets::search_box::search_box(
+        ui,
+        &mut panels.search,
+        i18n.t("map-panel-search"),
+        ui.available_width(),
     );
 
     ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {

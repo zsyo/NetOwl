@@ -39,62 +39,62 @@ pub(super) fn table(
     let aggregate_sort = &mut state.aggregate_sort;
     // 表头固定在滚动区外(虚拟化行定位不含表头):次数/时长/最近活动
     // 数据左对齐表头贴左,下载/上传总量数据右对齐表头贴右
-    egui::Grid::new("history_aggregate_header")
-        .num_columns(9)
-        .spacing([0.0, 0.0])
-        .show(ui, |ui| {
-            for (key, w) in [
-                ("history-col-process", flex_w),
-                ("col-proto", A_PROTO_W),
-                ("col-remote", flex_w),
-                ("col-location", A_LOC_W),
-            ] {
-                widgets::table::header_cell_w(ui, w, &i18n.t(key), false);
-            }
-            let mut sort_clicked = false;
-            let mut sort_header = |ui: &mut egui::Ui,
-                                   key: &str,
-                                   sort: AggregateSort,
-                                   right: bool,
-                                   w: f32| {
-                let (cur, asc) = *aggregate_sort;
-                let r =
-                    widgets::table::header_sort_cell(ui, &i18n.t(key), cur == sort, asc, right, w);
-                if r.clicked() {
-                    *aggregate_sort = if cur == sort {
-                        (sort, !asc)
-                    } else {
-                        (sort, false)
-                    };
-                    true
-                } else {
-                    false
-                }
-            };
-            for (key, sort, right, w) in [
-                ("history-col-count", AggregateSort::Count, false, A_CNT_W),
-                (
-                    "history-col-total",
-                    AggregateSort::TotalSecs,
-                    false,
-                    A_DUR_W,
-                ),
-                (
-                    "history-col-last",
-                    AggregateSort::LastActive,
-                    false,
-                    A_LAST_W,
-                ),
-                ("col-down-total", AggregateSort::BytesIn, true, A_BYTES_W),
-                ("col-up-total", AggregateSort::BytesOut, true, A_BYTES_W),
-            ] {
-                sort_clicked |= sort_header(ui, key, sort, right, w);
-            }
-            if sort_clicked {
-                state.dirty = true;
-            }
-            ui.end_row();
-        });
+    let mut sort_clicked = false;
+    widgets::table::sort_header_grid(
+        ui,
+        "history_aggregate_header",
+        &[
+            widgets::table::SortCol::new(
+                "history-col-process",
+                None::<AggregateSort>,
+                flex_w,
+                false,
+            ),
+            widgets::table::SortCol::new("col-proto", None, A_PROTO_W, false),
+            widgets::table::SortCol::new("col-remote", None, flex_w, false),
+            widgets::table::SortCol::new("col-location", None, A_LOC_W, false),
+            widgets::table::SortCol::new(
+                "history-col-count",
+                Some(AggregateSort::Count),
+                A_CNT_W,
+                false,
+            ),
+            widgets::table::SortCol::new(
+                "history-col-total",
+                Some(AggregateSort::TotalSecs),
+                A_DUR_W,
+                false,
+            ),
+            widgets::table::SortCol::new(
+                "history-col-last",
+                Some(AggregateSort::LastActive),
+                A_LAST_W,
+                false,
+            ),
+            widgets::table::SortCol::new(
+                "col-down-total",
+                Some(AggregateSort::BytesIn),
+                A_BYTES_W,
+                true,
+            ),
+            widgets::table::SortCol::new(
+                "col-up-total",
+                Some(AggregateSort::BytesOut),
+                A_BYTES_W,
+                true,
+            ),
+        ],
+        Some(*aggregate_sort),
+        |s| {
+            let (cur, asc) = *aggregate_sort;
+            *aggregate_sort = if cur == s { (s, !asc) } else { (s, false) };
+            sort_clicked = true;
+        },
+        &|k| i18n.t(k),
+    );
+    if sort_clicked {
+        state.dirty = true;
+    }
     egui::ScrollArea::vertical().auto_shrink(false).show_rows(
         ui,
         22.0,

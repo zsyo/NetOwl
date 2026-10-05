@@ -11,6 +11,14 @@ use egui::RichText;
 use super::{ConnSort, ConnSortState, UiCtx, conn_visible, icons, theme, widgets};
 use crate::model::Connection;
 
+/// 连接表定宽列(协议/归属/速率/累计/动作):表头与行渲染共用,
+/// mod 与 rows 引用同一组常量防两份定义错位
+pub(super) const C_PROTO_W: f32 = 64.0;
+pub(super) const C_LOC_W: f32 = 112.0;
+pub(super) const C_RATE_W: f32 = 90.0;
+pub(super) const C_TOTAL_W: f32 = 90.0;
+pub(super) const C_ACTION_W: f32 = 70.0;
+
 /// 连接列表页;返回是否直接改动了配置(隐藏本地/局域网开关)。
 /// 末列显示规则求值动作(允许/阻断,规则引擎默认放行)
 pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
@@ -64,11 +72,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                 .size(theme::font::XS)
                 .color(theme::c().text_dim),
         );
-        ui.add(
-            egui::TextEdit::singleline(conn_search)
-                .hint_text(i18n.t("conns-search"))
-                .desired_width(220.0),
-        );
+        widgets::search_box::search_box(ui, conn_search, i18n.t("conns-search"), 220.0);
     });
     ui.add_space(theme::sp::XS);
 
@@ -103,79 +107,53 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         return changed;
     }
 
+    // 表头:可排序列整格可点击(当前排序列高亮并带方向三角),协议/
+    // 远端/动作为纯展示列;数字列数据右对齐表头贴右缘。固定在滚动区外,
+    // 与历史/局域网页同形态;列宽与数据定宽一致(表格总宽在 Grid 之外取:
+    // Grid 闭包内 available_width 被 grid 布局器接管,返回上帧列宽)
+    let flex_w = flex_w_of(ui.available_width());
+    widgets::table::sort_header_grid(
+        ui,
+        "connections_header",
+        &[
+            widgets::table::SortCol::new("col-process", Some(ConnSort::Process), flex_w, false),
+            widgets::table::SortCol::new("col-proto", None, C_PROTO_W, false),
+            widgets::table::SortCol::new("col-remote", None, flex_w, false),
+            widgets::table::SortCol::new("col-location", Some(ConnSort::Location), C_LOC_W, false),
+            widgets::table::SortCol::new("col-down", Some(ConnSort::RateDown), C_RATE_W, true),
+            widgets::table::SortCol::new("col-up", Some(ConnSort::RateUp), C_RATE_W, true),
+            widgets::table::SortCol::new(
+                "col-down-total",
+                Some(ConnSort::TotalDown),
+                C_TOTAL_W,
+                true,
+            ),
+            widgets::table::SortCol::new("col-up-total", Some(ConnSort::TotalUp), C_TOTAL_W, true),
+            widgets::table::SortCol::new("col-action", None, C_ACTION_W, false),
+        ],
+        *conn_sort,
+        |s| {
+            let current: ConnSortState = *conn_sort;
+            *conn_sort = Some(match current {
+                Some((k, asc)) if k == s => (s, !asc),
+                _ => (s, true),
+            });
+        },
+        &|k| i18n.t(k),
+    );
+
     egui::ScrollArea::vertical()
         .auto_shrink(false)
         .show(ui, |ui| {
             let table_left = ui.max_rect().left();
             let table_right = ui.max_rect().right();
-            // 表格总宽必须在 Grid 之外取:Grid 闭包内 available_width 被
-            // grid 布局器接管,返回当前列宽(上帧值)而非总宽
-            let table_w = ui.available_width();
             egui::Grid::new("connections_grid")
                 .num_columns(9)
                 .striped(true)
                 .spacing([0.0, widgets::table::ROW_SPACING_Y])
                 .show(ui, |ui| {
-                    // 定宽列(容纳表头与内容上限)+ 进程/远端弹性列:窗口放大时
-                    // 表格铺满中央区,弹性列长文本 Truncate 逐步展示;
-                    // 列贴列布局,内容间隔由单元格水平内边距形成
-                    const C_PROTO_W: f32 = 64.0;
-                    const C_LOC_W: f32 = 112.0;
-                    const C_RATE_W: f32 = 90.0;
-                    const C_TOTAL_W: f32 = 90.0;
-                    const C_ACTION_W: f32 = 70.0;
-                    let flex_total = (table_w
-                        - (C_PROTO_W + C_LOC_W + C_RATE_W * 2.0 + C_TOTAL_W * 2.0 + C_ACTION_W))
-                        .max(320.0);
-                    let flex_w = flex_total * 0.5;
-                    // 表头:可排序列整格可点击(当前排序列高亮并带方向三角),
-                    // 协议/远端/动作为纯展示列,不给手型光标(不可点);
-                    // 数字列数据右对齐,表头同步贴列右缘(列宽与数据定宽一致)
-                    let mut header = |ui: &mut egui::Ui,
-                                      key: &str,
-                                      sort: Option<ConnSort>,
-                                      right: bool,
-                                      w: f32| {
-                        let active = conn_sort.is_some_and(|(k, _)| Some(k) == sort);
-                        match sort {
-                            Some(s) => {
-                                let ascending = conn_sort.is_some_and(|(_, asc)| asc);
-                                let r = widgets::table::header_sort_cell(
-                                    ui,
-                                    &i18n.t(key),
-                                    active,
-                                    ascending,
-                                    right,
-                                    w,
-                                );
-                                if r.clicked() {
-                                    let current: ConnSortState = *conn_sort;
-                                    *conn_sort = Some(match current {
-                                        Some((k, asc)) if k == s => (s, !asc),
-                                        _ => (s, true),
-                                    });
-                                }
-                            }
-                            None => widgets::table::header_cell_w(ui, w, &i18n.t(key), right),
-                        }
-                    };
-                    header(ui, "col-process", Some(ConnSort::Process), false, flex_w);
-                    header(ui, "col-proto", None, false, C_PROTO_W);
-                    header(ui, "col-remote", None, false, flex_w);
-                    header(ui, "col-location", Some(ConnSort::Location), false, C_LOC_W);
-                    header(ui, "col-down", Some(ConnSort::RateDown), true, C_RATE_W);
-                    header(ui, "col-up", Some(ConnSort::RateUp), true, C_RATE_W);
-                    header(
-                        ui,
-                        "col-down-total",
-                        Some(ConnSort::TotalDown),
-                        true,
-                        C_TOTAL_W,
-                    );
-                    header(ui, "col-up-total", Some(ConnSort::TotalUp), true, C_TOTAL_W);
-                    header(ui, "col-action", None, false, C_ACTION_W);
-                    ui.end_row();
-
+                    // 进程/远端弹性列长文本 Truncate 逐步展示;列贴列布局,
+                    // 内容间隔由单元格水平内边距形成
                     for conn in shown {
                         rows::conn_row(
                             ui,
@@ -196,4 +174,10 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                 });
         });
     changed
+}
+
+/// 进程/远端两弹性列的单列宽:表格总宽减定宽列均分,窗口过窄时兜底 320
+fn flex_w_of(table_w: f32) -> f32 {
+    ((table_w - (C_PROTO_W + C_LOC_W + C_RATE_W * 2.0 + C_TOTAL_W * 2.0 + C_ACTION_W)).max(320.0))
+        * 0.5
 }

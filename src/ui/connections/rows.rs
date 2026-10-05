@@ -31,11 +31,7 @@ pub(super) fn conn_row(
     flex_w: f32,
     elevated: bool,
 ) {
-    const C_PROTO_W: f32 = 64.0;
-    const C_LOC_W: f32 = 112.0;
-    const C_RATE_W: f32 = 90.0;
-    const C_TOTAL_W: f32 = 90.0;
-    const C_ACTION_W: f32 = 70.0;
+    use super::{C_ACTION_W, C_LOC_W, C_PROTO_W, C_RATE_W, C_TOTAL_W};
     let row_top = ui.cursor().top();
     conn_row_hover.begin(ui, table_left, table_right, row_top);
     // 行整格右键菜单(Sense::click 使行级 hit-test 胜过

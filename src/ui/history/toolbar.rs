@@ -84,17 +84,17 @@ pub(super) fn toolbar(
             });
 
         // 进程 / 远端筛选
-        let process = ui.add(
-            egui::TextEdit::singleline(&mut state.process)
-                .hint_text(i18n.t("history-filter-process"))
-                .font(egui::FontId::proportional(theme::font::BODY))
-                .desired_width(110.0),
+        let process = widgets::search_box::search_box(
+            ui,
+            &mut state.process,
+            i18n.t("history-filter-process"),
+            110.0,
         );
-        let remote = ui.add(
-            egui::TextEdit::singleline(&mut state.remote)
-                .hint_text(i18n.t("history-filter-remote"))
-                .font(egui::FontId::proportional(theme::font::BODY))
-                .desired_width(110.0),
+        let remote = widgets::search_box::search_box(
+            ui,
+            &mut state.remote,
+            i18n.t("history-filter-remote"),
+            110.0,
         );
 
         // 协议

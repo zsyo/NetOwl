@@ -8,7 +8,7 @@ use rusqlite::Connection as Db;
 
 use crate::i18n::I18n;
 use crate::rules::RuleSet;
-use crate::ui::{icons, theme};
+use crate::ui::{icons, theme, widgets};
 
 use super::rules::Feedback;
 
@@ -217,26 +217,19 @@ fn profile_row(
         if ui.add_enabled(!is_current, del_btn).clicked() {
             state.confirm_delete = Some((id, name.to_owned()));
         }
-        if icon_btn(ui, icons::COPY).clicked() {
+        if widgets::button::icon_btn(ui, icons::COPY, None, false, true).clicked() {
             let name = i18n.t_with_args("rules-profile-copy-name", &[("name", name.to_owned())]);
             match RuleSet::copy_profile(db, id, &name) {
                 Ok(_) => *done = Some((false, "复制", name)),
                 Err(e) => *done = Some((true, "复制", e.to_string())),
             }
         }
-        if icon_btn(ui, icons::PENCIL).clicked() {
+        if widgets::button::icon_btn(ui, icons::PENCIL, None, false, true).clicked() {
             state.renaming = Some(id);
             state.draft = name.to_owned();
         }
     });
     let _ = rules;
-}
-
-/// 图标操作按钮(弹窗内档位行操作);删除当前档时调用方置灰
-fn icon_btn(ui: &mut egui::Ui, glyph: &str) -> egui::Response {
-    ui.add(egui::Button::new(
-        RichText::new(glyph.to_owned()).size(theme::font::BODY),
-    ))
 }
 
 /// 草稿非空校验并取出(trim 后);空输入不动作

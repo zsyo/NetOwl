@@ -2,7 +2,7 @@
 //! 删除后立即结束本帧表格防索引越界。
 
 use eframe::egui;
-use egui::{Align2, CornerRadius, FontId, Label, RichText};
+use egui::{Label, RichText};
 use rusqlite::Connection as Db;
 
 use super::PageState;
@@ -10,7 +10,7 @@ use super::draft::Draft;
 use super::labels;
 use crate::i18n::I18n;
 use crate::rules::{Action, RuleSet};
-use crate::ui::{icons, text_width, theme, widgets};
+use crate::ui::{icons, theme, widgets};
 
 /// 表格列宽(逻辑点);表头与数据列同宽,内容居中。
 /// 列贴列布局(Grid spacing.x = 0),内容与列缘间距由单元格内边距
@@ -42,37 +42,6 @@ fn header_cell(ui: &mut egui::Ui, w: f32, text: String) {
                 .color(theme::c().text_dim),
         ),
     );
-}
-
-/// 图标操作钮:24px 方形,悬停显底色;danger 用于删除(悬停警示)
-fn icon_btn(ui: &mut egui::Ui, glyph: &str, tip: String, danger: bool) -> egui::Response {
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(24.0, 22.0), egui::Sense::click());
-    if resp.hovered() {
-        let bg = if danger {
-            theme::c().danger.gamma_multiply(0.12)
-        } else {
-            theme::c().hover_bg
-        };
-        ui.painter()
-            .rect_filled(rect, CornerRadius::same(theme::RADIUS_SM), bg);
-    }
-    let color = if resp.hovered() {
-        if danger {
-            theme::c().danger
-        } else {
-            theme::c().text
-        }
-    } else {
-        theme::c().text_dim
-    };
-    ui.painter().text(
-        rect.center(),
-        Align2::CENTER_CENTER,
-        glyph,
-        FontId::proportional(theme::font::SM),
-        color,
-    );
-    resp.on_hover_text(tip)
 }
 
 /// 规则表(自上而下即优先级从高到低)
@@ -169,17 +138,13 @@ pub(super) fn rules_table(
                                 ("rule-action-block", widgets::badge::BadgeKind::Danger)
                             }
                         };
-                        // 徽章为自适应宽 Frame:定宽格内容区(列宽 - 2×CELL_PAD_X)
-                        // 内手动 add_space 水平居中(egui main Center 对 Frame 不生效,
-                        // 实测贴格左;垂直居中由格 26=行高承担)。
-                        // 徽章宽 = 文字宽 + 水平内边距 16(Margin::symmetric(8, ..))
-                        let badge_text = i18n.t(action_key);
-                        let badge_w = text_width(ui, &badge_text, theme::font::MICRO) + 16.0;
-                        let content_w = COL_ACTION - 2.0 * widgets::table::CELL_PAD_X;
-                        widgets::table::fixed_cell(ui, COL_ACTION, 26.0, |ui| {
-                            ui.add_space(((content_w - badge_w) / 2.0).max(0.0));
-                            widgets::badge::badge(ui, &badge_text, action_kind);
-                        });
+                        widgets::badge::badge_centered(
+                            ui,
+                            COL_ACTION,
+                            26.0,
+                            &i18n.t(action_key),
+                            action_kind,
+                        );
                         widgets::table::fixed_cell(ui, COL_DIRECTION, 18.0, |ui| {
                             ui.add_sized(
                                 [COL_DIRECTION - 2.0 * widgets::table::CELL_PAD_X, 18.0],
@@ -190,16 +155,13 @@ pub(super) fn rules_table(
                             );
                         });
                         let proto_text = labels::proto_name(i18n, rule.proto);
-                        let proto_w = text_width(ui, &proto_text, theme::font::MICRO) + 16.0;
-                        let content_w = COL_PROTO - 2.0 * widgets::table::CELL_PAD_X;
-                        widgets::table::fixed_cell(ui, COL_PROTO, 26.0, |ui| {
-                            ui.add_space(((content_w - proto_w) / 2.0).max(0.0));
-                            widgets::badge::badge(
-                                ui,
-                                &proto_text,
-                                widgets::badge::BadgeKind::Neutral,
-                            );
-                        });
+                        widgets::badge::badge_centered(
+                            ui,
+                            COL_PROTO,
+                            26.0,
+                            &proto_text,
+                            widgets::badge::BadgeKind::Neutral,
+                        );
                         widgets::table::fixed_cell(ui, flex_w, 18.0, |ui| {
                             ui.add_sized(
                                 [flex_w - 2.0 * widgets::table::CELL_PAD_X, 18.0],
@@ -231,22 +193,52 @@ pub(super) fn rules_table(
                         });
                         widgets::table::fixed_cell(ui, COL_OPS, 26.0, |ui| {
                             ui.style_mut().spacing.item_spacing.x = 2.0;
-                            if icon_btn(ui, icons::ARROW_UP, i18n.t("rules-move-up"), false)
-                                .clicked()
+                            // 首行禁上移、末行禁下移(边界置灰,不可点)
+                            let last = i + 1 == rules.rules.len();
+                            if widgets::button::icon_btn(
+                                ui,
+                                icons::ARROW_UP,
+                                Some(i18n.t("rules-move-up")),
+                                false,
+                                i > 0,
+                            )
+                            .clicked()
                                 && let Err(e) = rules.move_rule(db, rule.id, -1)
                             {
                                 tracing::warn!("[Rules] 上移规则 {} 失败: {e}", rule.id);
                             }
-                            if icon_btn(ui, icons::ARROW_DOWN, i18n.t("rules-move-down"), false)
-                                .clicked()
+                            if widgets::button::icon_btn(
+                                ui,
+                                icons::ARROW_DOWN,
+                                Some(i18n.t("rules-move-down")),
+                                false,
+                                !last,
+                            )
+                            .clicked()
                                 && let Err(e) = rules.move_rule(db, rule.id, 1)
                             {
                                 tracing::warn!("[Rules] 下移规则 {} 失败: {e}", rule.id);
                             }
-                            if icon_btn(ui, icons::PENCIL, i18n.t("rules-edit"), false).clicked() {
+                            if widgets::button::icon_btn(
+                                ui,
+                                icons::PENCIL,
+                                Some(i18n.t("rules-edit")),
+                                false,
+                                true,
+                            )
+                            .clicked()
+                            {
                                 state.draft = Some(Draft::from_rule(&rule));
                             }
-                            if icon_btn(ui, icons::TRASH, i18n.t("rules-delete"), true).clicked() {
+                            if widgets::button::icon_btn(
+                                ui,
+                                icons::TRASH,
+                                Some(i18n.t("rules-delete")),
+                                true,
+                                true,
+                            )
+                            .clicked()
+                            {
                                 if let Err(e) = rules.delete(db, rule.id) {
                                     tracing::warn!("[Rules] 删除规则 {} 失败: {e}", rule.id);
                                 }
