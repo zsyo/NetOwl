@@ -149,11 +149,10 @@ fn rate_card(
         .corner_radius(CornerRadius::same(theme::RADIUS_MD))
         .inner_margin(Margin::same(theme::sp::MD as i8))
         .show(ui, |ui| {
-            let down: Vec<u64> = hist.iter().map(|d| d.0).collect();
-            let up: Vec<u64> = hist.iter().map(|d| d.1).collect();
             widgets::sparkline::sparklines(
                 ui,
-                &[(&down, p.inbound), (&up, p.outbound)],
+                hist,
+                (p.inbound, p.outbound),
                 egui::vec2(ui.available_width(), 34.0),
             );
             ui.add_space(theme::sp::XS);

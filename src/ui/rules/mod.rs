@@ -15,8 +15,8 @@ use rusqlite::Connection as Db;
 
 use super::profile_manager;
 use crate::i18n::I18n;
-use crate::rules::RuleSet;
 use crate::rules::wfp;
+use crate::rules::{Profile, RuleSet};
 use crate::ui::{TOOLBAR_ROW_H, icons, theme, widgets};
 
 /// 工具栏反馈消息展示时长
@@ -29,6 +29,9 @@ pub struct PageState {
     pub feedback: Option<Feedback>,
     /// 配置档管理弹窗状态
     pub profiles: profile_manager::ProfileMgrState,
+    /// 档位下拉列表缓存:每帧 list_profiles 查库改按需重载;管理弹窗
+    /// 打开期间直接失效(弹窗内增删改档),关闭后下一帧重建
+    pub(crate) profiles_cache: Option<Vec<Profile>>,
 }
 
 impl PageState {
@@ -37,6 +40,7 @@ impl PageState {
             draft: None,
             feedback: None,
             profiles: profile_manager::ProfileMgrState::default(),
+            profiles_cache: None,
         }
     }
 }
@@ -97,7 +101,10 @@ pub fn show(
         }
         ui.add_space(theme::sp::MD);
         // 档位切换:重载目标档规则(临时规则保留),写 config 落盘
-        let profiles = RuleSet::list_profiles(db);
+        if state.profiles.open || state.profiles_cache.is_none() {
+            state.profiles_cache = Some(RuleSet::list_profiles(db));
+        }
+        let profiles = state.profiles_cache.as_ref().unwrap();
         let current_name = profiles
             .iter()
             .find(|p| p.id == rules.active_profile)
