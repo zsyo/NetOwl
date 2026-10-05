@@ -50,6 +50,20 @@ pub(super) fn section(ui: &mut egui::Ui, config: &mut Config, i18n: &I18n, chang
             ui.add_space(theme::sp::SM);
             setting_row(
                 ui,
+                &i18n.t("settings-lan-notify"),
+                &i18n.t("settings-lan-notify-hint"),
+                |ui| {
+                    *changed |= widgets::toggle::toggle_switch(
+                        ui,
+                        &mut config.general.lan_notify,
+                        egui::Id::new("settings-lan-notify-toggle"),
+                    )
+                    .changed();
+                },
+            );
+            ui.add_space(theme::sp::SM);
+            setting_row(
+                ui,
                 &i18n.t("settings-history-days"),
                 &i18n.t("settings-history-days-hint"),
                 |ui| {

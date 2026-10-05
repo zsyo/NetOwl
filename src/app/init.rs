@@ -134,6 +134,7 @@ impl NetOwlApp {
             self_path: std::env::current_exe()
                 .ok()
                 .map(|p| p.to_string_lossy().into_owned()),
+            toasts: Vec::new(),
             etw_seen: HashSet::new(),
             conn_rates: HashMap::new(),
             udp_last_remote: HashMap::new(),

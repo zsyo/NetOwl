@@ -60,7 +60,15 @@ impl eframe::App for NetOwlApp {
         );
         self.ensure_collector();
         self.poll_local_ip();
-        self.lan.poll(&self.history_db);
+        // 新设备接入通知(设置页可关):基线轮之后的插入事件入 toast 队列
+        for (ip, mac) in self.lan.poll(&self.history_db) {
+            if self.config.general.lan_notify {
+                let text = self
+                    .i18n
+                    .t_with_args("lan-notify-toast", &[("ip", ip.to_string()), ("mac", mac)]);
+                crate::ui::toast::push(&mut self.toasts, crate::ui::toast::ToastKind::Info, text);
+            }
+        }
         self.poll_traffic(ctx);
         self.poll_conns(ctx);
         self.writer.set_retention(self.config.general.history_days);
@@ -175,6 +183,9 @@ impl eframe::App for NetOwlApp {
 
         // 悬浮窗(独立 viewport;主窗口隐藏时低频帧仍维持显示与数据刷新)
         self.show_floating_ball(ui);
+
+        // 右下角 toast 通知(新设备接入/用量配额告警)
+        crate::ui::toast::show(ui.ctx(), &mut self.toasts);
 
         if config_changed {
             self.mark_config_dirty();

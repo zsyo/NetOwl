@@ -323,3 +323,8 @@ settings-datasource-hint = Mock data is for demo and testing only; switching app
 # Common format suffixes
 pid-suffix = (PID {$pid})
 conns-count-suffix = ({$count})
+
+# New device notification
+lan-notify-toast = New device joined: {$ip}
+settings-lan-notify = New device alert
+settings-lan-notify-hint = Show a toast when a new device joins the LAN

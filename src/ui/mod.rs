@@ -15,6 +15,7 @@ pub mod profile_manager;
 pub mod rules;
 pub mod theme;
 pub mod titlebar;
+pub mod toast;
 pub mod widgets;
 
 mod connections;

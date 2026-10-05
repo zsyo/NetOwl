@@ -94,6 +94,9 @@ pub struct GeneralConfig {
     /// 开机自启动(HKCU Run 键):登录后静默启动到托盘,主窗口不弹出
     #[serde(default)]
     pub autostart: bool,
+    /// 新设备接入提醒(局域网出现新 ARP 设备时右下角 toast 通知)
+    #[serde(default = "default_true")]
+    pub lan_notify: bool,
     /// 日志级别:off/error/warn/info/debug/trace(设置页可调,立即生效)
     #[serde(default = "default_log_level")]
     pub log_level: String,
@@ -117,6 +120,7 @@ impl Default for GeneralConfig {
             profile_id: default_profile(),
             tray_pinned: false,
             autostart: false,
+            lan_notify: true,
             log_level: default_log_level(),
             log_to_file: false,
         }

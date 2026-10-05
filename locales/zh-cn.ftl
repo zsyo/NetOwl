@@ -324,3 +324,8 @@ settings-datasource-hint = 模拟数据仅供演示与测试,切换立即生效�
 # 通用格式后缀
 pid-suffix = (PID {$pid})
 conns-count-suffix = ({$count})
+
+# 新设备接入提醒
+lan-notify-toast = 新设备接入 {$ip}
+settings-lan-notify = 新设备接入提醒
+settings-lan-notify-hint = 局域网出现新设备时右下角通知

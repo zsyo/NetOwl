@@ -23,6 +23,9 @@ const NEW_WINDOW: u64 = 24 * 3600;
 pub struct LanState {
     devices: Vec<DeviceRow>,
     poll_at: Instant,
+    /// 首轮基线:启动时库里已有设备(或首轮 ARP 全量入库)不视为
+    /// "新接入",基线后才产生通知事件
+    baseline_done: bool,
 }
 
 impl LanState {
@@ -30,6 +33,7 @@ impl LanState {
         LanState {
             devices: Vec::new(),
             poll_at: Instant::now() - POLL_INTERVAL,
+            baseline_done: false,
         }
     }
 
@@ -38,27 +42,36 @@ impl LanState {
         &self.devices
     }
 
-    /// 轮询:查询 ARP 表 -> 合并设备表 -> 重建视图;查询失败保留旧视图
-    pub fn poll(&mut self, db: &rusqlite::Connection) {
+    /// 轮询:查询 ARP 表 -> 合并设备表 -> 重建视图;查询失败保留旧视图。
+    /// 返回本轮新接入的设备(基线轮不计),供通知层使用
+    pub fn poll(&mut self, db: &rusqlite::Connection) -> Vec<(Ipv4Addr, String)> {
         if self.poll_at.elapsed() < POLL_INTERVAL {
-            return;
+            return Vec::new();
         }
         self.poll_at = Instant::now();
         let entries = match lan::query_arp() {
             Ok(e) => e,
             Err(e) => {
                 tracing::warn!("[Lan] {e}");
-                return;
+                return Vec::new();
             }
         };
         let now = unix_now();
-        self.merge(db, &entries, now);
+        let fresh = self.merge(db, &entries, now);
+        self.baseline_done = true;
         self.devices = self.load_view(db, &entries, now);
+        fresh
     }
 
     /// ARP 条目合并进 lan_devices:新 MAC 插入(日志留痕),已知项刷新
-    /// last_seen 与最近已知 IP
-    fn merge(&self, db: &rusqlite::Connection, entries: &[lan::ArpEntry], now: u64) {
+    /// last_seen 与最近已知 IP;返回新插入的设备(基线轮不计)
+    fn merge(
+        &mut self,
+        db: &rusqlite::Connection,
+        entries: &[lan::ArpEntry],
+        now: u64,
+    ) -> Vec<(Ipv4Addr, String)> {
+        let mut fresh = Vec::new();
         // 现有 MAC 一次读出:免每条设备一次存在性查询,且区分空表与库错误
         let known: HashSet<String> = match (|| -> rusqlite::Result<HashSet<String>> {
             let mut stmt = db.prepare("SELECT mac FROM lan_devices")?;
@@ -68,7 +81,7 @@ impl LanState {
             Ok(s) => s,
             Err(e) => {
                 tracing::warn!("[Lan] 设备表读取失败,本轮合并跳过: {e}");
-                return;
+                return Vec::new();
             }
         };
         for (ip, mac) in entries {
@@ -79,6 +92,9 @@ impl LanState {
                 )
             } else {
                 tracing::info!("[Lan] 发现新设备 {mac}({ip})");
+                if self.baseline_done {
+                    fresh.push((*ip, mac.clone()));
+                }
                 db.execute(
                     "INSERT INTO lan_devices (mac, first_seen, last_seen, ip)
                      VALUES (?1, ?2, ?2, ?3)",
@@ -89,6 +105,7 @@ impl LanState {
                 tracing::warn!("[Lan] 设备 {mac} 写库失败: {e}");
             }
         }
+        fresh
     }
 
     /// 读全表组装视图:本轮 ARP 可见 = 在线;first_seen 24h 内 = 新设备
