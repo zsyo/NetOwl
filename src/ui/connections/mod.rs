@@ -29,6 +29,8 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         conns,
         i18n,
         conn_view,
+        conn_grouped,
+        conn_collapsed,
         listens: _,
         rdns,
         icon_tex,
@@ -91,6 +93,10 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         {
             changed = true;
         }
+        // 按进程分组(会话态;分组与搜索/显示过滤联动)
+        if ui.checkbox(conn_grouped, i18n.t("conns-group")).changed() {
+            changed = true;
+        }
         if ui
             .checkbox(&mut config.general.hide_lan, i18n.t("filter-hide-lan"))
             .changed()
@@ -117,6 +123,8 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                 .as_deref()
                 .is_some_and(|p| p.to_lowercase().contains(&needle))
             || c.remote_ip.to_string().contains(&needle)
+            || c.remote_port.to_string().contains(&needle)
+            || c.proto.as_str().to_lowercase().contains(&needle)
             || rdns
                 .lookup(c.remote_ip)
                 .is_some_and(|d| d.to_lowercase().contains(&needle))
@@ -183,24 +191,70 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                 .striped(true)
                 .spacing([0.0, widgets::table::ROW_SPACING_Y])
                 .show(ui, |ui| {
-                    // 进程/远端弹性列长文本 Truncate 逐步展示;列贴列布局,
-                    // 内容间隔由单元格水平内边距形成
-                    for conn in shown {
-                        rows::conn_row(
-                            ui,
-                            conn,
-                            i18n,
-                            icon_tex,
-                            *default_icon_tex,
-                            rdns,
-                            conn_rates,
-                            rules,
-                            conn_row_hover,
-                            table_left,
-                            table_right,
-                            flex_w,
-                            elevated,
-                        );
+                    if *conn_grouped {
+                        // 按进程分组:shown 排序后同进程相邻,聚合保持首现顺序;
+                        // 组头行点击折叠/展开(状态键 = 进程名,会话态)
+                        let mut groups: Vec<(String, Vec<&Connection>)> = Vec::new();
+                        for c in &shown {
+                            match groups.last_mut() {
+                                Some((name, list)) if *name == c.process => list.push(c),
+                                _ => groups.push((c.process.clone(), vec![c])),
+                            }
+                        }
+                        for (name, group) in groups {
+                            if rows::group_header(
+                                ui,
+                                &name,
+                                &group,
+                                i18n,
+                                icon_tex,
+                                *default_icon_tex,
+                                flex_w,
+                            ) && !conn_collapsed.remove(&name)
+                            {
+                                conn_collapsed.insert(name.clone());
+                            }
+                            if conn_collapsed.contains(&name) {
+                                continue;
+                            }
+                            for conn in group {
+                                rows::conn_row(
+                                    ui,
+                                    conn,
+                                    i18n,
+                                    icon_tex,
+                                    *default_icon_tex,
+                                    rdns,
+                                    conn_rates,
+                                    rules,
+                                    conn_row_hover,
+                                    table_left,
+                                    table_right,
+                                    flex_w,
+                                    elevated,
+                                );
+                            }
+                        }
+                    } else {
+                        // 进程/远端弹性列长文本 Truncate 逐步展示;列贴列布局,
+                        // 内容间隔由单元格水平内边距形成
+                        for conn in shown {
+                            rows::conn_row(
+                                ui,
+                                conn,
+                                i18n,
+                                icon_tex,
+                                *default_icon_tex,
+                                rdns,
+                                conn_rates,
+                                rules,
+                                conn_row_hover,
+                                table_left,
+                                table_right,
+                                flex_w,
+                                elevated,
+                            );
+                        }
                     }
                 });
         });

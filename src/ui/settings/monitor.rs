@@ -64,6 +64,29 @@ pub(super) fn section(ui: &mut egui::Ui, config: &mut Config, i18n: &I18n, chang
             ui.add_space(theme::sp::SM);
             setting_row(
                 ui,
+                &i18n.t("settings-quota"),
+                &i18n.t("settings-quota-hint"),
+                |ui| {
+                    // 0 = 不启用;达到 80%/100% 阈值时右下角告警
+                    let before = config.general.usage_quota_gb;
+                    *changed |= ui
+                        .add(
+                            egui::DragValue::new(&mut config.general.usage_quota_gb)
+                                .range(0..=1024)
+                                .suffix(format!(" {}", i18n.t("settings-quota-unit"))),
+                        )
+                        .changed();
+                    if config.general.usage_quota_gb != before {
+                        tracing::debug!(
+                            "[Settings] 月度配额 -> {} GB",
+                            config.general.usage_quota_gb
+                        );
+                    }
+                },
+            );
+            ui.add_space(theme::sp::SM);
+            setting_row(
+                ui,
                 &i18n.t("settings-history-days"),
                 &i18n.t("settings-history-days-hint"),
                 |ui| {

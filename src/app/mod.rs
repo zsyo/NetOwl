@@ -137,8 +137,15 @@ pub struct NetOwlApp {
     toasts: Vec<crate::ui::toast::Toast>,
     /// 监听条目快照(采集同频;端口监听视图用)
     listens: Vec<crate::model::ListenEntry>,
+    /// 用量配额告警检查时刻(分钟级节流)与已通知档位(80%/100%)
+    quota_checked_at: Instant,
+    quota_flags: (bool, bool),
     /// 连接页视图形态(会话态)
     conn_view: ui::ConnView,
+    /// 连接页按进程分组(会话态)
+    conn_grouped: bool,
+    /// 连接页分组折叠集合(键 = 进程名,会话态)
+    conn_collapsed: HashSet<String>,
     /// 曾被表快照合并覆盖的 ETW 流键:完结流命中此集合说明表快照
     /// 跟踪器已记录,不按短命连接重复落盘
     etw_seen: HashSet<etw::FlowKey>,

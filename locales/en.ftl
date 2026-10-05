@@ -335,3 +335,14 @@ conns-view-listen = Listening
 listen-col-local = Local address:port
 listen-col-pid = PID
 listen-empty = No listening ports found
+
+# Connections grouping
+conns-group = Group by process
+conns-group-count = {$count} conns
+
+# Usage quota alerts
+quota-warn-toast = Monthly usage reached 80% ({$used})
+quota-exceed-toast = Monthly usage exceeded the quota ({$used})
+settings-quota = Monthly data quota
+settings-quota-hint = Alert at 80% and 100% of the quota; 0 = disabled
+settings-quota-unit = GB

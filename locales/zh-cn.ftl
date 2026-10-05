@@ -336,3 +336,14 @@ conns-view-listen = 端口监听
 listen-col-local = 本地地址:端口
 listen-col-pid = PID
 listen-empty = 未发现监听端口
+
+# 连接页分组
+conns-group = 按进程分组
+conns-group-count = {$count} 条
+
+# 用量配额告警
+quota-warn-toast = 本月流量已达 80%({$used})
+quota-exceed-toast = 本月流量已超配额({$used})
+settings-quota = 月度流量配额
+settings-quota-hint = 当月用量达到配额 80% 与 100% 时提醒,0 = 不启用
+settings-quota-unit = GB

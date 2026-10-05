@@ -211,3 +211,74 @@ fn tail_path(path: &str, max: usize) -> String {
     let tail: String = chars[chars.len() - (max - 1)..].iter().collect();
     format!("…{tail}")
 }
+
+/// 分组头行高(单行加高)
+const GROUP_HEADER_H: f32 = 26.0;
+
+/// 分组头行:进程图标 + 名称 + 连接数 + 上/下行累计(右对齐),
+/// 整行可点(折叠/展开);返回是否被点击
+#[allow(clippy::too_many_arguments)]
+pub(super) fn group_header(
+    ui: &mut egui::Ui,
+    name: &str,
+    group: &[&Connection],
+    i18n: &I18n,
+    icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
+    default_icon_tex: Option<&egui::TextureHandle>,
+    flex_w: f32,
+) -> bool {
+    let (rect, resp) =
+        ui.allocate_exact_size(egui::vec2(flex_w, GROUP_HEADER_H), egui::Sense::click());
+    if resp.hovered() {
+        ui.painter().rect_filled(rect, 0.0, theme::c().hover_bg);
+    }
+    let mut child = ui.new_child(
+        egui::UiBuilder::new().max_rect(rect.shrink2(egui::vec2(widgets::table::CELL_PAD_X, 0.0))),
+    );
+    child.horizontal(|ui| {
+        let tex = group.iter().find_map(|c| {
+            c.proc_path
+                .as_deref()
+                .and_then(|p| icon_tex.get(p))
+                .and_then(|t| t.as_ref())
+        });
+        widgets::process::proc_icon(ui, tex, default_icon_tex, 16.0);
+        let display = if name.is_empty() {
+            i18n.t("conn-proc-unknown")
+        } else {
+            name.to_owned()
+        };
+        ui.add(
+            egui::Label::new(
+                RichText::new(display)
+                    .size(theme::font::BODY)
+                    .strong()
+                    .color(theme::c().text),
+            )
+            .wrap_mode(egui::TextWrapMode::Truncate),
+        );
+        ui.label(
+            RichText::new(
+                i18n.t_with_args("conns-group-count", &[("count", group.len().to_string())]),
+            )
+            .size(theme::font::SM)
+            .color(theme::c().text_dim),
+        );
+        let (up, down) = group
+            .iter()
+            .fold((0u64, 0u64), |a, c| (a.0 + c.bytes_out, a.1 + c.bytes_in));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.label(
+                RichText::new(fmt_bytes(down))
+                    .size(theme::font::SM)
+                    .color(theme::c().inbound),
+            );
+            ui.label(
+                RichText::new(fmt_bytes(up))
+                    .size(theme::font::SM)
+                    .color(theme::c().outbound),
+            );
+        });
+    });
+    resp.clicked()
+}

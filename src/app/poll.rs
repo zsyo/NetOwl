@@ -220,4 +220,39 @@ impl NetOwlApp {
             elevated: self.elevated,
         };
     }
+
+    /// 用量配额告警:分钟级轻查当月累计(落库)+ 活跃连接字节,达到
+    /// 80%/100% 阈值时 toast 告警;每级会话内一次,用量回落到阈值下
+    /// (月切换/数据清理)自动重置
+    pub(super) fn poll_quota(&mut self) {
+        let quota_gb = self.config.general.usage_quota_gb;
+        if quota_gb == 0 {
+            self.quota_flags = (false, false);
+            return;
+        }
+        if self.quota_checked_at.elapsed() < Duration::from_secs(60) {
+            return;
+        }
+        self.quota_checked_at = Instant::now();
+        let month = crate::storage::history_query::query_month_bytes(&self.history_db);
+        let active: u64 = self.conns.iter().map(|c| c.total_bytes()).sum();
+        let total = month + active;
+        let quota = u64::from(quota_gb) * (1 << 30);
+        let want = (total * 100 >= quota * 4 / 5, total >= quota);
+        if want.0 && !self.quota_flags.0 {
+            let text = self.i18n.t_with_args(
+                "quota-warn-toast",
+                &[("used", crate::model::fmt_bytes(total))],
+            );
+            crate::ui::toast::push(&mut self.toasts, crate::ui::toast::ToastKind::Warn, text);
+        }
+        if want.1 && !self.quota_flags.1 {
+            let text = self.i18n.t_with_args(
+                "quota-exceed-toast",
+                &[("used", crate::model::fmt_bytes(total))],
+            );
+            crate::ui::toast::push(&mut self.toasts, crate::ui::toast::ToastKind::Warn, text);
+        }
+        self.quota_flags = want;
+    }
 }

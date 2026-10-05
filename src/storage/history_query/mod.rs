@@ -19,4 +19,6 @@ pub use filter::{
 };
 pub use fmt::{fmt_duration, fmt_local, local_tz_offset_secs, month_start, parse_ip_prefix};
 pub use page::{PageState, Range, Rows, ViewMode};
-pub use query::{PendingDelete, delete_aggregate_group, delete_detail, delete_process};
+pub use query::{
+    PendingDelete, delete_aggregate_group, delete_detail, delete_process, query_month_bytes,
+};

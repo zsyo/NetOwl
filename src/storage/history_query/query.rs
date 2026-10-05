@@ -184,3 +184,19 @@ fn parse_proto(s: &str) -> Protocol {
         Protocol::Tcp
     }
 }
+
+/// 当月(本地时区)累计收发字节总和:用量配额告警的数据源
+/// (配额口径 = 全部落库流量,不套用历史页筛选)
+pub fn query_month_bytes(db: &Db) -> u64 {
+    match db.query_row(
+        "SELECT COALESCE(SUM(bytes_in + bytes_out), 0) FROM conn_events WHERE last_seen >= ?1",
+        [super::fmt::month_start() as i64],
+        |r| r.get::<_, i64>(0),
+    ) {
+        Ok(n) => n.max(0) as u64,
+        Err(e) => {
+            tracing::warn!("[History] 月度用量查询失败: {e}");
+            0
+        }
+    }
+}

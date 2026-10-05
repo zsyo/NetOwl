@@ -1,6 +1,7 @@
 //! 主窗口布局:导航侧栏与各页面(地图 / 连接 / 历史 / 规则 / 设置)。
 //! 全部界面文本经 I18n 词条获取(AGENTS.md 规范 4)。
 
+use std::collections::HashSet;
 pub mod ask;
 pub mod floating_ball;
 pub mod history;
@@ -104,6 +105,10 @@ pub struct UiCtx<'a> {
     pub conn_sort: &'a mut ConnSortState,
     /// 连接页视图形态(连接/端口监听 segmented 切换)
     pub conn_view: &'a mut ConnView,
+    /// 连接页按进程分组(过滤行 toggle 切换)
+    pub conn_grouped: bool,
+    /// 连接页分组折叠集合(键 = 进程名)
+    pub conn_collapsed: &'a mut HashSet<String>,
     /// 监听条目快照(TCP LISTEN + UDP 绑定,与连接采集同频)
     pub listens: &'a [crate::model::ListenEntry],
     /// 连接页搜索词(进程/远端/域名包含过滤,会话态)
