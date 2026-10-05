@@ -21,7 +21,8 @@ impl NetOwlApp {
     ///    远端流之和,远端回填最近活跃流的端点(见 merge_udp_groups),归属
     ///    就地重算,下游(显示/归属/域名/规则/询问/过滤/地图)随之生效;
     /// 2) 完结流若从未被表快照覆盖(存活短于采样间隙的短命连接)则
-    ///    生成历史事件落盘;曾被覆盖的由 Tracker 正常处理,跳过。
+    ///    生成历史事件落盘;曾被覆盖的由 Tracker 正常处理,跳过后从
+    ///    etw_seen 移除(集合有界,同键新流不误挡)。
     pub(super) fn poll_etw(&mut self) {
         let Some(etw) = self.etw.as_ref() else {
             return;
@@ -102,7 +103,12 @@ impl NetOwlApp {
 
         let mut events = Vec::new();
         for f in finished {
-            if !real || self.etw_seen.contains(&f.key) {
+            if !real {
+                continue;
+            }
+            // 曾被表快照覆盖的流由 Tracker 按表口径落库,不再按短命连接
+            // 双计;查完即移除,同键新流(连接重建后的短命流)不被旧记录误挡
+            if self.etw_seen.remove(&f.key) {
                 continue;
             }
             // 回环短命连接(本机内部通信)高频出现且无监控价值,不入库;
