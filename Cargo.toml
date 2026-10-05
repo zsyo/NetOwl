@@ -94,5 +94,8 @@ icons = ["assets/app_icon.ico", "assets/app_icon.png"]
 # 头注释与 src/platform/autostart.rs);升 cargo-packager 时需与上游模板 diff
 [package.metadata.packager.nsis]
 template = "packaging/nsis/installer.nsi"
+# 安装器图标(经模板 MUI_ICON:决定安装器 exe 文件图标与向导界面图标);
+# 顶层 icons 不参与 NSIS,必须在此显式指定 .ico
+installer_icon = "assets/app_icon.ico"
 # 简体中文优先(系统语言命中即中文界面),回退英文
 languages = ["SimpChinese", "English"]

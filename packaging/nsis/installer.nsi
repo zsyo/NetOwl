@@ -14,6 +14,8 @@
 ;   3. Reinstall detection page disabled via !if 0: its PRE-Abort page skip
 ;      is what breaks the finish-page show callback (see 1); upgrade installs
 ;      simply overwrite files, portable data is untouched.
+;   4. Uninstaller icon (MUI_UNICON) reuses the installer icon: upstream
+;      leaves it undefined so uninstall.exe showed the default NSIS icon.
 ; Re-diff against upstream when bumping cargo-packager.
 
 ; Set the compression algorithm.
@@ -108,6 +110,12 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 ; installer icon
 !if "${INSTALLERICON}" != ""
   !define MUI_ICON "${INSTALLERICON}"
+!endif
+
+; Uninstaller icon: reuse the installer icon (upstream template leaves
+; MUI_UNICON undefined, uninstall.exe would show the default NSIS icon)
+!if "${INSTALLERICON}" != ""
+  !define MUI_UNICON "${INSTALLERICON}"
 !endif
 
 ; installer sidebar image
