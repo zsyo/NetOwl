@@ -3,10 +3,10 @@
 
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
 use eframe::egui;
-use egui::epaint::QuadraticBezierShape;
-use egui::{Color32, Pos2, Rect, Shape, Stroke, Vec2};
+use egui::{Color32, Mesh, Pos2, Rect, Shape, Vec2};
 
 use super::Projection;
 use crate::model::Connection;
@@ -75,7 +75,9 @@ pub(super) fn draw_flights(
         };
         let hovered = hover_pos.is_some_and(|h| super::wrap_dist(h, end, cycle_px) < 20.0);
         let dim = selected.is_some_and(|sel| *place != sel);
-        let width = 1.4 + 1.1 * (*count as f32 - 1.0).sqrt().min(2.0);
+        let width = 1.4
+            + 1.1 * (*count as f32 - 1.0).sqrt().min(2.0)
+            + if hovered && !dim { 0.6 } else { 0.0 };
         // 选中端点联动:未选中端点的连线(含粒子)整体淡化
         let line_alpha = if dim {
             0.12
@@ -84,10 +86,6 @@ pub(super) fn draw_flights(
         } else {
             0.45
         };
-        let stroke = Stroke::new(
-            if hovered && !dim { width + 0.6 } else { width },
-            color.gamma_multiply(line_alpha),
-        );
         // 曲线横向 bbox 为端点包围盒(控制点 x 居中),据此求可见副本区间
         let (min_x, max_x) = (start.x.min(end.x), start.x.max(end.x));
         let k0 = ((rect.left() - max_x) / cycle_px).floor() as i32;
@@ -97,24 +95,58 @@ pub(super) fn draw_flights(
         place.hash(&mut hasher);
         inbound.hash(&mut hasher);
         let phase = (t * 0.22 + super::hash_phase(hasher.finish())) % 1.0;
-        let trail: Vec<Pos2> = (0..3u32)
-            .map(|k| bezier(start, ctrl, end, (phase - 0.02 * k as f32).rem_euclid(1.0)))
+        let trail: Vec<Pos2> = (0..5u32)
+            .map(|k| bezier(start, ctrl, end, (phase - 0.025 * k as f32).rem_euclid(1.0)))
             .collect();
+        let arc = gradient_arc_mesh(start, ctrl, end, color, width, line_alpha, 16);
         for k in k0..=k1 {
             let off = Vec2::new(k as f32 * cycle_px, 0.0);
-            painter.add(Shape::QuadraticBezier(QuadraticBezierShape {
-                points: [start + off, ctrl + off, end + off],
-                closed: false,
-                fill: Color32::TRANSPARENT,
-                stroke: stroke.into(),
-            }));
+            let mut m = arc.clone();
+            m.translate(off);
+            painter.add(Shape::Mesh(Arc::new(m)));
             for (i, pt) in trail.iter().enumerate() {
+                let a = line_alpha * (1.0 - i as f32 * 0.2);
+                // 粒子辉光层 + 实心(头部最大最亮,拖尾渐隐)
                 painter.circle_filled(
                     *pt + off,
-                    2.6 - 0.7 * i as f32,
-                    color.gamma_multiply(line_alpha * (1.0 - i as f32 * 0.33)),
+                    4.6 - 0.6 * i as f32,
+                    color.gamma_multiply(a * 0.25),
                 );
+                painter.circle_filled(*pt + off, 2.8 - 0.5 * i as f32, color.gamma_multiply(a));
             }
         }
     }
+}
+
+/// 渐变弧线 mesh:贝塞尔采样 n 段 quad,顶点色沿线从尾淡(信号出发端
+/// 6% 亮度)到头亮(到达端),替代单色描边
+fn gradient_arc_mesh(
+    start: Pos2,
+    ctrl: Pos2,
+    end: Pos2,
+    color: Color32,
+    width: f32,
+    alpha: f32,
+    n: usize,
+) -> Mesh {
+    let mut mesh = Mesh::default();
+    let mut prev = bezier(start, ctrl, end, 0.0);
+    for i in 1..=n {
+        let t0 = (i - 1) as f32 / n as f32;
+        let t1 = i as f32 / n as f32;
+        let pt = bezier(start, ctrl, end, t1);
+        let a0 = alpha * (0.06 + 0.94 * t0);
+        let a1 = alpha * (0.06 + 0.94 * t1);
+        let dir = (pt - prev).normalized() * (width * 0.5);
+        let nrm = Vec2::new(-dir.y, dir.x);
+        let idx = mesh.vertices.len() as u32;
+        mesh.colored_vertex(prev - nrm, color.gamma_multiply(a0));
+        mesh.colored_vertex(prev + nrm, color.gamma_multiply(a0));
+        mesh.colored_vertex(pt + nrm, color.gamma_multiply(a1));
+        mesh.colored_vertex(pt - nrm, color.gamma_multiply(a1));
+        mesh.add_triangle(idx, idx + 1, idx + 2);
+        mesh.add_triangle(idx, idx + 2, idx + 3);
+        prev = pt;
+    }
+    mesh
 }
