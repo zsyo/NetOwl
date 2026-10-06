@@ -107,9 +107,16 @@ impl TableCollector {
         // 名字兜底枚举按轮懒执行:存在路径反查失败的 PID 才枚举一次,行间复用
         let mut nt_names: Option<HashMap<u32, String>> = None;
 
-        // 监听条目:TCP LISTEN 行 + UDP 绑定行(进程元数据与连接共用缓存)
+        // 监听条目:TCP LISTEN 行 + UDP 绑定行(进程元数据与连接共用缓存)。
+        // 系统表按 socket 逐行列出,UDP 多 socket 绑同一地址端口(mDNS 等
+        // SO_REUSEADDR 场景,单进程可开数十个)对监听视图是重复信息,按
+        // (进程, 协议, 绑定地址, 端口) 折叠为一行;TCP LISTEN 本身无重复
         let mut listening = Vec::with_capacity(listen.len() + udp.len());
+        let mut seen_listen = HashSet::with_capacity(listen.len() + udp.len());
         for key in listen.iter().chain(udp.iter()) {
+            if !seen_listen.insert((key.pid, key.proto, key.local_addr_ipv4(), key.local_port)) {
+                continue;
+            }
             let meta = self.proc_meta(key.pid, &mut nt_names);
             listening.push(ListenEntry {
                 pid: key.pid,
