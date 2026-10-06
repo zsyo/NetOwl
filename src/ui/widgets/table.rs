@@ -1,5 +1,8 @@
 //! 数据表格公共件:统一表头、可排序表头、行悬停底色。
 //!
+//! 表头 Grid 公共件(SortCol/header_grid/sort_header_grid)在
+//! table_header,此处 re-export 保持原调用路径。
+//!
 //! 斑马纹由各页 Grid 的 `.striped(true)` 提供:奇数行底色取
 //! `Visuals::faint_bg_color`(theme.rs 已接入调色板 faint 字段),
 //! 行底色画在行内容之前,与行悬停垫底同为垫底层,悬停整体覆盖。
@@ -8,6 +11,8 @@ use eframe::egui;
 use egui::{Align, Color32, FontId, Label, Layout, RichText, Shape, Stroke, UiBuilder};
 
 use super::super::theme;
+
+pub use super::table_header::{SortCol, header_grid, sort_header_grid};
 
 /// 表头单元格垂直内边距:决定表头行高手感(与旧按钮 padding.y 一致)
 const HEADER_PAD_Y: f32 = 3.0;
@@ -227,75 +232,4 @@ impl RowHover {
     pub fn end(&mut self, ui: &egui::Ui, top: f32) {
         self.row_h = (ui.cursor().top() - ROW_SPACING_Y - top).max(0.0);
     }
-}
-
-/// 表头列定义(可排序表头 Grid 用):sort 为 None 的列纯展示不可点
-pub struct SortCol<S> {
-    pub key: &'static str,
-    pub sort: Option<S>,
-    pub w: f32,
-    pub right: bool,
-}
-
-impl<S> SortCol<S> {
-    pub fn new(key: &'static str, sort: Option<S>, w: f32, right: bool) -> Self {
-        SortCol {
-            key,
-            sort,
-            w,
-            right,
-        }
-    }
-}
-
-/// 独立表头 Grid(位于滚动区外,列宽与数据 Grid 一致):纯展示列,
-/// 列 = (词条键, 宽, 右对齐);历史明细/局域网等无排序表用
-pub fn header_grid(
-    ui: &mut egui::Ui,
-    id: &str,
-    cols: &[(&'static str, f32, bool)],
-    t: &dyn Fn(&str) -> String,
-) {
-    egui::Grid::new(egui::Id::new(id))
-        .num_columns(cols.len())
-        .spacing([0.0, 0.0])
-        .show(ui, |ui| {
-            for (key, w, right) in cols {
-                header_cell_w(ui, *w, &t(key), *right);
-            }
-            ui.end_row();
-        });
-}
-
-/// 可排序表头 Grid(可混合纯展示列):可排序列整格可点、激活列高亮
-/// 带方向三角,点击交 on_click 由调用方翻转排序状态(各页新列的默认
-/// 方向语义不同);连接/历史聚合/历史汇总共用
-pub fn sort_header_grid<S: Copy + PartialEq>(
-    ui: &mut egui::Ui,
-    id: &str,
-    cols: &[SortCol<S>],
-    current: Option<(S, bool)>,
-    mut on_click: impl FnMut(S),
-    t: &dyn Fn(&str) -> String,
-) {
-    egui::Grid::new(egui::Id::new(id))
-        .num_columns(cols.len())
-        .spacing([0.0, 0.0])
-        .show(ui, |ui| {
-            for c in cols {
-                let text = t(c.key);
-                match c.sort {
-                    Some(s) => {
-                        let active = current.is_some_and(|(k, _)| k == s);
-                        let ascending = current.is_some_and(|(_, asc)| asc);
-                        let r = header_sort_cell(ui, &text, active, ascending, c.right, c.w);
-                        if r.clicked() {
-                            on_click(s);
-                        }
-                    }
-                    None => header_cell_w(ui, c.w, &text, c.right),
-                }
-            }
-            ui.end_row();
-        });
 }

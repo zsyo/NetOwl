@@ -14,4 +14,5 @@ pub mod search_box;
 pub mod segmented;
 pub mod sparkline;
 pub mod table;
+pub mod table_header;
 pub mod toggle;
