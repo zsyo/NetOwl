@@ -1,6 +1,7 @@
-//! 设置页:分组卡片布局(外观/监控/日志),行式设置项(左标签 + 右控件)。
-//! 三个分组各自成文件(appearance/monitor/logging)。
+//! 设置页:分组卡片布局(外观/监控/日志/关于),行式设置项(左标签 +
+//! 右控件)。四个分组各自成文件(appearance/monitor/logging/about)。
 
+mod about;
 mod appearance;
 mod logging;
 mod monitor;
@@ -8,18 +9,30 @@ mod monitor;
 use eframe::egui;
 use egui::{Align, Layout, RichText};
 
-use super::{log_window, theme, widgets};
+use super::{UiCtx, log_window, theme, widgets};
 use crate::i18n::I18n;
+use crate::platform::update::ReleaseInfo;
 use crate::storage::config::Config;
 
 /// 设置页:语言切换(词条即时生效)、主题、数据源;返回是否直接改动了配置。
 /// 日志区:级别下拉与文件开关立即生效(直接调 logging),窗口入口只置位状态
-pub(super) fn settings_ui(
-    ui: &mut egui::Ui,
-    config: &mut Config,
-    i18n: &mut I18n,
-    log_window: &mut log_window::PageState,
-) -> bool {
+pub(super) fn settings_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
+    let UiCtx {
+        config,
+        i18n,
+        log_window,
+        update_check_request,
+        update_checking,
+        update_result,
+        ..
+    } = ctx;
+    // &mut UiCtx 解构出的引用字段带两层 &mut,借类型注解 coerce 回单层
+    let config: &mut Config = config;
+    let i18n: &mut I18n = i18n;
+    let log_window: &mut log_window::PageState = log_window;
+    let update_check_request: &mut bool = update_check_request;
+    let update_result: &mut Option<Result<Option<ReleaseInfo>, String>> = update_result;
+    let update_checking = *update_checking;
     widgets::header::page_header(ui, &i18n.t("settings-title"), "");
     ui.add_space(theme::sp::MD);
 
@@ -39,6 +52,18 @@ pub(super) fn settings_ui(
 
             // ---- 日志:文件开关 / 级别 / 查看入口,每行语义单一 ----
             logging::section(ui, config, i18n, log_window, &mut changed);
+            ui.add_space(theme::sp::MD);
+
+            // ---- 关于:当前版本 / 更新渠道 / 检查更新 ----
+            about::section(
+                ui,
+                config,
+                i18n,
+                update_check_request,
+                update_checking,
+                update_result,
+                &mut changed,
+            );
 
             changed
         })

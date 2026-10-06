@@ -255,4 +255,60 @@ impl NetOwlApp {
         }
         self.quota_flags = want;
     }
+
+    /// 检查更新:接收设置页按钮触发,派发后台线程请求 GitHub Releases
+    /// 并收割结果(网络阻塞调用不进主线程;完成即请求重绘,结果即时可见)
+    pub(super) fn poll_update_check(&mut self, ctx: &egui::Context) {
+        if self.update_request {
+            self.update_request = false;
+            if self.update_rx.is_none() {
+                let preview = self.config.general.update_channel == "preview";
+                let (tx, rx) = std::sync::mpsc::channel();
+                std::thread::spawn(move || {
+                    let result = crate::platform::update::fetch_latest(preview);
+                    if tx.send(result).is_err() {
+                        tracing::warn!("[Update] 检查结果发送失败:接收端已关闭");
+                    }
+                });
+                self.update_rx = Some(rx);
+                self.update_result = None;
+                tracing::info!(
+                    "[Update] 检查更新已发起(渠道 {})",
+                    if preview { "preview" } else { "stable" }
+                );
+            }
+        }
+        let Some(rx) = &self.update_rx else {
+            return;
+        };
+        match rx.try_recv() {
+            Ok(result) => {
+                match &result {
+                    Ok(Some(info)) => {
+                        let newer = crate::platform::update::is_newer(
+                            &info.tag_name,
+                            crate::platform::update::CURRENT_VERSION,
+                        );
+                        tracing::info!(
+                            "[Update] 最新发布 {} (prerelease={}),{}更新",
+                            info.tag_name,
+                            info.prerelease,
+                            if newer { "需要" } else { "无需" }
+                        );
+                    }
+                    Ok(None) => tracing::info!("[Update] 仓库暂无发布版本"),
+                    Err(e) => tracing::warn!("[Update] 检查失败: {e}"),
+                }
+                self.update_result = Some(result);
+                self.update_rx = None;
+                ctx.request_repaint();
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                // 发送端先行 panic 的异常路径:复位避免 UI 永久停在检查中
+                self.update_rx = None;
+                self.update_result = Some(Err("更新检查线程异常退出".to_owned()));
+            }
+        }
+    }
 }

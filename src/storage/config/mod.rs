@@ -106,6 +106,10 @@ pub struct GeneralConfig {
     /// 文件日志(exe 同级 logs/latest.log,旧文件按时间戳轮转)
     #[serde(default)]
     pub log_to_file: bool,
+    /// 检查更新渠道:"stable"(正式版,默认)/ "preview"(预览版,含
+    /// pre-release;最新为正式版时同样覆盖)
+    #[serde(default)]
+    pub update_channel: String,
 }
 
 impl Default for GeneralConfig {
@@ -127,6 +131,7 @@ impl Default for GeneralConfig {
             usage_quota_gb: 0,
             log_level: default_log_level(),
             log_to_file: false,
+            update_channel: String::new(),
         }
     }
 }

@@ -194,7 +194,7 @@ pub(super) fn edit_window(
         }
         ui.add_space(4.0);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if primary_btn(ui, i18n.t("rules-save")).clicked() {
+            if primary_btn(ui, i18n.t("rules-save"), true).clicked() {
                 match validate(draft) {
                     Ok(()) => save = true,
                     Err(key) => draft.error = Some(key),

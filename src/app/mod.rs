@@ -38,6 +38,7 @@ use crate::net::rdns;
 use crate::net::traffic;
 use crate::platform::resize::DragResize;
 use crate::platform::tray::Tray;
+use crate::platform::update::ReleaseInfo;
 use crate::rules;
 use crate::rules::wfp;
 use crate::storage::config::Config;
@@ -163,6 +164,12 @@ pub struct NetOwlApp {
     conn_search: String,
     /// 连接页协议筛选(连接/监听两视图共用,会话内,不持久化)
     conn_proto: Option<crate::model::Protocol>,
+    /// 检查更新:UI 触发标志(设置页按钮写入,帧内派发后台线程)
+    update_request: bool,
+    /// 检查更新:在途请求通道(存在 = 检查中,禁止重复发起)
+    update_rx: Option<Receiver<Result<Option<ReleaseInfo>, String>>>,
+    /// 检查更新:最近一次结果(None = 尚未检查;渠道切换时清空)
+    update_result: Option<Result<Option<ReleaseInfo>, String>>,
     /// 表格行悬停辅助(连接/规则页,跨帧行高供行首垫底判定)
     conn_row_hover: ui::widgets::table::RowHover,
     rules_row_hover: ui::widgets::table::RowHover,

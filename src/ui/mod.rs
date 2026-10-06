@@ -118,6 +118,12 @@ pub struct UiCtx<'a> {
     pub conn_search: &'a mut String,
     /// 连接页协议筛选(连接/监听两视图共用,会话态)
     pub conn_proto: &'a mut Option<crate::model::Protocol>,
+    /// 检查更新:UI 触发标志(设置页按钮写入,App 层帧内派发)
+    pub update_check_request: &'a mut bool,
+    /// 检查更新:是否在途(重复触发被 App 层忽略)
+    pub update_checking: bool,
+    /// 检查更新:最近一次结果(渠道切换时绘制侧清空)
+    pub update_result: &'a mut Option<Result<Option<crate::platform::update::ReleaseInfo>, String>>,
     /// 连接页行悬停辅助(跨帧行高,行首垫底用)
     pub conn_row_hover: &'a mut widgets::table::RowHover,
     /// 规则页行悬停辅助(跨帧行高)
@@ -205,7 +211,7 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
             &ctx.wfp_status,
             ctx.rules_row_hover,
         ),
-        Page::Settings => settings::settings_ui(ui, ctx.config, ctx.i18n, ctx.log_window),
+        Page::Settings => settings::settings_ui(ui, ctx),
     }
 }
 

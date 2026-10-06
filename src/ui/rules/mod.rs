@@ -10,7 +10,7 @@ mod table;
 use std::time::{Duration, Instant};
 
 use eframe::egui;
-use egui::{CornerRadius, RichText};
+use egui::RichText;
 use rusqlite::Connection as Db;
 
 use super::profile_manager;
@@ -84,7 +84,13 @@ pub fn show(
         // 行高抬升只作用于本工具栏行(style_mut 泄漏到整页会把表格
         // Grid 的最小行高一并抬到 26)
         ui.style_mut().spacing.interact_size.y = TOOLBAR_ROW_H;
-        if primary_btn(ui, format!("{}  {}", icons::PLUS_LG, i18n.t("rules-new"))).clicked() {
+        if primary_btn(
+            ui,
+            format!("{}  {}", icons::PLUS_LG, i18n.t("rules-new")),
+            true,
+        )
+        .clicked()
+        {
             state.draft = Some(draft::Draft::new_rule());
         }
         if ui
@@ -153,19 +159,8 @@ pub fn show(
     changed
 }
 
-/// 主按钮:强调色填充 + 反色文字(页内首要动作)
-pub(super) fn primary_btn(ui: &mut egui::Ui, text: String) -> egui::Response {
-    ui.add(
-        egui::Button::new(
-            RichText::new(text)
-                .size(theme::font::BODY)
-                .strong()
-                .color(theme::c().on_accent),
-        )
-        .fill(theme::c().accent)
-        .corner_radius(CornerRadius::same(theme::RADIUS_MD)),
-    )
-}
+/// 主按钮:widgets 公共件 re-export(工具栏与编辑弹窗共用原路径)
+pub(super) use crate::ui::widgets::button::primary_btn;
 
 /// 工具栏右侧反馈消息(成功绿色/失败警示色,超时自动消失)
 fn feedback_label(ui: &mut egui::Ui, state: &mut PageState) {
