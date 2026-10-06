@@ -55,10 +55,7 @@ pub struct AskItem {
 impl AskItem {
     /// 弹窗展示的主文本远端(域名优先)
     pub fn remote_display(&self) -> String {
-        match &self.domain {
-            Some(d) => format!("{}:{}", d, self.remote_port),
-            None => format!("{}:{}", self.remote_ip, self.remote_port),
-        }
+        remote_text(&self.remote_ip, self.remote_port, self.domain.as_deref())
     }
 
     /// 询问等待期间的临时阻断过滤器(精确锁定该连接身份)
@@ -127,17 +124,12 @@ fn proto_num(p: Protocol) -> u8 {
     }
 }
 
-/// 可询问的目标:仅公网段(回环/私网/链路本地/组播/保留段静默放行,
-/// 与 rDNS 的可查询口径一致)
-pub(super) fn is_askable(ip: &Ipv4Addr) -> bool {
-    !(ip.is_unspecified()
-        || ip.is_loopback()
-        || ip.is_private()
-        || ip.is_link_local()
-        || ip.is_multicast()
-        || ip.is_broadcast()
-        || ip.is_documentation()
-        || ip.octets()[0] >= 240)
+/// 远端显示文本(域名优先,回退裸 IP);弹窗与入队日志共用
+pub(super) fn remote_text(ip: &Ipv4Addr, port: u16, domain: Option<&str>) -> String {
+    match domain {
+        Some(d) => format!("{d}:{port}"),
+        None => format!("{ip}:{port}"),
+    }
 }
 
 /// 连接身份:(进程路径/名, 目标IP)。端口/协议不参与去重,

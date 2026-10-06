@@ -202,7 +202,7 @@ impl TableCollector {
         }
         let path = query_process_path(pid);
         let name = match &path {
-            Some(p) => p.rsplit(['\\', '/']).next().unwrap_or_default().to_owned(),
+            Some(p) => crate::model::image_name(p).to_owned(),
             None => {
                 let names = nt_names.get_or_insert_with(query_process_names);
                 names.get(&pid).cloned().unwrap_or_default()

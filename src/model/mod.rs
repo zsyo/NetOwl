@@ -28,6 +28,12 @@ pub enum Place {
     Geo(u32),
 }
 
+/// 完整路径取映像名(Windows 反斜杠或 Unix 斜杠分隔的最后一段);
+/// 表快照与 ETW 短命连接共用
+pub fn image_name(path: &str) -> &str {
+    path.rsplit(['\\', '/']).next().unwrap_or(path)
+}
+
 /// 监听条目:TCP LISTEN / UDP 绑定端点(无远端语义,独立于连接快照)
 #[derive(Clone, Debug)]
 pub struct ListenEntry {

@@ -4,7 +4,6 @@
 use eframe::egui;
 
 use crate::i18n::I18n;
-use crate::platform::paths;
 use crate::storage::history_query::{DetailRow, SummaryRow};
 use crate::ui::widgets;
 
@@ -12,20 +11,12 @@ use crate::ui::widgets;
 /// 菜单函数不持 state 避免与行数据借用冲突)
 pub(super) fn detail_menu(ui: &mut egui::Ui, r: &DetailRow, i18n: &I18n) -> bool {
     let delete = widgets::menu::menu_item(ui, i18n.t("history-menu-delete-row"), true).clicked();
-    if widgets::menu::menu_item(ui, i18n.t("menu-locate"), r.proc_path.is_some()).clicked()
-        && let Some(path) = &r.proc_path
-    {
-        paths::select_in_explorer(std::path::Path::new(path));
-    }
-    if widgets::menu::menu_item(ui, i18n.t("menu-copy-remote"), true).clicked() {
-        ui.ctx()
-            .copy_text(format!("{}:{}", r.remote_ip, r.remote_port));
-    }
-    if widgets::menu::menu_item(ui, i18n.t("menu-copy-path"), r.proc_path.is_some()).clicked()
-        && let Some(path) = &r.proc_path
-    {
-        ui.ctx().copy_text(path.clone());
-    }
+    widgets::menu::locate_copy_items(
+        ui,
+        i18n,
+        r.proc_path.as_deref(),
+        Some((r.remote_ip.to_string().as_str(), r.remote_port)),
+    );
     delete
 }
 
@@ -33,15 +24,6 @@ pub(super) fn detail_menu(ui: &mut egui::Ui, r: &DetailRow, i18n: &I18n) -> bool
 pub(super) fn summary_menu(ui: &mut egui::Ui, r: &SummaryRow, i18n: &I18n) -> bool {
     let delete =
         widgets::menu::menu_item(ui, i18n.t("history-menu-delete-process"), true).clicked();
-    if widgets::menu::menu_item(ui, i18n.t("menu-locate"), r.proc_path.is_some()).clicked()
-        && let Some(path) = &r.proc_path
-    {
-        paths::select_in_explorer(std::path::Path::new(path));
-    }
-    if widgets::menu::menu_item(ui, i18n.t("menu-copy-path"), r.proc_path.is_some()).clicked()
-        && let Some(path) = &r.proc_path
-    {
-        ui.ctx().copy_text(path.clone());
-    }
+    widgets::menu::locate_copy_items(ui, i18n, r.proc_path.as_deref(), None);
     delete
 }

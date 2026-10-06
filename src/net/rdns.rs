@@ -154,8 +154,9 @@ pub fn display(host: &str, port: u16, max_chars: usize) -> String {
 }
 
 /// 可发起 PTR 查询的地址:排除回环/私网/链路本地等非公网段
-/// (240/4 保留段手工判断,Ipv4Addr::is_reserved 尚未稳定)
-fn is_queryable(ip: &Ipv4Addr) -> bool {
+/// (240/4 保留段手工判断,Ipv4Addr::is_reserved 尚未稳定);
+/// 询问弹窗的可询问判定(is_askable)与之同口径共用
+pub(crate) fn is_queryable(ip: &Ipv4Addr) -> bool {
     !(ip.is_unspecified()
         || ip.is_loopback()
         || ip.is_private()

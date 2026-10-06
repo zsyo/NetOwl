@@ -4,7 +4,7 @@
 use std::collections::{HashSet, VecDeque};
 use std::time::Instant;
 
-use super::item::{AskItem, SYSTEM_PID, identity_key, is_askable};
+use super::item::{AskItem, SYSTEM_PID, identity_key, remote_text};
 use super::{ASK_TIMEOUT, Scope};
 use crate::model::Connection;
 use crate::net::rdns;
@@ -81,7 +81,7 @@ impl Asker {
                 || c.pid == 0
                 || c.process.is_empty()
                 || (c.proto == crate::model::Protocol::Udp && c.remote_ip.is_unspecified())
-                || !is_askable(&c.remote_ip)
+                || !crate::net::rdns::is_queryable(&c.remote_ip)
             {
                 continue;
             }
@@ -103,7 +103,7 @@ impl Asker {
                 "[Ask] 新连接询问入队:{}({}) -> {}",
                 c.process,
                 c.pid,
-                item_remote(&c.remote_ip, c.remote_port, rdns.lookup(c.remote_ip))
+                remote_text(&c.remote_ip, c.remote_port, rdns.lookup(c.remote_ip))
             );
             self.queue.push_back(AskItem {
                 proc_path: c.proc_path.clone(),
@@ -158,13 +158,5 @@ impl Asker {
             &item.process,
             item.remote_ip,
         ));
-    }
-}
-
-/// 入队日志的远端显示(域名优先,与弹窗 remote_display 同口径)
-fn item_remote(ip: &std::net::Ipv4Addr, port: u16, domain: Option<&str>) -> String {
-    match domain {
-        Some(d) => format!("{d}:{port}"),
-        None => format!("{ip}:{port}"),
     }
 }

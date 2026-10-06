@@ -7,7 +7,6 @@ use egui::RichText;
 use crate::collector;
 use crate::i18n::I18n;
 use crate::model::{Connection, Protocol};
-use crate::platform::paths;
 use crate::ui::{theme, widgets};
 
 pub(super) fn conn_menu(ui: &mut egui::Ui, conn: &Connection, elevated: bool, i18n: &I18n) {
@@ -41,18 +40,10 @@ pub(super) fn conn_menu(ui: &mut egui::Ui, conn: &Connection, elevated: bool, i1
             }
         }
     }
-    if widgets::menu::menu_item(ui, i18n.t("menu-locate"), conn.proc_path.is_some()).clicked()
-        && let Some(path) = &conn.proc_path
-    {
-        paths::select_in_explorer(std::path::Path::new(path));
-    }
-    if widgets::menu::menu_item(ui, i18n.t("menu-copy-remote"), true).clicked() {
-        ui.ctx()
-            .copy_text(format!("{}:{}", conn.remote_ip, conn.remote_port));
-    }
-    if widgets::menu::menu_item(ui, i18n.t("menu-copy-path"), conn.proc_path.is_some()).clicked()
-        && let Some(path) = &conn.proc_path
-    {
-        ui.ctx().copy_text(path.clone());
-    }
+    widgets::menu::locate_copy_items(
+        ui,
+        i18n,
+        conn.proc_path.as_deref(),
+        Some((conn.remote_ip.to_string().as_str(), conn.remote_port)),
+    );
 }

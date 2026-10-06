@@ -191,7 +191,7 @@ fn merge_udp_groups<'a>(flows: &'a [etw::FlowAgg]) -> HashMap<(u32, u16), UdpGro
 fn short_lived_event(f: &etw::FlowAgg) -> history::ClosedConn {
     let (proc_path, process) = match collector::query_process_path(f.key.pid) {
         Some(path) => {
-            let name = path.rsplit(['\\', '/']).next().unwrap_or(&path).to_owned();
+            let name = crate::model::image_name(&path).to_owned();
             (Some(path), name)
         }
         None => (None, String::new()),
