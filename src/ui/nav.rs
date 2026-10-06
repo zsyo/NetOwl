@@ -42,12 +42,15 @@ pub fn nav_ui(
                 .corner_radius(CornerRadius::same(theme::RADIUS_SM)),
         );
         ui.vertical(|ui| {
-            ui.label(
-                RichText::new(ctx.i18n.t("app-name"))
-                    .size(theme::font::H3)
-                    .strong()
-                    .color(theme::c().text),
-            );
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(ctx.i18n.t("app-name"))
+                        .size(theme::font::H3)
+                        .strong()
+                        .color(theme::c().text),
+                );
+                brand_light(ui);
+            });
             ui.label(theme::dim_text(
                 &ctx.i18n.t("app-subtitle"),
                 theme::font::MICRO,
@@ -153,6 +156,26 @@ fn rate_card(
         .corner_radius(CornerRadius::same(theme::RADIUS_MD))
         .inner_margin(Margin::same(theme::sp::MD as i8))
         .show(ui, |ui| {
+            // HUD 网格纹理底:内容垫底的细网格(走势图与文字之下)
+            let rect = ui.max_rect();
+            let grid = p.stroke.gamma_multiply(0.35);
+            let step = 12.0;
+            let mut x = rect.left() + step;
+            while x < rect.right() {
+                ui.painter().line_segment(
+                    [egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom())],
+                    Stroke::new(0.5, grid),
+                );
+                x += step;
+            }
+            let mut y = rect.top() + step;
+            while y < rect.bottom() {
+                ui.painter().line_segment(
+                    [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
+                    Stroke::new(0.5, grid),
+                );
+                y += step;
+            }
             widgets::sparkline::sparklines(
                 ui,
                 hist,
@@ -217,14 +240,29 @@ fn session_row(ui: &mut egui::Ui, i18n: &I18n, totals: (u64, u64)) {
 /// 一行速率:方向图标 + 标签 + 数值
 fn rate_row(ui: &mut egui::Ui, i18n: &I18n, key: &str, rate: u64, color: Color32, icon: &str) {
     ui.horizontal(|ui| {
-        ui.label(RichText::new(icon).size(theme::font::XS).color(color));
-        ui.label(theme::dim_text(&i18n.t(key), theme::font::SM));
-        ui.label(
-            RichText::new(format!("{}/s", fmt_bytes(rate)))
-                .size(theme::font::SM)
-                .color(color),
-        );
+        ui.label(RichText::new(icon).size(theme::font::SM).color(color));
+        ui.label(theme::dim_text(&i18n.t(key), theme::font::XS));
+        // 面板化大数字:等宽字体保证逐帧刷新不跳宽
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.label(
+                RichText::new(format!("{}/s", fmt_bytes(rate)))
+                    .size(theme::font::PANEL_TITLE)
+                    .font(FontId::monospace(theme::font::PANEL_TITLE))
+                    .strong()
+                    .color(color),
+            );
+        });
     });
+}
+
+/// 品牌指示灯:accent 发光小圆(外圈辉光 + 内芯)
+fn brand_light(ui: &mut egui::Ui) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), Sense::hover());
+    let p = theme::c();
+    let c = rect.center();
+    ui.painter()
+        .circle_filled(c, 5.0, p.accent.gamma_multiply(0.22));
+    ui.painter().circle_filled(c, 2.5, p.accent);
 }
 
 /// 底部状态:监控中(绿点)、连接数、数据源提示
