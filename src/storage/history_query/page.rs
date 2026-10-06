@@ -104,6 +104,13 @@ impl PageState {
         }
     }
 
+    /// 外部跳转设置进程筛选并立即重查(清防抖,跨页跳转不经键盘输入)
+    pub fn set_process_filter(&mut self, process: String) {
+        self.process = process;
+        self.filter_debounce = None;
+        self.dirty = true;
+    }
+
     /// 筛选文本输入中:延迟 FILTER_DEBOUNCE 再重查(合并连续按键)
     pub fn defer_refresh(&mut self) {
         self.filter_debounce = Some(Instant::now());

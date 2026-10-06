@@ -39,6 +39,9 @@ pub fn inspector_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
     let icon_tex = ctx.icon_tex;
     let default_icon_tex = ctx.default_icon_tex;
     let config: &Config = ctx.config;
+    let history = &mut *ctx.history;
+    let conn_search = &mut *ctx.conn_search;
+    let nav_request = &mut *ctx.nav_request;
 
     ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
         let process = panels.process.clone();
@@ -55,6 +58,9 @@ pub fn inspector_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
                 config,
                 conns,
                 &name,
+                history,
+                conn_search,
+                nav_request,
             ),
             (Some(place), None) => place::view(
                 ui,

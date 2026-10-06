@@ -6,7 +6,7 @@ mod menu;
 mod rows;
 mod sort;
 
-use super::ConnView;
+use super::{ConnView, Page};
 
 use eframe::egui;
 use egui::RichText;
@@ -38,6 +38,8 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         config,
         rules,
         conn_rates,
+        history,
+        nav_request,
         conn_sort,
         conn_search,
         conn_row_hover,
@@ -46,6 +48,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     } = ctx;
     // &mut UiCtx 解构出的引用字段带两层 &mut,借类型注解 coerce 回单层
     let conn_sort: &mut ConnSortState = conn_sort;
+    let nav_request: &mut Option<Page> = nav_request;
     let conn_search: &mut String = conn_search;
     let conn_row_hover: &mut widgets::table::RowHover = conn_row_hover;
     let elevated = *elevated;
@@ -231,7 +234,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                                 continue;
                             }
                             for conn in group {
-                                rows::conn_row(
+                                if rows::conn_row(
                                     ui,
                                     conn,
                                     i18n,
@@ -245,14 +248,17 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                                     table_right,
                                     flex_w,
                                     elevated,
-                                );
+                                ) {
+                                    history.set_process_filter(conn.process.clone());
+                                    *nav_request = Some(Page::History);
+                                }
                             }
                         }
                     } else {
                         // 进程/远端弹性列长文本 Truncate 逐步展示;列贴列布局,
                         // 内容间隔由单元格水平内边距形成
                         for conn in shown {
-                            rows::conn_row(
+                            if rows::conn_row(
                                 ui,
                                 conn,
                                 i18n,
@@ -266,7 +272,10 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                                 table_right,
                                 flex_w,
                                 elevated,
-                            );
+                            ) {
+                                history.set_process_filter(conn.process.clone());
+                                *nav_request = Some(Page::History);
+                            }
                         }
                     }
                 });

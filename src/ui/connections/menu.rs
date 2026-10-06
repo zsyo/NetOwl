@@ -9,7 +9,8 @@ use crate::i18n::I18n;
 use crate::model::{Connection, Protocol};
 use crate::ui::{theme, widgets};
 
-pub(super) fn conn_menu(ui: &mut egui::Ui, conn: &Connection, elevated: bool, i18n: &I18n) {
+/// 行右键菜单;返回"查看历史记录"是否被点击(跳转由调用方执行)
+pub(super) fn conn_menu(ui: &mut egui::Ui, conn: &Connection, elevated: bool, i18n: &I18n) -> bool {
     if conn.proto == Protocol::Tcp {
         let kill = ui.add_enabled(
             elevated,
@@ -46,4 +47,5 @@ pub(super) fn conn_menu(ui: &mut egui::Ui, conn: &Connection, elevated: bool, i1
         conn.proc_path.as_deref(),
         Some((conn.remote_ip.to_string().as_str(), conn.remote_port)),
     );
+    widgets::menu::menu_item(ui, i18n.t("menu-view-history"), true).clicked()
 }

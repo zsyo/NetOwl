@@ -34,6 +34,9 @@ pub(super) fn view(
     config: &Config,
     conns: &[Connection],
     name: &str,
+    history: &mut crate::storage::history_query::PageState,
+    conn_search: &mut String,
+    nav_request: &mut Option<crate::ui::Page>,
 ) {
     let rows: Vec<&Connection> = conns
         .iter()
@@ -56,10 +59,40 @@ pub(super) fn view(
         panels.process = None;
         return;
     }
-    ui.label(theme::dim_text(
-        &i18n.t_with_args("status-conn-count", &[("count", rows.len().to_string())]),
-        12.0,
-    ));
+    // 连接数 + 跨页跳转小钮(空进程名无从过滤,禁用)
+    let filterable = !name.is_empty();
+    ui.horizontal(|ui| {
+        ui.label(theme::dim_text(
+            &i18n.t_with_args("status-conn-count", &[("count", rows.len().to_string())]),
+            12.0,
+        ));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if widgets::button::icon_btn(
+                ui,
+                crate::ui::icons::CLOCK_HISTORY,
+                Some(i18n.t("inspector-open-history")),
+                false,
+                filterable,
+            )
+            .clicked()
+            {
+                history.set_process_filter(name.to_owned());
+                *nav_request = Some(crate::ui::Page::History);
+            }
+            if widgets::button::icon_btn(
+                ui,
+                crate::ui::icons::LIST_UL,
+                Some(i18n.t("inspector-open-conns")),
+                false,
+                filterable,
+            )
+            .clicked()
+            {
+                *conn_search = display.clone();
+                *nav_request = Some(crate::ui::Page::Connections);
+            }
+        });
+    });
     traffic_cards(
         ui,
         rows.iter().map(|c| c.bytes_in).sum(),

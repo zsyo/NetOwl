@@ -155,6 +155,10 @@ impl eframe::App for NetOwlApp {
         self.handle_title_action(title_action, ui.ctx());
 
         let config_changed = self.show_panels(ui, collector_kind);
+        // 跨页跳转请求(Inspector 跳连接/历史、右键菜单查看历史)帧末应用
+        if let Some(p) = self.nav_request.take() {
+            self.page = p;
+        }
         let repaint = super::layout::repaint_interval(shown, &self.page, log_open);
         // 节奏变化(页面切换/显示隐藏)输出 TRACE;稳定节奏不重复输出
         let repaint_ms = u64::try_from(repaint.as_millis()).unwrap_or(u64::MAX);

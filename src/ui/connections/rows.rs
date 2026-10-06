@@ -14,7 +14,8 @@ use crate::net::rdns;
 use crate::rules as rules_engine;
 use crate::ui::{theme, widgets};
 
-/// 单行渲染(行悬停垫底 + 右键菜单 + 九列内容)
+/// 单行渲染(行悬停垫底 + 右键菜单 + 九列内容);返回"查看历史
+/// 记录"是否被点击(跳转由调用方执行)
 #[allow(clippy::too_many_arguments)]
 pub(super) fn conn_row(
     ui: &mut egui::Ui,
@@ -30,7 +31,7 @@ pub(super) fn conn_row(
     table_right: f32,
     flex_w: f32,
     elevated: bool,
-) {
+) -> bool {
     use super::{C_ACTION_W, C_LOC_W, C_PROTO_W, C_RATE_W, C_TOTAL_W};
     let row_top = ui.cursor().top();
     conn_row_hover.begin(ui, table_left, table_right, row_top);
@@ -46,7 +47,10 @@ pub(super) fn conn_row(
         egui::Id::new(("conn_row", conn.id)),
         egui::Sense::click(),
     );
-    row_resp.context_menu(|ui| menu::conn_menu(ui, conn, elevated, i18n));
+    let mut view_history = false;
+    row_resp.context_menu(|ui| {
+        view_history = menu::conn_menu(ui, conn, elevated, i18n);
+    });
     let process = if conn.process.is_empty() {
         format!(
             "{} {}",
@@ -186,6 +190,7 @@ pub(super) fn conn_row(
     });
     ui.end_row();
     conn_row_hover.end(ui, row_top);
+    view_history
 }
 
 /// 进程列第二行文本:签名状态 + 映像路径(超长取尾部保留文件名)

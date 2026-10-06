@@ -110,6 +110,8 @@ pub struct UiCtx<'a> {
     pub conn_grouped: bool,
     /// 连接页分组折叠集合(键 = 进程名)
     pub conn_collapsed: &'a mut HashSet<String>,
+    /// 页面跳转请求(Inspector/右键菜单等跨页动作);App 层帧末取出应用
+    pub nav_request: &'a mut Option<Page>,
     /// 监听条目快照(TCP LISTEN + UDP 绑定,与连接采集同频)
     pub listens: &'a [crate::model::ListenEntry],
     /// 连接页搜索词(进程/远端/域名包含过滤,会话态)

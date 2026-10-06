@@ -90,6 +90,7 @@ impl NetOwlApp {
             conn_view: &mut self.conn_view,
             conn_grouped: self.conn_grouped,
             conn_collapsed: &mut self.conn_collapsed,
+            nav_request: &mut self.nav_request,
             listens: &self.listens,
             conn_search: &mut self.conn_search,
             conn_row_hover: &mut self.conn_row_hover,

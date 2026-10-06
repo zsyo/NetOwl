@@ -146,6 +146,8 @@ pub struct NetOwlApp {
     conn_grouped: bool,
     /// 连接页分组折叠集合(键 = 进程名,会话态)
     conn_collapsed: HashSet<String>,
+    /// 跨页跳转请求(绘制侧写入,帧末应用到 page)
+    nav_request: Option<ui::Page>,
     /// 曾被表快照合并覆盖的 ETW 流键:完结流命中此集合说明表快照
     /// 跟踪器已记录,不按短命连接重复落盘
     etw_seen: HashSet<etw::FlowKey>,

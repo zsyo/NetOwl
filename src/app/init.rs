@@ -141,6 +141,7 @@ impl NetOwlApp {
             conn_view: crate::ui::ConnView::Conns,
             conn_grouped: false,
             conn_collapsed: HashSet::new(),
+            nav_request: None,
             etw_seen: HashSet::new(),
             conn_rates: HashMap::new(),
             udp_last_remote: HashMap::new(),
