@@ -183,7 +183,7 @@ fn apply_visuals(ctx: &egui::Context) {
     v.window_corner_radius = CornerRadius::same(RADIUS_LG);
     // 窗口描边带 accent 辉光(冷色 HUD 门面);浅色主题保持中性描边
     v.window_stroke = if is_dark() {
-        Stroke::new(1.0, p.accent.gamma_multiply(0.28))
+        Stroke::new(1.0, p.accent_dim)
     } else {
         Stroke::new(1.0, p.stroke)
     };

@@ -24,7 +24,7 @@ pub fn icon_btn(
     let hovered = enabled && resp.hovered();
     if hovered {
         let bg = if danger {
-            theme::c().danger.gamma_multiply(0.12)
+            theme::c().danger_soft
         } else {
             theme::c().hover_bg
         };

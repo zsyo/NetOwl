@@ -84,7 +84,7 @@ fn draw_level(painter: &egui::Painter, rect: Rect, proj: &Projection, level: &Ma
             level,
             &level.coast,
             COAST_WIDTH + 3.0,
-            theme::c().map_coast.gamma_multiply(0.28),
+            theme::c().map_coast_glow,
             &mut glow,
             rect,
             proj,
@@ -118,9 +118,7 @@ fn draw_grid(painter: &egui::Painter, rect: Rect, proj: &Projection) {
         segments.push([proj.project(lon0, lat), proj.project(lon1, lat)]);
     }
     if glow {
-        let p = theme::c();
-        let glow_stroke =
-            egui::Stroke::new(2.5, p.map_grid.gamma_multiply(2.2).gamma_multiply(0.35));
+        let glow_stroke = egui::Stroke::new(2.5, theme::c().map_grid_glow);
         for seg in &segments {
             painter.line_segment(*seg, glow_stroke);
         }

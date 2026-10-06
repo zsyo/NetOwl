@@ -111,7 +111,7 @@ fn nav_item(
         ui.painter().rect_filled(
             bar.expand2(egui::vec2(2.5, 2.0)),
             CornerRadius::same(theme::RADIUS_PILL),
-            p.accent.gamma_multiply(0.25),
+            p.accent_dim,
         );
         ui.painter()
             .rect_filled(bar, CornerRadius::same(theme::RADIUS_PILL), p.accent);

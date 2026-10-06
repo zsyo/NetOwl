@@ -137,7 +137,7 @@ pub fn header_sort_cell(
         painter.rect_stroke(
             resp.rect,
             theme::RADIUS_SM,
-            Stroke::new(1.0, p.accent.gamma_multiply(0.4)),
+            Stroke::new(1.0, p.accent_dim),
             egui::StrokeKind::Inside,
         );
     } else if resp.hovered() {

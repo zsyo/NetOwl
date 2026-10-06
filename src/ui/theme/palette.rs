@@ -55,6 +55,14 @@ pub struct Palette {
     pub bg_float: Color32,
     /// 条纹行/微弱填充
     pub faint: Color32,
+    /// 语义底/辉光派生(深浅各自调参;纯透明度系数不在此列)
+    pub danger_soft: Color32,
+    /// accent 中透明:窗口描边辉光/选中描边/指示条辉光共用
+    pub accent_dim: Color32,
+    /// 地图海岸线辉光层(仅深色主题使用)
+    pub map_coast_glow: Color32,
+    /// 经纬网格辉光层(仅深色主题使用)
+    pub map_grid_glow: Color32,
     // 前景
     pub text: Color32,
     pub text_dim: Color32,
@@ -97,6 +105,10 @@ pub(super) const DARK: Palette = Palette {
     map_label_province: Color32::from_rgb(126, 144, 168),
     // 十段线:比国界亮的强调色,突出断续主权界
     map_south_sea_line: Color32::from_rgb(214, 226, 138),
+    danger_soft: Color32::from_rgba_unmultiplied_const(236, 106, 106, 30),
+    accent_dim: Color32::from_rgba_unmultiplied_const(34, 211, 238, 68),
+    map_coast_glow: Color32::from_rgba_unmultiplied_const(62, 110, 158, 72),
+    map_grid_glow: Color32::from_rgba_unmultiplied_const(52, 84, 124, 88),
     bg_card: Color32::from_rgb(19, 26, 41),
     bg_elevated: Color32::from_rgb(26, 35, 52),
     bg_float: Color32::from_rgba_unmultiplied_const(19, 26, 41, 240),
@@ -136,6 +148,10 @@ pub(super) const LIGHT: Palette = Palette {
     map_label_province: Color32::from_rgb(120, 128, 140),
     // 十段线:浅色主题用深金棕,避免与绿色陆地国界混同
     map_south_sea_line: Color32::from_rgb(176, 122, 40),
+    danger_soft: Color32::from_rgba_unmultiplied_const(198, 60, 60, 26),
+    accent_dim: Color32::from_rgba_unmultiplied_const(8, 145, 178, 84),
+    map_coast_glow: Color32::from_rgba_unmultiplied_const(127, 163, 147, 60),
+    map_grid_glow: Color32::from_rgba_unmultiplied_const(90, 130, 170, 60),
     bg_card: Color32::from_rgb(255, 255, 255),
     bg_elevated: Color32::from_rgb(255, 255, 255),
     bg_float: Color32::from_rgba_unmultiplied_const(255, 255, 255, 240),
