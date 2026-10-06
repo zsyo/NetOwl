@@ -298,9 +298,14 @@ impl Collector for TableCollector {
             self.pending_poll = false;
             self.poll();
         }
-        // 调用方(1s 节流的采集编排)每次取走快照,下轮 poll 重建;
-        // 契约:两次调用间隔不小于 POLL_INTERVAL,取走后不会有读到空的调用
-        std::mem::take(&mut self.ordered)
+        // 快照取走(零拷贝)后置 pending_poll,下一次调用必定重建:
+        // 调用方有自己的 1s 节流钟且在调用前重置,而 last_poll 在 poll
+        // 末尾才设置,两钟相差一个 poll 耗时——下一次调用到达时
+        // elapsed(last_poll) 恒略小于 POLL_INTERVAL,若不强制会返回空表
+        // (表现为列表/地图周期性清空一拍)。节流由调用方承担
+        let out = std::mem::take(&mut self.ordered);
+        self.pending_poll = true;
+        out
     }
 
     fn listening(&mut self) -> Vec<ListenEntry> {
