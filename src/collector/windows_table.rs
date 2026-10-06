@@ -164,6 +164,13 @@ impl TableCollector {
             .chain(listening.iter().map(|l| l.pid))
             .collect();
         self.proc_metas.retain(|pid, _| live_pids.contains(pid));
+        // 系统表顺序逐轮可能变化,按 进程/协议/端口 排序保证视图稳定
+        listening.sort_by(|a, b| {
+            a.process
+                .cmp(&b.process)
+                .then(a.proto.as_str().cmp(b.proto.as_str()))
+                .then(a.local_port.cmp(&b.local_port))
+        });
         self.listening_rows = listening;
 
         self.dispatch_signature_queries(&live_pids);

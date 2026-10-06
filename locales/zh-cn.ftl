@@ -348,4 +348,4 @@ settings-quota = 月度流量配额
 settings-quota-hint = 当月用量达到配额 80% 与 100% 时提醒,0 = 不启用
 settings-quota-unit = GB
 
-listen-search = 搜索进程或路径
+listen-search = 搜索进程或端口

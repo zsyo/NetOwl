@@ -53,6 +53,11 @@ pub(super) fn table(
         ],
         &|k| i18n.t(k),
     );
+    // 行距对齐:show_rows 按全局 item_spacing.y 计算行步进与内容总高,
+    // 而数据 Grid 的实际行距是 ROW_SPACING_Y——不一致会让底部行画到
+    // 声明 rect 之外,滚动范围被反测撑大,拖住滚动条时 offset 在两套
+    // 高度间反复钳制(页面抖动)。对齐后声明高 = 实际高
+    ui.spacing_mut().item_spacing.y = widgets::table::ROW_SPACING_Y;
     egui::ScrollArea::vertical().auto_shrink(false).show_rows(
         ui,
         22.0,
