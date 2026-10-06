@@ -116,6 +116,8 @@ pub struct UiCtx<'a> {
     pub listens: &'a [crate::model::ListenEntry],
     /// 连接页搜索词(进程/远端/域名包含过滤,会话态)
     pub conn_search: &'a mut String,
+    /// 连接页协议筛选(连接/监听两视图共用,会话态)
+    pub conn_proto: &'a mut Option<crate::model::Protocol>,
     /// 连接页行悬停辅助(跨帧行高,行首垫底用)
     pub conn_row_hover: &'a mut widgets::table::RowHover,
     /// 规则页行悬停辅助(跨帧行高)

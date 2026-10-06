@@ -348,6 +348,7 @@ settings-quota-hint = Alert at 80% and 100% of the quota; 0 = disabled
 settings-quota-unit = GB
 
 listen-search = Search process or port
+proto-all = All
 
 menu-view-history = View history
 inspector-open-conns = View in connections

@@ -147,6 +147,7 @@ impl NetOwlApp {
             udp_last_remote: HashMap::new(),
             conn_sort: None,
             conn_search: String::new(),
+            conn_proto: None,
             conn_row_hover: Default::default(),
             rules_row_hover: Default::default(),
             log_window: crate::ui::log_window::PageState::new(),

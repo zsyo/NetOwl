@@ -18,15 +18,17 @@ pub(super) fn listen_table(ui: &mut egui::Ui, ctx: &mut UiCtx) {
         icon_tex,
         default_icon_tex,
         conn_search,
+        conn_proto,
         ..
     } = ctx;
     let needle = conn_search.trim().to_lowercase();
     let rows: Vec<&ListenEntry> = listens
         .iter()
         .filter(|l| {
-            needle.is_empty()
-                || l.process.to_lowercase().contains(&needle)
-                || l.local_port.to_string().contains(&needle)
+            conn_proto.is_none_or(|p| l.proto == p)
+                && (needle.is_empty()
+                    || l.process.to_lowercase().contains(&needle)
+                    || l.local_port.to_string().contains(&needle))
         })
         .collect();
     if rows.is_empty() {

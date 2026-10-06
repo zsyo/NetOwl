@@ -349,6 +349,7 @@ settings-quota-hint = 当月用量达到配额 80% 与 100% 时提醒,0 = 不启
 settings-quota-unit = GB
 
 listen-search = 搜索进程或端口
+proto-all = 全部
 
 menu-view-history = 查看历史记录
 inspector-open-conns = 在连接页查看

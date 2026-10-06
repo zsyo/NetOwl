@@ -93,6 +93,7 @@ impl NetOwlApp {
             nav_request: &mut self.nav_request,
             listens: &self.listens,
             conn_search: &mut self.conn_search,
+            conn_proto: &mut self.conn_proto,
             conn_row_hover: &mut self.conn_row_hover,
             rules_row_hover: &mut self.rules_row_hover,
             log_window: &mut self.log_window,

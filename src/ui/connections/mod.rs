@@ -12,7 +12,8 @@ use eframe::egui;
 use egui::RichText;
 
 use super::{ConnSort, ConnSortState, UiCtx, conn_visible, icons, theme, widgets};
-use crate::model::Connection;
+use crate::i18n::I18n;
+use crate::model::{Connection, Protocol};
 
 /// 连接表定宽列(协议/归属/速率/累计/动作):表头与行渲染共用,
 /// mod 与 rows 引用同一组常量防两份定义错位
@@ -42,6 +43,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         nav_request,
         conn_sort,
         conn_search,
+        conn_proto,
         conn_row_hover,
         elevated,
         ..
@@ -50,6 +52,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     let conn_sort: &mut ConnSortState = conn_sort;
     let nav_request: &mut Option<Page> = nav_request;
     let conn_search: &mut String = conn_search;
+    let conn_proto: &mut Option<Protocol> = conn_proto;
     let conn_row_hover: &mut widgets::table::RowHover = conn_row_hover;
     let elevated = *elevated;
     widgets::header::page_header(ui, &i18n.t("conns-title"), &i18n.t("conns-subtitle"));
@@ -81,6 +84,8 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         }
         ui.add_space(theme::sp::MD);
         if *conn_view == ConnView::Listens {
+            proto_filter_segmented(ui, conn_proto, i18n);
+            ui.add_space(theme::sp::MD);
             ui.label(
                 RichText::new(icons::SEARCH)
                     .size(theme::font::XS)
@@ -112,6 +117,8 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         {
             changed = true;
         }
+        ui.add_space(theme::sp::SM);
+        proto_filter_segmented(ui, conn_proto, i18n);
         ui.add_space(theme::sp::MD);
         // 搜索框(进程/映像路径/远端 IP/rDNS 域名包含匹配,会话态)
         ui.label(
@@ -148,7 +155,9 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     };
     let mut shown: Vec<&Connection> = conns
         .iter()
-        .filter(|c| conn_visible(config, c) && match_search(c))
+        .filter(|c| {
+            conn_visible(config, c) && conn_proto.is_none_or(|p| c.proto == p) && match_search(c)
+        })
         .collect();
     sort::sort_conns(&mut shown, conn_sort, conn_rates, i18n);
     if shown.is_empty() {
@@ -290,4 +299,26 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
 fn flex_w_of(table_w: f32) -> f32 {
     ((table_w - (C_PROTO_W + C_LOC_W + C_RATE_W * 2.0 + C_TOTAL_W * 2.0 + C_ACTION_W)).max(320.0))
         * 0.5
+}
+
+/// 协议筛选三态分段(全部/TCP/UDP):连接与监听两视图共用一份会话态
+fn proto_filter_segmented(ui: &mut egui::Ui, conn_proto: &mut Option<Protocol>, i18n: &I18n) {
+    let items = [
+        (i18n.t("proto-all"), ""),
+        ("TCP".to_owned(), ""),
+        ("UDP".to_owned(), ""),
+    ];
+    let items: Vec<(&str, &str)> = items.iter().map(|(t, g)| (t.as_str(), *g)).collect();
+    let selected = match conn_proto {
+        None => 0,
+        Some(Protocol::Tcp) => 1,
+        Some(Protocol::Udp) => 2,
+    };
+    if let Some(i) = widgets::segmented::segmented(ui, &items, selected) {
+        *conn_proto = match i {
+            1 => Some(Protocol::Tcp),
+            2 => Some(Protocol::Udp),
+            _ => None,
+        };
+    }
 }

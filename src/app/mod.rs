@@ -161,6 +161,8 @@ pub struct NetOwlApp {
     conn_sort: ui::ConnSortState,
     /// 连接页搜索词(进程/远端/域名包含过滤,会话内,不持久化)
     conn_search: String,
+    /// 连接页协议筛选(连接/监听两视图共用,会话内,不持久化)
+    conn_proto: Option<crate::model::Protocol>,
     /// 表格行悬停辅助(连接/规则页,跨帧行高供行首垫底判定)
     conn_row_hover: ui::widgets::table::RowHover,
     rules_row_hover: ui::widgets::table::RowHover,
