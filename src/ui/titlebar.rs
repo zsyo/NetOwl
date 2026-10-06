@@ -46,6 +46,16 @@ pub fn show(ui: &mut egui::Ui, app_name: &str) -> TitleAction {
         ui.spacing_mut().item_spacing.x = 0.0;
         ui.add_space(theme::sp::LG);
         ui.set_min_height(HEIGHT);
+        // 品牌光点:accent 发光小圆(辉光外圈 + 亮芯)
+        {
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
+            let c = rect.center();
+            let p = theme::c();
+            ui.painter()
+                .circle_filled(c, 5.0, p.accent.gamma_multiply(0.22));
+            ui.painter().circle_filled(c, 2.2, p.accent);
+        }
+        ui.add_space(theme::sp::XS);
         ui.label(
             egui::RichText::new(app_name)
                 .size(theme::font::BODY)

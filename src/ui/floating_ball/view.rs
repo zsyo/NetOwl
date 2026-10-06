@@ -65,14 +65,19 @@ fn signal_grid(painter: &egui::Painter, cx: f32, data: &BallData, bars_left: boo
             let lit = rate >= *step;
             let color = if lit { color } else { theme::c().faint };
             let y = group_bottom - bar_h - g as f32 * (bar_h + gap);
-            painter.rect_filled(
-                egui::Rect::from_min_size(
-                    egui::pos2(strip_cx - bar_w * 0.5, y),
-                    egui::vec2(bar_w, bar_h),
-                ),
-                egui::CornerRadius::same(1),
-                color,
+            let rect = egui::Rect::from_min_size(
+                egui::pos2(strip_cx - bar_w * 0.5, y),
+                egui::vec2(bar_w, bar_h),
             );
+            // 点亮格辉光垫底(扩大 1.5px 的低透明层)
+            if lit {
+                painter.rect_filled(
+                    rect.expand2(egui::vec2(1.5, 1.5)),
+                    egui::CornerRadius::same(2),
+                    color.gamma_multiply(0.28),
+                );
+            }
+            painter.rect_filled(rect, egui::CornerRadius::same(1), color);
         }
     }
 }

@@ -144,14 +144,16 @@ pub fn show(
                     } else {
                         theme::c().danger
                     };
-                    ui.add(
-                        egui::ProgressBar::new(ratio)
-                            .desired_height(18.0)
-                            .fill(bar_color)
-                            .text(i18n.t_with_args(
-                                "ask-timeout-hint",
-                                &[("n", remaining.as_secs().to_string())],
-                            )),
+                    // 分段能量条:N 格按剩余比例点亮,段间留缝(逐格熄灭
+                    // 比连续条更有倒计时感);槽底 faint,文字内嵌居中
+                    energy_bar(
+                        ui,
+                        ratio,
+                        bar_color,
+                        i18n.t_with_args(
+                            "ask-timeout-hint",
+                            &[("n", remaining.as_secs().to_string())],
+                        ),
                     );
                     ui.add_space(8.0);
 
@@ -227,4 +229,40 @@ pub fn show(
         },
     );
     decision
+}
+
+/// 能量条尺寸与段数
+const ENERGY_SEGMENTS: usize = 14;
+const ENERGY_H: f32 = 18.0;
+
+/// 分段能量条:N 格按剩余比例点亮(圆角小格,段间 2px 缝),
+/// 槽底 faint,剩余秒数文字内嵌居中
+fn energy_bar(ui: &mut egui::Ui, ratio: f32, color: egui::Color32, text: String) {
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), ENERGY_H),
+        egui::Sense::hover(),
+    );
+    let p = theme::c();
+    ui.painter()
+        .rect_filled(rect, egui::CornerRadius::same(4), p.faint);
+    let seg_w = (rect.width() - (ENERGY_SEGMENTS - 1) as f32 * 2.0) / ENERGY_SEGMENTS as f32;
+    let lit = (ratio * ENERGY_SEGMENTS as f32).round() as usize;
+    for i in 0..lit.min(ENERGY_SEGMENTS) {
+        let x = rect.left() + i as f32 * (seg_w + 2.0);
+        ui.painter().rect_filled(
+            egui::Rect::from_min_size(
+                egui::pos2(x, rect.top() + 2.0),
+                egui::vec2(seg_w, ENERGY_H - 4.0),
+            ),
+            egui::CornerRadius::same(2),
+            color,
+        );
+    }
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        text,
+        egui::FontId::proportional(theme::font::XS),
+        p.text,
+    );
 }
