@@ -103,21 +103,30 @@ fn draw_grid(painter: &egui::Painter, rect: Rect, proj: &Projection) {
     let (lat0, lat1) = (lat0.min(lat1), lat0.max(lat1));
 
     let step: i32 = if proj.zoom >= DETAIL_ZOOM { 10 } else { 30 };
+    // 经纬光网格:深色主题先铺一层更宽的低透明辉光线再叠实线,
+    // 浅色主题保持单线(浅底上辉光只会发灰)
+    let glow = theme::is_dark();
+    let mut segments: Vec<[egui::Pos2; 2]> = Vec::new();
     let first = (lon0.floor() as i32).div_euclid(step) * step;
     for lon in (first..=lon1.ceil() as i32).step_by(step as usize) {
         let lon = lon as f32;
-        painter.line_segment(
-            [proj.project(lon, 90.0), proj.project(lon, -90.0)],
-            egui::Stroke::new(1.0, theme::c().map_grid),
-        );
+        segments.push([proj.project(lon, 90.0), proj.project(lon, -90.0)]);
     }
     let first = (lat0.floor() as i32).div_euclid(step) * step;
     for lat in (first..=lat1.ceil() as i32).step_by(step as usize) {
         let lat = (lat as f32).clamp(-90.0, 90.0);
-        painter.line_segment(
-            [proj.project(lon0, lat), proj.project(lon1, lat)],
-            egui::Stroke::new(1.0, theme::c().map_grid),
-        );
+        segments.push([proj.project(lon0, lat), proj.project(lon1, lat)]);
+    }
+    if glow {
+        let p = theme::c();
+        let glow_stroke =
+            egui::Stroke::new(2.5, p.map_grid.gamma_multiply(2.2).gamma_multiply(0.35));
+        for seg in &segments {
+            painter.line_segment(*seg, glow_stroke);
+        }
+    }
+    for seg in &segments {
+        painter.line_segment(*seg, egui::Stroke::new(1.0, theme::c().map_grid));
     }
 }
 

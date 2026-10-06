@@ -111,15 +111,22 @@ pub fn draw(
                 color
             }
         };
-        let pulse_alpha =
-            0.35 + 0.3 * (0.5 + 0.5 * (t * 2.0 + hash_phase(*bytes) * std::f32::consts::TAU).sin());
+        let phase = hash_phase(*bytes) * std::f32::consts::TAU;
+        // 双层呼吸环:内圈快相位贴节点,外圈慢相位向外扩散,错拍呼吸
+        let inner_alpha = 0.35 + 0.3 * (0.5 + 0.5 * (t * 2.0 + phase).sin());
+        let outer_alpha = 0.30 + 0.3 * (0.5 + 0.5 * (-t * 1.3 + phase + 1.2).sin());
         let (k0, k1) = proj.visible_cycles(pos.x, rect);
         for k in k0..=k1 {
             let pos = pos + Vec2::new(k as f32 * cycle_px, 0.0);
             painter.circle_stroke(
                 pos,
-                r + 5.0,
-                Stroke::new(1.5, fade(theme::c().map_node).gamma_multiply(pulse_alpha)),
+                r + 3.0,
+                Stroke::new(1.2, fade(theme::c().map_node).gamma_multiply(inner_alpha)),
+            );
+            painter.circle_stroke(
+                pos,
+                r + 7.0,
+                Stroke::new(1.0, fade(theme::c().map_node).gamma_multiply(outer_alpha)),
             );
             painter.circle_filled(
                 pos,
