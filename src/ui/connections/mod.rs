@@ -58,6 +58,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     let mut changed = false;
     // &mut UiCtx 解构出的引用字段带两层 &mut,借类型注解 coerce 回单层
     let conn_view: &mut ConnView = conn_view;
+    let conn_grouped: &mut bool = conn_grouped;
     // 视图切换:活动连接 / 端口监听
     let view_items = [
         (i18n.t("conns-view-conns"), icons::LIST_UL),
@@ -88,6 +89,10 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
             widgets::search_box::search_box(ui, conn_search, i18n.t("listen-search"), 220.0);
             return false;
         }
+        // 按进程分组:列表视图形态(平铺/分组),会话态不入 config;
+        // 与噪音过滤含义不同,紧随视图切换、留隙与过滤组分段
+        ui.checkbox(conn_grouped, i18n.t("conns-group"));
+        ui.add_space(theme::sp::MD);
         let mut changed = false;
         ui.label(
             RichText::new(icons::FUNNEL)
@@ -99,10 +104,6 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
             .checkbox(&mut config.general.hide_local, i18n.t("filter-hide-local"))
             .changed()
         {
-            changed = true;
-        }
-        // 按进程分组(会话态;分组与搜索/显示过滤联动)
-        if ui.checkbox(conn_grouped, i18n.t("conns-group")).changed() {
             changed = true;
         }
         if ui

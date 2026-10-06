@@ -88,7 +88,7 @@ impl NetOwlApp {
             conn_rates: &self.conn_rates,
             conn_sort: &mut self.conn_sort,
             conn_view: &mut self.conn_view,
-            conn_grouped: self.conn_grouped,
+            conn_grouped: &mut self.conn_grouped,
             conn_collapsed: &mut self.conn_collapsed,
             nav_request: &mut self.nav_request,
             listens: &self.listens,

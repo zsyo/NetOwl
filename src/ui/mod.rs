@@ -107,7 +107,7 @@ pub struct UiCtx<'a> {
     /// 连接页视图形态(连接/端口监听 segmented 切换)
     pub conn_view: &'a mut ConnView,
     /// 连接页按进程分组(过滤行 toggle 切换)
-    pub conn_grouped: bool,
+    pub conn_grouped: &'a mut bool,
     /// 连接页分组折叠集合(键 = 进程名)
     pub conn_collapsed: &'a mut HashSet<String>,
     /// 页面跳转请求(Inspector/右键菜单等跨页动作);App 层帧末取出应用
