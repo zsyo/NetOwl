@@ -71,48 +71,50 @@ pub struct Palette {
     pub open_bg: Color32,
 }
 
-/// 深色主题:绿蓝地图(海洋深蓝、陆地深绿)
+/// 深色主题:冷色 HUD(深冷蓝黑底、电光青 accent、暗色科技底图:
+/// 深蓝海洋 + 亮蓝灰海岸)
 pub(super) const DARK: Palette = Palette {
-    accent: Color32::from_rgb(92, 157, 255),
-    accent_soft: Color32::from_rgba_unmultiplied_const(92, 157, 255, 34),
+    accent: Color32::from_rgb(34, 211, 238),
+    accent_soft: Color32::from_rgba_unmultiplied_const(34, 211, 238, 34),
     inbound: Color32::from_rgb(126, 224, 163),
     outbound: Color32::from_rgb(92, 207, 230),
     status_ok: Color32::from_rgb(88, 214, 141),
     status_warn: Color32::from_rgb(232, 192, 92),
     danger: Color32::from_rgb(236, 106, 106),
-    bg_base: Color32::from_rgb(16, 18, 24),
-    bg_panel: Color32::from_rgb(22, 25, 33),
-    bg_map: Color32::from_rgb(12, 24, 34),
-    map_land: Color32::from_rgb(30, 58, 48),
-    map_coast: Color32::from_rgb(70, 120, 95),
-    map_border: Color32::from_rgb(52, 92, 74),
-    // 河流:偏亮水蓝,在深绿陆地上呈水系脉络,暗于海名标签避免抢视觉
-    map_river: Color32::from_rgb(58, 104, 134),
-    map_grid: Color32::from_rgb(18, 32, 42),
-    map_node: Color32::from_rgb(118, 152, 138),
-    map_label_country: Color32::from_rgb(150, 190, 168),
-    map_label_sea: Color32::from_rgb(100, 155, 196),
+    bg_base: Color32::from_rgb(11, 15, 23),
+    bg_panel: Color32::from_rgb(15, 20, 32),
+    bg_map: Color32::from_rgb(8, 17, 32),
+    map_land: Color32::from_rgb(21, 34, 50),
+    map_coast: Color32::from_rgb(62, 110, 158),
+    map_border: Color32::from_rgb(44, 74, 110),
+    // 河流:偏亮水蓝,在暗青陆地上呈水系脉络,暗于海名标签避免抢视觉
+    map_river: Color32::from_rgb(39, 86, 122),
+    map_grid: Color32::from_rgb(14, 27, 44),
+    map_node: Color32::from_rgb(111, 214, 236),
+    map_label_country: Color32::from_rgb(155, 196, 224),
+    map_label_sea: Color32::from_rgb(93, 138, 184),
     // 省名取中性蓝灰,明显弱于亮青的国家名
-    map_label_province: Color32::from_rgb(128, 146, 162),
-    // 十段线:比国界亮的强调青,突出断续主权界
+    map_label_province: Color32::from_rgb(126, 144, 168),
+    // 十段线:比国界亮的强调色,突出断续主权界
     map_south_sea_line: Color32::from_rgb(214, 226, 138),
-    bg_card: Color32::from_rgb(28, 32, 41),
-    bg_elevated: Color32::from_rgb(36, 41, 53),
-    bg_float: Color32::from_rgba_unmultiplied_const(28, 32, 41, 240),
-    faint: Color32::from_rgb(26, 29, 38),
-    text: Color32::from_rgb(222, 226, 235),
-    text_dim: Color32::from_rgb(140, 147, 164),
+    bg_card: Color32::from_rgb(19, 26, 41),
+    bg_elevated: Color32::from_rgb(26, 35, 52),
+    bg_float: Color32::from_rgba_unmultiplied_const(19, 26, 41, 240),
+    faint: Color32::from_rgb(17, 23, 36),
+    text: Color32::from_rgb(222, 229, 240),
+    text_dim: Color32::from_rgb(135, 146, 166),
     on_accent: Color32::from_rgb(255, 255, 255),
-    stroke: Color32::from_rgb(48, 53, 66),
-    stroke_strong: Color32::from_rgb(62, 70, 90),
-    hover_bg: Color32::from_rgb(40, 45, 57),
-    open_bg: Color32::from_rgb(36, 41, 53),
+    stroke: Color32::from_rgb(42, 51, 69),
+    stroke_strong: Color32::from_rgb(56, 67, 89),
+    hover_bg: Color32::from_rgb(27, 35, 51),
+    open_bg: Color32::from_rgb(26, 35, 52),
 };
 
-/// 浅色主题:LS 式绿蓝地图(海洋浅蓝、陆地浅绿、白色国界)
+/// 浅色主题:LS 式地图(海洋浅蓝、陆地浅绿、白色国界),accent 换
+/// 冷青与新设计语言呼应
 pub(super) const LIGHT: Palette = Palette {
-    accent: Color32::from_rgb(47, 127, 232),
-    accent_soft: Color32::from_rgba_unmultiplied_const(47, 127, 232, 36),
+    accent: Color32::from_rgb(8, 145, 178),
+    accent_soft: Color32::from_rgba_unmultiplied_const(8, 145, 178, 36),
     inbound: Color32::from_rgb(30, 148, 94),
     outbound: Color32::from_rgb(20, 134, 168),
     status_ok: Color32::from_rgb(34, 160, 100),
@@ -121,8 +123,8 @@ pub(super) const LIGHT: Palette = Palette {
     bg_base: Color32::from_rgb(243, 245, 248),
     bg_panel: Color32::from_rgb(233, 237, 242),
     bg_map: Color32::from_rgb(168, 205, 230),
-    map_land: Color32::from_rgb(215, 229, 196),
-    map_coast: Color32::from_rgb(150, 178, 138),
+    map_land: Color32::from_rgb(211, 226, 216),
+    map_coast: Color32::from_rgb(127, 163, 147),
     map_border: Color32::from_rgb(255, 255, 255),
     // 河流:浅色陆地上取偏深水蓝,与海洋同族但更饱和
     map_river: Color32::from_rgb(120, 158, 190),
