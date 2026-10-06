@@ -54,17 +54,18 @@ pub mod sp {
 }
 
 // ---- 阴影刻度(浮起层投影:窗口 > 弹层)----
+// 深色阴影带冷色调(预乘 RGBA 的深蓝黑)呼应冷色 HUD 基调
 const WINDOW_SHADOW_DARK: Shadow = Shadow {
     offset: [0, 8],
     blur: 24,
     spread: 0,
-    color: Color32::from_black_alpha(130),
+    color: Color32::from_rgba_premultiplied(3, 10, 18, 140),
 };
 const POPUP_SHADOW_DARK: Shadow = Shadow {
     offset: [0, 4],
     blur: 12,
     spread: 0,
-    color: Color32::from_black_alpha(100),
+    color: Color32::from_rgba_premultiplied(3, 10, 18, 105),
 };
 const WINDOW_SHADOW_LIGHT: Shadow = Shadow {
     offset: [0, 8],
