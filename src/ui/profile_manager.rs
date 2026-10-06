@@ -22,6 +22,28 @@ pub struct ProfileMgrState {
     pub draft: String,
     /// 待确认删除:(档 id, 名称)
     pub confirm_delete: Option<(i64, String)>,
+    /// 弹窗列表缓存:None = 需要重建(首次打开/任一增删改成功后/关闭)
+    rows: Option<Vec<ProfileRow>>,
+}
+
+/// 档列表行缓存(id/名称/规则数)
+#[derive(Clone)]
+struct ProfileRow {
+    id: i64,
+    name: String,
+    rules: usize,
+}
+
+/// 重建列表缓存(每档一次规则数查询,仅在缓存失效时执行)
+fn load_rows(db: &Db) -> Vec<ProfileRow> {
+    RuleSet::list_profiles(db)
+        .into_iter()
+        .map(|p| ProfileRow {
+            id: p.id,
+            name: p.name,
+            rules: RuleSet::count_rules(db, p.id),
+        })
+        .collect()
 }
 
 /// 渲染管理弹窗;管理操作不改 config,落盘由档位切换路径负责
@@ -38,6 +60,11 @@ pub fn show_modal(
     }
     // 本帧完成的操作(闭包外统一反馈与草稿清理):(是否失败, 操作名, 名称或错误)
     let mut done: Option<(bool, &'static str, String)> = None;
+    // 列表缓存:缺失(打开/增删改后)才重建,替代每帧 list_profiles+count_rules
+    if state.rows.is_none() {
+        state.rows = Some(load_rows(db));
+    }
+    let rows = state.rows.clone().unwrap_or_default();
 
     let modal = egui::Modal::new(egui::Id::new("profile-manager")).show(ui.ctx(), |ui| {
         ui.set_width(420.0);
@@ -49,17 +76,15 @@ pub fn show_modal(
         );
         ui.add_space(theme::sp::XS);
 
-        let profiles = RuleSet::list_profiles(db);
         let current = rules.active_profile;
         egui::ScrollArea::vertical()
             .max_height(240.0)
             .auto_shrink(false)
             .show(ui, |ui| {
-                for p in &profiles {
-                    let n = RuleSet::count_rules(db, p.id);
+                for p in &rows {
                     ui.horizontal(|ui| {
                         profile_row(
-                            ui, db, rules, state, i18n, p.id, &p.name, current, n, &mut done,
+                            ui, db, rules, state, i18n, p.id, &p.name, current, p.rules, &mut done,
                         );
                         ui.end_row();
                     });
@@ -88,7 +113,11 @@ pub fn show_modal(
 
         // 删除确认:追加在弹窗底部(确认前保留列表上下文)
         if let Some((id, name)) = state.confirm_delete.clone() {
-            let n = RuleSet::count_rules(db, id);
+            let n = rows
+                .iter()
+                .find(|r| r.id == id)
+                .map(|r| r.rules)
+                .unwrap_or_default();
             ui.separator();
             ui.label(
                 RichText::new(i18n.t_with_args(
@@ -130,10 +159,13 @@ pub fn show_modal(
         state.renaming = None;
         state.confirm_delete = None;
         state.draft.clear();
+        state.rows = None;
     }
     if let Some((is_err, op, detail)) = done {
         state.draft.clear();
         state.renaming = None;
+        // 增删改已落库:失效列表缓存,下一帧重建
+        state.rows = None;
         if is_err {
             tracing::warn!("[Rules] 配置档{op}失败:{detail}");
         } else {
