@@ -22,8 +22,6 @@ use crate::model::{Connection, ListenEntry, Place, Signing};
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
 /// System 进程(PID 4)持有内核级 socket,任务管理器同样显示为 System
 const SYSTEM_PID: u32 = 4;
-/// 签名校验在途/每轮派发上限:WinVerifyTrust 对大文件可能秒级,防线程爆发
-/// 图标提取每轮派发上限(读文件 + GDI 操作,后台线程执行)
 
 /// 进程元数据(按 PID 缓存;签名状态异步回填)
 #[derive(Clone)]
