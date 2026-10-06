@@ -2,13 +2,13 @@
 //! (一分钟双色走势)与监控状态行。
 
 use eframe::egui;
-use egui::{Align2, Color32, CornerRadius, FontId, Margin, RichText, Sense, Stroke};
+use egui::{Align2, CornerRadius, FontId, RichText, Sense};
 
 use super::{UiCtx, nav_rate::rate_card};
 use crate::collector::CollectorKind;
 use crate::i18n::I18n;
-use crate::model::{Connection, fmt_bytes};
-use crate::ui::{icons, theme, widgets};
+use crate::model::Connection;
+use crate::ui::{icons, theme};
 
 /// 左侧导航项:(页面, 词条键, 图标码点(ui::icons,glyph 名见常量注释))
 const NAV_ITEMS: &[(super::Page, &str, &str)] = &[
