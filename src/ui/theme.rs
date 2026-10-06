@@ -180,7 +180,12 @@ fn apply_visuals(ctx: &egui::Context) {
     v.selection.bg_fill = p.accent_soft;
     v.selection.stroke = Stroke::new(1.0, p.accent);
     v.window_corner_radius = CornerRadius::same(RADIUS_LG);
-    v.window_stroke = Stroke::new(1.0, p.stroke);
+    // 窗口描边带 accent 辉光(冷色 HUD 门面);浅色主题保持中性描边
+    v.window_stroke = if is_dark() {
+        Stroke::new(1.0, p.accent.gamma_multiply(0.28))
+    } else {
+        Stroke::new(1.0, p.stroke)
+    };
     v.window_shadow = window_shadow();
     v.menu_corner_radius = CornerRadius::same(RADIUS_MD);
     v.popup_shadow = popup_shadow();

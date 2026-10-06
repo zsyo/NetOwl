@@ -17,10 +17,16 @@ const HEADER_PAD_Y: f32 = 3.0;
 /// 则横跨整列宽,与行斑马纹/悬停底连续
 pub const CELL_PAD_X: f32 = theme::sp::MD;
 
-/// 数字单元格:右对齐 + 语义色(速率/字节等可比大小数值列统一入口)
+/// 数字单元格:右对齐 + 语义色(速率/字节等可比大小数值列统一入口);
+/// 等宽字体保证数字纵向对齐、逐帧刷新不跳宽
 pub fn num_cell(ui: &mut egui::Ui, text: String, color: Color32) -> egui::Response {
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-        ui.label(RichText::new(text).size(theme::font::BODY).color(color))
+        ui.label(
+            RichText::new(text)
+                .size(theme::font::BODY)
+                .font(FontId::monospace(theme::font::BODY))
+                .color(color),
+        )
     })
     .inner
 }
@@ -69,9 +75,10 @@ pub fn header_cell_w(ui: &mut egui::Ui, w: f32, text: &str, right_align: bool) {
         Layout::left_to_right(Align::Center)
     };
     child.with_layout(layout, |ui| {
+        // 表头统一大写(HUD 观感;中文词条无大小写形态,不受影响)
         ui.add(
             Label::new(
-                RichText::new(text)
+                RichText::new(text.to_uppercase())
                     .size(theme::font::SM)
                     .strong()
                     .color(theme::c().text_dim),
@@ -194,7 +201,8 @@ pub struct RowHover {
 }
 
 impl RowHover {
-    /// 行首调用(读行顶之后、本行单元格之前):指针落在本行则垫底色
+    /// 行首调用(读行顶之后、本行单元格之前):指针落在本行则垫底色,
+    /// 并在行左缘画 accent 强调竖条(HUD 行悬停标识)
     pub fn begin(&mut self, ui: &egui::Ui, left: f32, right: f32, top: f32) {
         if self.row_h <= 0.0 {
             return;
@@ -202,7 +210,13 @@ impl RowHover {
         let rect =
             egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, top + self.row_h));
         if ui.rect_contains_pointer(rect) {
-            ui.painter().rect_filled(rect, 0.0, theme::c().hover_bg);
+            let p = theme::c();
+            ui.painter().rect_filled(rect, 0.0, p.hover_bg);
+            ui.painter().rect_filled(
+                egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(left + 2.0, rect.bottom())),
+                0.0,
+                p.accent,
+            );
         }
     }
 

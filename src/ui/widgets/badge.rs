@@ -26,7 +26,8 @@ pub fn badge(ui: &mut egui::Ui, text: &str, kind: BadgeKind) -> egui::Response {
         BadgeKind::Accent => p.accent,
     };
     egui::Frame::new()
-        .fill(fg.gamma_multiply(0.16))
+        .fill(fg.gamma_multiply(0.10))
+        .stroke(egui::Stroke::new(1.0, fg.gamma_multiply(0.55)))
         .corner_radius(CornerRadius::same(theme::RADIUS_PILL))
         .inner_margin(Margin::symmetric(8, 3))
         .show(ui, |ui| {

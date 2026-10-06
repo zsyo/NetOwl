@@ -100,14 +100,18 @@ fn nav_item(
     }
     if t > 0.01 {
         let h = (NAV_ITEM_H - 14.0) * t;
-        ui.painter().rect_filled(
-            egui::Rect::from_center_size(
-                egui::pos2(rect.left() + NAV_INDICATOR_W / 2.0, rect.center().y),
-                egui::vec2(NAV_INDICATOR_W, h),
-            ),
-            CornerRadius::same(theme::RADIUS_PILL),
-            p.accent,
+        let bar = egui::Rect::from_center_size(
+            egui::pos2(rect.left() + NAV_INDICATOR_W / 2.0, rect.center().y),
+            egui::vec2(NAV_INDICATOR_W, h),
         );
+        // 辉光层:更宽的低透明 accent 垫底,实心条在其上
+        ui.painter().rect_filled(
+            bar.expand2(egui::vec2(2.5, 2.0)),
+            CornerRadius::same(theme::RADIUS_PILL),
+            p.accent.gamma_multiply(0.25),
+        );
+        ui.painter()
+            .rect_filled(bar, CornerRadius::same(theme::RADIUS_PILL), p.accent);
     }
     let text_color = if selected || resp.hovered() {
         p.text
