@@ -61,32 +61,37 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         (i18n.t("conns-view-listen"), icons::ETHERNET),
     ];
     let view_items: Vec<(&str, &str)> = view_items.iter().map(|(t, g)| (t.as_str(), *g)).collect();
-    if let Some(i) = widgets::segmented::segmented(
-        ui,
-        &view_items,
-        usize::from(*conn_view == ConnView::Listens),
-    ) {
-        *conn_view = if i == 0 {
-            ConnView::Conns
-        } else {
-            ConnView::Listens
-        };
-    }
-    ui.add_space(theme::sp::XS);
-
-    if *conn_view == ConnView::Listens {
-        listen::listen_table(ui, ctx);
-        return changed;
-    }
-
-    // 本地/局域网远端噪音过滤(config 持久化,连接页与历史页共享)
-    // + 搜索框(进程/映像路径/远端 IP/rDNS 域名包含匹配,会话态)
-    ui.horizontal(|ui| {
+    // 工具栏一行:视图切换 + 筛选项(与历史页同形态);筛选随视图切换——
+    // 连接视图为噪音过滤/分组/搜索,监听视图仅搜索(按进程/路径过滤)
+    let toolbar_changed = ui.horizontal(|ui| {
+        if let Some(i) = widgets::segmented::segmented(
+            ui,
+            &view_items,
+            usize::from(*conn_view == ConnView::Listens),
+        ) {
+            *conn_view = if i == 0 {
+                ConnView::Conns
+            } else {
+                ConnView::Listens
+            };
+        }
+        ui.add_space(theme::sp::MD);
+        if *conn_view == ConnView::Listens {
+            ui.label(
+                RichText::new(icons::SEARCH)
+                    .size(theme::font::XS)
+                    .color(theme::c().text_dim),
+            );
+            widgets::search_box::search_box(ui, conn_search, i18n.t("listen-search"), 220.0);
+            return false;
+        }
+        let mut changed = false;
         ui.label(
             RichText::new(icons::FUNNEL)
                 .size(theme::font::XS)
                 .color(theme::c().text_dim),
         );
+        // 本地/局域网远端噪音过滤(config 持久化,连接页与历史页共享)
         if ui
             .checkbox(&mut config.general.hide_local, i18n.t("filter-hide-local"))
             .changed()
@@ -104,14 +109,22 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
             changed = true;
         }
         ui.add_space(theme::sp::MD);
+        // 搜索框(进程/映像路径/远端 IP/rDNS 域名包含匹配,会话态)
         ui.label(
             RichText::new(icons::SEARCH)
                 .size(theme::font::XS)
                 .color(theme::c().text_dim),
         );
         widgets::search_box::search_box(ui, conn_search, i18n.t("conns-search"), 220.0);
+        changed
     });
+    changed |= toolbar_changed.inner;
     ui.add_space(theme::sp::XS);
+
+    if *conn_view == ConnView::Listens {
+        listen::listen_table(ui, ctx);
+        return changed;
+    }
 
     // 搜索词匹配:进程名/映像路径/远端 IP/rDNS 域名包含(大小写不敏感);
     // 与显示过滤叠加,空词即全量

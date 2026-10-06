@@ -346,3 +346,5 @@ quota-exceed-toast = Monthly usage exceeded the quota ({$used})
 settings-quota = Monthly data quota
 settings-quota-hint = Alert at 80% and 100% of the quota; 0 = disabled
 settings-quota-unit = GB
+
+listen-search = Search process or path
