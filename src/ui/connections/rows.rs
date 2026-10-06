@@ -220,8 +220,11 @@ fn tail_path(path: &str, max: usize) -> String {
 /// 分组头行高(单行加高)
 const GROUP_HEADER_H: f32 = 26.0;
 
-/// 分组头行:进程图标 + 名称 + 连接数 + 上/下行累计(右对齐),
-/// 整行可点(折叠/展开);返回是否被点击
+/// 分组头行:首列 = 进程图标 + 名称 + 连接数,下载/上传总量列 =
+/// 组上/下行累计(与表头语义对齐);整行可点(折叠/展开)。Grid 内
+/// 按连接行列序占满 9 列(其余列空占位),行高恒定(单行加高)使
+/// 悬停垫底可先于内容绘制,不会盖住名称;点击经行末 interact
+/// (整行内唯一 click 感知件)
 #[allow(clippy::too_many_arguments)]
 pub(super) fn group_header(
     ui: &mut egui::Ui,
@@ -231,12 +234,31 @@ pub(super) fn group_header(
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
     default_icon_tex: Option<&egui::TextureHandle>,
     flex_w: f32,
+    table_left: f32,
+    table_right: f32,
 ) -> bool {
-    let (rect, resp) =
-        ui.allocate_exact_size(egui::vec2(flex_w, GROUP_HEADER_H), egui::Sense::click());
-    if resp.hovered() {
-        ui.painter().rect_filled(rect, 0.0, theme::c().hover_bg);
+    use super::{C_ACTION_W, C_LOC_W, C_PROTO_W, C_RATE_W, C_TOTAL_W};
+    let row_top = ui.cursor().top();
+    let row_rect = egui::Rect::from_min_max(
+        egui::pos2(table_left, row_top),
+        egui::pos2(table_right, row_top + GROUP_HEADER_H),
+    );
+    // 悬停垫底 + 左缘 accent 竖条(先于内容绘制,与连接行垫底同法)
+    if ui.rect_contains_pointer(row_rect) {
+        let p = theme::c();
+        ui.painter().rect_filled(row_rect, 0.0, p.hover_bg);
+        ui.painter().rect_filled(
+            egui::Rect::from_min_max(
+                egui::pos2(table_left, row_top),
+                egui::pos2(table_left + 2.0, row_rect.bottom()),
+            ),
+            0.0,
+            p.accent,
+        );
     }
+    // 首列:图标 + 名称 + 连接数
+    let (rect, _) =
+        ui.allocate_exact_size(egui::vec2(flex_w, GROUP_HEADER_H), egui::Sense::hover());
     let mut child = ui.new_child(
         egui::UiBuilder::new().max_rect(rect.shrink2(egui::vec2(widgets::table::CELL_PAD_X, 0.0))),
     );
@@ -269,21 +291,40 @@ pub(super) fn group_header(
             .size(theme::font::SM)
             .color(theme::c().text_dim),
         );
-        let (up, down) = group
-            .iter()
-            .fold((0u64, 0u64), |a, c| (a.0 + c.bytes_out, a.1 + c.bytes_in));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(
-                RichText::new(fmt_bytes(down))
-                    .size(theme::font::SM)
-                    .color(theme::c().inbound),
-            );
-            ui.label(
-                RichText::new(fmt_bytes(up))
-                    .size(theme::font::SM)
-                    .color(theme::c().outbound),
-            );
-        });
     });
-    resp.clicked()
+    // 其余列按连接行列序排布:协议/远端/位置/两速率列空占位,组累计
+    // 画进下载/上传总量列,动作列空占位,收行保持 Grid 行结构完整
+    for w in [C_PROTO_W, flex_w, C_LOC_W, C_RATE_W, C_RATE_W] {
+        ui.allocate_exact_size(egui::vec2(w, GROUP_HEADER_H), egui::Sense::hover());
+    }
+    let (up, down) = group
+        .iter()
+        .fold((0u64, 0u64), |a, c| (a.0 + c.bytes_out, a.1 + c.bytes_in));
+    group_total_cell(ui, C_TOTAL_W, fmt_bytes(down), theme::c().inbound);
+    group_total_cell(ui, C_TOTAL_W, fmt_bytes(up), theme::c().outbound);
+    ui.allocate_exact_size(egui::vec2(C_ACTION_W, GROUP_HEADER_H), egui::Sense::hover());
+    ui.end_row();
+    // 整行点击区:行内格均为 hover 感知,click 命中唯一落在本件
+    ui.interact(
+        row_rect,
+        egui::Id::new(("conn_group_header", name)),
+        egui::Sense::click(),
+    )
+    .clicked()
+}
+
+/// 分组头累计单元格:右对齐等宽小字
+fn group_total_cell(ui: &mut egui::Ui, w: f32, text: String, color: egui::Color32) {
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(w, GROUP_HEADER_H), egui::Sense::hover());
+    let mut child = ui.new_child(
+        egui::UiBuilder::new().max_rect(rect.shrink2(egui::vec2(widgets::table::CELL_PAD_X, 0.0))),
+    );
+    child.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        ui.label(
+            RichText::new(text)
+                .size(theme::font::SM)
+                .font(egui::FontId::monospace(theme::font::SM))
+                .color(color),
+        );
+    });
 }

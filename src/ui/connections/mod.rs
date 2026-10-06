@@ -227,6 +227,8 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                                 icon_tex,
                                 *default_icon_tex,
                                 flex_w,
+                                table_left,
+                                table_right,
                             ) && !conn_collapsed.remove(&name)
                             {
                                 conn_collapsed.insert(name.clone());
