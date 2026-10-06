@@ -11,7 +11,7 @@ use super::{ConnView, Page};
 use eframe::egui;
 use egui::RichText;
 
-use super::{ConnSort, ConnSortState, UiCtx, conn_visible, icons, theme, widgets};
+use super::{ConnSort, ConnSortState, TOOLBAR_ROW_H, UiCtx, conn_visible, icons, theme, widgets};
 use crate::i18n::I18n;
 use crate::model::{Connection, Protocol};
 
@@ -71,6 +71,10 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     // 工具栏一行:视图切换 + 筛选项(与历史页同形态);筛选随视图切换——
     // 连接视图为噪音过滤/分组/搜索,监听视图仅搜索(按进程/路径过滤)
     let toolbar_changed = ui.horizontal(|ui| {
+        // 行高抬升只作用于本工具栏行(style_mut 泄漏到整页会把表格
+        // Grid 的最小行高一并抬到 26,行内容与色带错位);统一控件
+        // 最小交互高,带图标与纯文本的 segmented 等高对齐
+        ui.style_mut().spacing.interact_size.y = TOOLBAR_ROW_H;
         if let Some(i) = widgets::segmented::segmented(
             ui,
             &view_items,
