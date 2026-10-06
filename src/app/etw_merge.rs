@@ -54,6 +54,7 @@ impl NetOwlApp {
                         };
                         c.bytes_in = f.down_bytes;
                         c.bytes_out = f.up_bytes;
+                        c.initiated_out = f.initiated_out;
                         hits.push(f.key);
                     }
                     Protocol::Udp => {
@@ -68,6 +69,7 @@ impl NetOwlApp {
                                 }
                                 c.bytes_in = g.bytes.0;
                                 c.bytes_out = g.bytes.1;
+                                c.initiated_out = g.rep.initiated_out;
                                 // 记录最后通信的远端,流收割后 socket 行仍可展示
                                 self.udp_last_remote
                                     .insert((c.pid, c.local_port), (c.remote_ip, c.remote_port));

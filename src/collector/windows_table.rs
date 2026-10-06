@@ -153,6 +153,7 @@ impl TableCollector {
                     remote_ip,
                     remote_port,
                     city,
+                    initiated_out: None,
                     bytes_in: 0,
                     bytes_out: 0,
                     first_seen,

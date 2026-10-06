@@ -77,7 +77,7 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   字节由 app 层从 ETW 流合并填充;均为只读 API,无需管理员权限)
 - src/rules/ - 规则与拦截(结构体 RuleSet 单点定义于 mod.rs:规则模型
   (动作/方向/协议/进程/远端[网段或域名]/端口/优先级)、MatchReq 求值输入、
-  conn_direction 表快照方向近似(>=49152 入站,ETW 后替换)、parse_net、
+  conn_direction 方向判定(ETW initiated_out 真实方向优先,未知时 >=49152 入站近似兜底)、parse_net、
   SILENT_FALLBACK_ID/WEIGHT_RESERVED_HIGH/WEIGHT_FALLBACK;profile.rs:
   RuleSet impl 配置档管理——db v7 profiles 表 + rules.profile_id,规则按
   配置档隔离,load/insert 作用于当前档,switch_profile 重载并保留会话

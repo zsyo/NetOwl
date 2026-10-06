@@ -2,8 +2,8 @@
 //! 求值与 SQLite 持久化;规则页 UI 见 ui_rules。
 //!
 //! 求值按 priority 升序(数值小者优先)取首个命中的启用规则;未命中
-//! 任何规则时默认放行。表快照无方向语义,方向按远端端口近似判定,
-//! ETW 事件源落地后以真实方向替换。
+//! 任何规则时默认放行。方向判定优先 ETW 真实发起方向(merge 回填),
+//! 未知时按远端端口近似兜底。
 //!
 //! RuleSet 单点定义在本模块,impl 块按功能域分散:profile(配置档管理
 //! 与行加载)、eval(求值与静默兜底)、store(CRUD 与临时规则)、
@@ -175,9 +175,14 @@ impl MatchReq {
     }
 }
 
-/// 表快照无方向语义,按远端端口近似:远端端口在临时端口范围视为对端
-/// 主动连入(入站),否则视为本机出站;UDP 表行无远端语义统一按出站
+/// 方向判定:优先 ETW 真实发起方向(merge 回填的 initiated_out);
+/// 未知(未提权/未合并)时按远端端口近似——远端端口在临时端口范围
+/// 视为对端主动连入(入站),否则视为本机出站;UDP 表行无远端语义
+/// 且 ETW 未回填时统一按出站
 pub fn conn_direction(conn: &Connection) -> Direction {
+    if let Some(out) = conn.initiated_out {
+        return if out { Direction::Out } else { Direction::In };
+    }
     if conn.proto == Protocol::Udp || conn.remote_port < EPHEMERAL_MIN {
         Direction::Out
     } else {

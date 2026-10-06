@@ -144,6 +144,11 @@ impl MockCollector {
                 remote_ip: ip,
                 remote_port: port,
                 city: Some(Place::City(city.key)),
+                initiated_out: if self.rng.chance(85) {
+                    Some(self.rng.chance(80))
+                } else {
+                    None
+                },
                 bytes_in: self.rng.range(2 << 20),
                 bytes_out: self.rng.range(2 << 18),
                 first_seen: Instant::now(),

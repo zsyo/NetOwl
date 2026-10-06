@@ -68,6 +68,10 @@ pub struct Connection {
     pub remote_port: u16,
     /// 归属地定位键;None 表示归属未知
     pub city: Option<Place>,
+    /// ETW 真实发起方向:Some(true) = 本机发起(connect)、Some(false) =
+    /// 对端连入(accept);None = 未知(未提权/未合并)——方向判定
+    /// 优先取本字段,未知时按远端端口近似(rules::conn_direction)
+    pub initiated_out: Option<bool>,
     pub bytes_in: u64,
     pub bytes_out: u64,
     pub first_seen: Instant,
