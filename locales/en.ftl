@@ -351,4 +351,4 @@ listen-search = Search process or port
 
 menu-view-history = View history
 inspector-open-conns = View in connections
-inspector-open-history = View in history
+inspector-open-history = View history

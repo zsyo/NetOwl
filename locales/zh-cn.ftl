@@ -352,4 +352,4 @@ listen-search = 搜索进程或端口
 
 menu-view-history = 查看历史记录
 inspector-open-conns = 在连接页查看
-inspector-open-history = 在历史页查看
+inspector-open-history = 查看历史记录
