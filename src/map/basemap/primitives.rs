@@ -43,7 +43,12 @@ pub(super) fn push_culled_segment(
 
 /// 主要河流:固定屏幕线宽折线(数据已按档抽稀),逐段视口剔除;
 /// 绘制于世界/中国层之上,不受中国层陆地填充覆盖
-pub(super) fn draw_rivers(painter: &egui::Painter, rect: Rect, proj: &Projection, lines: &[Vec<(f32, f32)>]) {
+pub(super) fn draw_rivers(
+    painter: &egui::Painter,
+    rect: Rect,
+    proj: &Projection,
+    lines: &[Vec<(f32, f32)>],
+) {
     let mut mesh = Mesh::default();
     let half = RIVER_WIDTH * 0.5;
     for line in lines {
@@ -63,7 +68,12 @@ pub(super) fn draw_rivers(painter: &egui::Painter, rect: Rect, proj: &Projection
 }
 
 /// 南海断续国界(十段线):独立线宽与颜色,不与海岸/国界混同
-pub(super) fn draw_south_sea_line(painter: &egui::Painter, rect: Rect, proj: &Projection, segs: &[[f32; 4]]) {
+pub(super) fn draw_south_sea_line(
+    painter: &egui::Painter,
+    rect: Rect,
+    proj: &Projection,
+    segs: &[[f32; 4]],
+) {
     let mut mesh = Mesh::default();
     for &[lon0, lat0, lon1, lat1] in segs {
         let (a, b) = (proj.project(lon0, lat0), proj.project(lon1, lat1));
