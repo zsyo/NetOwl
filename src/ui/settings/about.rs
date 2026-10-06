@@ -9,9 +9,6 @@ use crate::platform::update::{self, ReleaseInfo};
 use crate::storage::config::Config;
 use crate::ui::{icons, theme, widgets};
 
-/// 检查结果状态文本的限宽(与右侧按钮群之间留白,超长 Truncate)
-const STATUS_W: f32 = 240.0;
-
 /// 关于分组:版本显示、渠道 segmented、检查按钮与结果
 pub(super) fn section(
     ui: &mut egui::Ui,
@@ -123,12 +120,13 @@ fn status_text(
             theme::c().danger,
         ),
     };
-    ui.allocate_ui(egui::vec2(STATUS_W, 0.0), |ui| {
-        ui.add(
-            egui::Label::new(RichText::new(text).size(theme::font::SM).color(color))
-                .wrap_mode(egui::TextWrapMode::Truncate),
-        );
-    });
+    // 直接加入右到左布局参与垂直居中——经 allocate_ui/add_sized 的分配块
+    // 会顶对齐于行而错位于按钮;超长由子区剩余宽度自动 Truncate,不
+    // 侵入左侧标签区
+    ui.add(
+        egui::Label::new(RichText::new(text).size(theme::font::SM).color(color))
+            .wrap_mode(egui::TextWrapMode::Truncate),
+    );
 }
 
 /// 结果中存在比当前版本新的发布(供"前往下载"按钮显隐)
