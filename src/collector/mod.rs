@@ -6,6 +6,7 @@ mod icon;
 mod mock;
 mod query;
 mod signature;
+mod table_backfill;
 mod windows_table;
 
 pub use icon::{IconImage, default_app_icon};

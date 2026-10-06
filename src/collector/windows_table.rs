@@ -9,33 +9,28 @@
 //! 统计依赖后续 ETW 事件源补齐。
 
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
-use super::icon::{self, IconImage};
+use super::icon::IconImage;
 use super::query::{
     ConnKey, query_process_names, query_process_path, query_tcp, query_tcp_listen, query_udp,
 };
-use super::{Collector, CollectorKind, IconState, signature};
+use super::{Collector, CollectorKind, IconState};
 use crate::model::{Connection, ListenEntry, Place, Signing};
-
 /// 表快照间隔:连接增减的可见延迟上限(与任务管理器刷新节奏相当)
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
 /// System 进程(PID 4)持有内核级 socket,任务管理器同样显示为 System
 const SYSTEM_PID: u32 = 4;
 /// 签名校验在途/每轮派发上限:WinVerifyTrust 对大文件可能秒级,防线程爆发
-const SIG_MAX_INFLIGHT: usize = 4;
-const SIG_DISPATCH_PER_POLL: usize = 2;
 /// 图标提取每轮派发上限(读文件 + GDI 操作,后台线程执行)
-const ICON_DISPATCH_PER_POLL: usize = 4;
 
 /// 进程元数据(按 PID 缓存;签名状态异步回填)
 #[derive(Clone)]
-struct ProcMeta {
-    name: String,
-    path: Option<String>,
-    signed: Signing,
+pub(super) struct ProcMeta {
+    pub(super) name: String,
+    pub(super) path: Option<String>,
+    pub(super) signed: Signing,
 }
 
 /// 图标提取状态(按映像路径缓存;None 表示已尝试且无图标)
@@ -48,19 +43,19 @@ pub struct TableCollector {
     /// 连接身份 -> 最近快照(保留 first_seen)
     live: HashMap<ConnKey, Connection>,
     /// PID -> 进程元数据(仅存活于连接表中的进程)
-    proc_metas: HashMap<u32, ProcMeta>,
+    pub(super) proc_metas: HashMap<u32, ProcMeta>,
     /// 签名校验回报通道(发送端克隆给每个查询线程)
-    sig_tx: Sender<(u32, Signing)>,
-    sig_rx: Receiver<(u32, Signing)>,
+    pub(super) sig_tx: Sender<(u32, Signing)>,
+    pub(super) sig_rx: Receiver<(u32, Signing)>,
     /// 已派发未返回签名结果的 PID
-    sig_pending: HashSet<u32>,
+    pub(super) sig_pending: HashSet<u32>,
     /// 映像路径 -> 图标状态(常驻缓存:连接关闭后进程再现时图标即取即用)
-    icons: HashMap<String, IconState>,
+    pub(super) icons: HashMap<String, IconState>,
     /// 图标提取回报通道(发送端克隆给每个提取线程)
-    icon_tx: Sender<(String, Option<IconImage>)>,
-    icon_rx: Receiver<(String, Option<IconImage>)>,
+    pub(super) icon_tx: Sender<(String, Option<IconImage>)>,
+    pub(super) icon_rx: Receiver<(String, Option<IconImage>)>,
     /// 已派发未返回的图标提取请求(按映像路径)
-    icon_inflight: HashSet<String>,
+    pub(super) icon_inflight: HashSet<String>,
     last_poll: Instant,
     pending_poll: bool,
 }
@@ -218,78 +213,6 @@ impl TableCollector {
             self.proc_metas.insert(pid, meta.clone());
         }
         meta
-    }
-
-    /// 收割已完成的签名查询结果回填缓存
-    fn collect_signatures(&mut self) {
-        while let Ok((pid, signed)) = self.sig_rx.try_recv() {
-            self.sig_pending.remove(&pid);
-            if let Some(meta) = self.proc_metas.get_mut(&pid) {
-                meta.signed = signed;
-                if signed == Signing::Invalid {
-                    tracing::debug!(
-                        "[Collector] 签名校验未通过:{}({pid})",
-                        meta.path.as_deref().unwrap_or("?")
-                    );
-                }
-            }
-        }
-    }
-
-    /// 收割已完成的图标提取结果
-    fn collect_icons(&mut self) {
-        while let Ok((path, img)) = self.icon_rx.try_recv() {
-            self.icon_inflight.remove(&path);
-            if img.is_none() {
-                // 失败也缓存(Ready(None)),此后不再重试,留痕供排查
-                tracing::debug!("[Collector] 进程图标提取失败:{path}");
-            }
-            self.icons.insert(path, IconState::Ready(img.map(Arc::new)));
-        }
-        // 未派发的 Pending 条目(超出上轮预算的)按上限补齐
-        let budget = ICON_DISPATCH_PER_POLL.saturating_sub(self.icon_inflight.len());
-        for path in self
-            .icons
-            .iter()
-            .filter(|(_, s)| matches!(s, IconState::Pending))
-            .map(|(p, _)| p.clone())
-            .take(budget)
-            .collect::<Vec<_>>()
-        {
-            self.icon_inflight.insert(path.clone());
-            let tx = self.icon_tx.clone();
-            std::thread::spawn(move || {
-                let img = icon::extract(&path);
-                let _ = tx.send((path, img));
-            });
-        }
-    }
-
-    /// 为缓存中签名未知的存活进程派发校验(限流:在途/每轮数量双重上限)
-    fn dispatch_signature_queries(&mut self, live_pids: &HashSet<u32>) {
-        let budget = SIG_MAX_INFLIGHT.saturating_sub(self.sig_pending.len());
-        let candidates = self
-            .proc_metas
-            .iter()
-            .filter(|(pid, meta)| {
-                live_pids.contains(pid)
-                    && meta.signed == Signing::Unknown
-                    && meta.path.is_some()
-                    && !self.sig_pending.contains(*pid)
-            })
-            .map(|(pid, meta)| (*pid, meta.path.clone().expect("path is some")))
-            .take(budget.min(SIG_DISPATCH_PER_POLL))
-            .collect::<Vec<_>>();
-        for (pid, path) in candidates {
-            if self.sig_pending.len() >= SIG_MAX_INFLIGHT {
-                break;
-            }
-            self.sig_pending.insert(pid);
-            let tx = self.sig_tx.clone();
-            std::thread::spawn(move || {
-                let _ = tx.send((pid, signature::verify(&path)));
-            });
-        }
     }
 }
 
