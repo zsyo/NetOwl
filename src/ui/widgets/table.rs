@@ -213,7 +213,10 @@ impl RowHover {
             let p = theme::c();
             ui.painter().rect_filled(rect, 0.0, p.hover_bg);
             ui.painter().rect_filled(
-                egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(left + 2.0, rect.bottom())),
+                egui::Rect::from_min_max(
+                    egui::pos2(left, top),
+                    egui::pos2(left + 2.0, rect.bottom()),
+                ),
                 0.0,
                 p.accent,
             );

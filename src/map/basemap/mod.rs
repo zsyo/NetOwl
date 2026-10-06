@@ -77,6 +77,20 @@ fn draw_level(painter: &egui::Painter, rect: Rect, proj: &Projection, level: &Ma
     let mut border = Mesh::default();
     add_lines(level, &mut coast, &mut border, rect, proj);
     painter.add(Shape::Mesh(Arc::new(border)));
+    // 海岸线辉光层:深色主题下先铺一层更宽的低透明 coast 色,再叠实线
+    if theme::is_dark() {
+        let mut glow = Mesh::default();
+        draw_line_set(
+            level,
+            &level.coast,
+            COAST_WIDTH + 3.0,
+            theme::c().map_coast.gamma_multiply(0.28),
+            &mut glow,
+            rect,
+            proj,
+        );
+        painter.add(Shape::Mesh(Arc::new(glow)));
+    }
     painter.add(Shape::Mesh(Arc::new(coast)));
 }
 
