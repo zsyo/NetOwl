@@ -2168,7 +2168,7 @@ dependencies = [
 
 [[package]]
 name = "netowl"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "eframe",
  "fluent-bundle",
