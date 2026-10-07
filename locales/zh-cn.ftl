@@ -175,6 +175,10 @@ about-new-version = 发现新版本 {$ver}
 about-no-release = 仓库暂无发布版本
 about-failed = 检查失败:{$err}
 about-download = 前往下载
+about-github = 项目主页
+about-github-hint = github.com/zsyo/NetOwl
+about-github-btn = 前往主页
+about-feedback-btn = 前往反馈
 
 log-level-off = 关闭
 log-level-error = 错误

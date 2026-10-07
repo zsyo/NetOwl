@@ -175,6 +175,10 @@ about-new-version = New version available: {$ver}
 about-no-release = No releases published yet
 about-failed = Check failed: {$err}
 about-download = Download
+about-github = Project homepage
+about-github-hint = github.com/zsyo/NetOwl
+about-github-btn = Homepage
+about-feedback-btn = Feedback
 
 log-level-off = Off
 log-level-error = Error

@@ -125,3 +125,7 @@ pub const GRAPH_UP: &str = "\u{f3f2}";
 pub const CALENDAR_WEEK: &str = "\u{f1f3}";
 /// glyph: router(局域网设备)
 pub const ROUTER: &str = "\u{f6ec}";
+/// glyph: github(GitHub 仓库跳转)
+pub const GITHUB: &str = "\u{f3ed}";
+/// glyph: chat-dots(问题反馈跳转)
+pub const CHAT_DOTS: &str = "\u{f24a}";

@@ -253,8 +253,9 @@ fn pre_cmp(a: &str, b: &str) -> std::cmp::Ordering {
     }
 }
 
-/// 打开 release 详情页(系统默认浏览器;ShellExecuteW 立即返回)
-pub fn open_download_page(url: &str) {
+/// 用系统默认浏览器打开 URL(ShellExecuteW 立即返回);
+/// release 详情页、仓库首页与新建 Issue 页共用
+pub fn open_url(url: &str) {
     use windows::Win32::UI::Shell::ShellExecuteW;
     use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
     unsafe {

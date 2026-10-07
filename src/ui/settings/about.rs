@@ -24,6 +24,23 @@ pub(super) fn section(
         icons::INFO_CIRCLE,
         &i18n.t("settings-section-about"),
         |ui| {
+            // 项目主页:仓库地址与问题反馈两个入口并排(系统浏览器打开,
+            // 普通按钮非 accent 主操作);right_to_left 先加的在右,保持
+            // 主页按钮在左、反馈在右
+            setting_row(
+                ui,
+                &i18n.t("about-github"),
+                &i18n.t("about-github-hint"),
+                |ui| {
+                    if link_btn(ui, icons::CHAT_DOTS, &i18n.t("about-feedback-btn")) {
+                        update::open_url(ISSUES_URL);
+                    }
+                    if link_btn(ui, icons::GITHUB, &i18n.t("about-github-btn")) {
+                        update::open_url(REPO_URL);
+                    }
+                },
+            );
+            ui.add_space(theme::sp::SM);
             setting_row(
                 ui,
                 &i18n.t("about-version"),
@@ -81,7 +98,7 @@ pub(super) fn section(
                             && widgets::button::primary_btn(ui, i18n.t("about-download"), true)
                                 .clicked()
                         {
-                            update::open_download_page(&info.html_url);
+                            update::open_url(&info.html_url);
                         }
                         status_text(ui, result, checking, i18n);
                     });
@@ -89,6 +106,21 @@ pub(super) fn section(
             );
         },
     );
+}
+
+/// 仓库首页与新建 Issue 页(问题反馈)
+const REPO_URL: &str = "https://github.com/zsyo/NetOwl";
+const ISSUES_URL: &str = "https://github.com/zsyo/NetOwl/issues/new";
+
+/// 跳转按钮:图标 + 文本的普通按钮(默认 hover 底色),手型光标
+/// 提示为外部链接
+fn link_btn(ui: &mut egui::Ui, icon: &str, text: &str) -> bool {
+    let glyph = RichText::new(format!("{icon}  {text}"))
+        .size(theme::font::SM)
+        .color(theme::c().text);
+    ui.add(egui::Button::new(glyph))
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .clicked()
 }
 
 /// 状态文本:检查中 / 发现新版本(accent)/ 已是最新 / 暂无发布(弱化)/
