@@ -29,6 +29,9 @@ pub(super) fn section(
                 &i18n.t("about-version"),
                 &i18n.t("about-version-hint"),
                 |ui| {
+                    // 其它行控件文字位于控件 button_padding 内右对齐,裸
+                    // label 补同款右内边距保持右缘一致
+                    ui.add_space(ui.style().spacing.button_padding.x);
                     ui.label(
                         RichText::new(format!("v{}", update::CURRENT_VERSION))
                             .size(theme::font::BODY)
