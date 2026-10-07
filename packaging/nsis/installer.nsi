@@ -10,6 +10,11 @@
 ;      control on the finish page itself was tried first and abandoned: MUI2's
 ;      finish-page show callback never fired when the wizard navigated into
 ;      the page (control created but invisible).
+;      The page creator reads $INSTDIR\config.toml (portable data root
+;      lives next to the exe): when autostart is already on from a previous
+;      install, the page is skipped with the checkbox state pre-set to
+;      checked, so FinishRun still launches with --autostart-on; the page
+;      only shows when autostart is not enabled yet.
 ;   2. Uninstaller deletes the HKCU Run value written by the app/option.
 ;   3. Reinstall detection page disabled via !if 0: its PRE-Abort page skip
 ;      is what breaks the finish-page show callback (see 1); upgrade installs
@@ -36,6 +41,7 @@ Unicode true
 !include "StrFunc.nsh"
 ${StrCase}
 ${StrLoc}
+${StrStr}
 
 !define MANUFACTURER "{{manufacturer}}"
 !define PRODUCTNAME "{{product_name}}"
@@ -339,13 +345,42 @@ Var AppStartMenuFolder
 ; 6.5 Options page (nsDialogs): launch at startup checkbox. A standard custom
 ; page is used instead of a self-drawn control on the finish page, whose show
 ; callback proved unreliable when the wizard navigates into it (control was
-; created but never shown). Passive/silent installs skip this page.
+; created but never shown). Passive/silent installs skip this page; upgrade
+; installs skip it too when the previous config.toml already enabled autostart
+; (state stays pre-set to checked so FinishRun keeps --autostart-on).
+; NOTE: a native `Page custom` has no pre callback (MUI_PAGE_CUSTOMFUNCTION_PRE
+; is only consumed by built-in MUI page macros), so the skip logic lives at the
+; top of the creator function — Abort there skips the page.
 Var AutostartCheckbox
 Var AutostartState
-!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
 Page custom PageOptions PageLeaveOptions
 
+; Read the previous install's autostart state from $INSTDIR\config.toml
+; (portable data root = directory next to the exe) into $AutostartState.
+; Missing file (fresh install) or no hit leaves it unchecked. The app writes
+; the file itself in fixed serde TOML form, so a plain text search suffices.
+Function ReadOldAutostart
+    StrCpy $AutostartState 0
+    ClearErrors
+    FileOpen $0 "$INSTDIR\config.toml" r
+    IfErrors done 0
+    read_loop:
+        FileRead $0 $1
+        IfErrors read_done 0
+        ${StrStr} $2 $1 "autostart = true"
+        StrCmp $2 "" read_loop 0
+            StrCpy $AutostartState ${BST_CHECKED}
+    read_done:
+        FileClose $0
+    done:
+FunctionEnd
+
 Function PageOptions
+    Call SkipIfPassive
+    Call ReadOldAutostart
+    ${If} $AutostartState == ${BST_CHECKED}
+        Abort
+    ${EndIf}
     nsDialogs::Create 1018
     Pop $0
     ${If} $LANGUAGE == 2052
