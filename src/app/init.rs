@@ -7,7 +7,7 @@ use eframe::egui;
 
 use super::ask::Asker;
 use super::lan::LanState;
-use super::{CONNS_REFRESH_INTERVAL, NetOwlApp, RATE_HIST_LEN};
+use super::{CONNS_REFRESH_INTERVAL, MAP_LOCATE_WINDOW, NetOwlApp, RATE_HIST_LEN};
 use crate::collector::{self, CollectorKind};
 use crate::i18n::I18n;
 use crate::map::basemap;
@@ -159,6 +159,8 @@ impl NetOwlApp {
             local_probe: local_ip::Probe::new(),
             local_place: None,
             local_probe_at: Instant::now(),
+            map_locate_pending: true,
+            map_locate_deadline: Instant::now() + MAP_LOCATE_WINDOW,
             i18n,
             config,
             conns: Vec::new(),

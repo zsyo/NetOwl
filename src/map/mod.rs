@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use eframe::egui;
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, TextureHandle, Vec2};
 
-use self::basemap::{Projection, View};
+use self::basemap::{FIT_MAX_LAT, FIT_MIN_LAT, Projection, View};
 use crate::i18n::I18n;
 use crate::model::{Connection, Place};
 use crate::net::geoip;
@@ -32,6 +32,13 @@ fn wrap_dist(h: Pos2, pos: Pos2, cycle_px: f32) -> f32 {
     let dx = dx.min(cycle_px - dx);
     let dy = h.y - pos.y;
     (dx * dx + dy * dy).sqrt()
+}
+
+/// 默认视图:以本机为中心的最大缩放(启动定位与双击复位共用)。
+/// 经度方向无缝循环可严格居中;纬度方向视口不脱出底图数据窗口,
+/// 极纬本机由 clamp_view 贴边、不严格追求垂直居中
+pub fn home_view(local_pos: (f32, f32)) -> View {
+    View::at(local_pos.0, local_pos.1, ZOOM_MAX)
 }
 
 /// 由 id/字节数派生稳定的 [0,1) 相位偏移,让粒子/脉冲错落
@@ -70,7 +77,7 @@ pub fn draw(
     let t = ui.input(|i| i.time) as f32;
     let canvas = rect.shrink(10.0);
 
-    handle_input(ui, &resp, canvas, view);
+    handle_input(ui, &resp, canvas, view, local_pos);
     view.animate(ANIM_K);
     clamp_view(canvas, view);
     let proj = Projection::new(canvas, *view);
@@ -202,8 +209,14 @@ pub fn draw(
     }
 }
 
-/// 视图交互:拖拽平移(1:1 跟手)、滚轮/捏合锚点缩放、双击复位
-fn handle_input(ui: &egui::Ui, resp: &egui::Response, canvas: Rect, view: &mut View) {
+/// 视图交互:拖拽平移(1:1 跟手)、滚轮/捏合锚点缩放、双击复位默认视图
+fn handle_input(
+    ui: &egui::Ui,
+    resp: &egui::Response,
+    canvas: Rect,
+    view: &mut View,
+    local_pos: (f32, f32),
+) {
     if resp.dragged() {
         let d = resp.drag_delta();
         let ppd = Projection::fit_ppd(canvas) * view.zoom;
@@ -230,13 +243,13 @@ fn handle_input(ui: &egui::Ui, resp: &egui::Response, canvas: Rect, view: &mut V
         }
     }
     if resp.double_clicked() {
-        *view = View::global();
+        *view = home_view(local_pos);
     }
 }
 
 /// 视口钳制:经度方向无缝循环,仅把中心与动画目标同步归一化到
 /// [-180, 180) 防止数值无限增长(同步平移不改变动画相对关系);
-/// 纬度仍限制中心使视口不脱出世界
+/// 纬度限制中心使视口不脱出底图数据窗口
 fn clamp_view(canvas: Rect, view: &mut View) {
     let ppd = Projection::fit_ppd(canvas) * view.zoom;
     let half_lat = (canvas.height() * 0.5) / ppd;
@@ -245,16 +258,19 @@ fn clamp_view(canvas: Rect, view: &mut View) {
         view.center_lon -= shift;
         view.target_lon -= shift;
     }
-    view.center_lat = clamp_center(view.center_lat, half_lat, 90.0);
-    view.target_lat = clamp_center(view.target_lat, half_lat, 90.0);
+    view.center_lat = clamp_center(view.center_lat, half_lat);
+    view.target_lat = clamp_center(view.target_lat, half_lat);
 }
 
-/// 视口比世界还大时居中,否则限制中心使视口不脱出世界
-fn clamp_center(v: f32, half: f32, limit: f32) -> f32 {
-    if half >= limit {
-        0.0
+/// 视口半窗吞不下纬度窗口时(半窗 >= 跨度一半)居中窗口中点,否则
+/// 限制中心使视口不脱出数据窗口(窗口外无陆地/标签数据)
+fn clamp_center(v: f32, half: f32) -> f32 {
+    let min = FIT_MIN_LAT + half;
+    let max = FIT_MAX_LAT - half;
+    if min >= max {
+        (FIT_MIN_LAT + FIT_MAX_LAT) * 0.5
     } else {
-        v.clamp(-limit + half, limit - half)
+        v.clamp(min, max)
     }
 }
 

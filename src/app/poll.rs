@@ -13,6 +13,8 @@ use super::{
     TRAFFIC_INTERVAL_ACTIVE, TRAFFIC_INTERVAL_HIDDEN, WFP_SYNC_INTERVAL,
 };
 use crate::collector::{self, CollectorKind};
+use crate::map;
+use crate::map::world;
 use crate::model::{Place, Protocol};
 use crate::net::geoip;
 use crate::rules;
@@ -64,8 +66,9 @@ impl NetOwlApp {
         self.poll_temp_rules();
     }
 
-    /// 本机公网 IP 探测:取每轮首个成功结果,归属变化时刷新地图本机点位
-    pub(super) fn poll_local_ip(&mut self) {
+    /// 本机公网 IP 探测:取每轮首个成功结果,归属变化时刷新地图本机点位;
+    /// 启动定位窗口内的首个结果把地图瞬跳到本机中心最大缩放(默认视图)
+    pub(super) fn poll_local_ip(&mut self, ctx: &egui::Context) {
         if let Some((ip, source)) = self.local_probe.poll() {
             let place = geoip::locate(ip).map(Place::Geo);
             if place != self.local_place {
@@ -74,6 +77,18 @@ impl NetOwlApp {
                     tracing::info!("[LocalIp] 本机公网 IP {ip}({source})");
                 } else {
                     tracing::info!("[LocalIp] 本机公网 IP {ip}({source}) 无归属,回退默认点位");
+                }
+            }
+            if self.map_locate_pending {
+                self.map_locate_pending = false;
+                if Instant::now() <= self.map_locate_deadline {
+                    // 与地图本机节点同源:归属未收录时回退默认点位
+                    let pos = place
+                        .map(geoip::place_pos)
+                        .unwrap_or((world::LOCAL.lon, world::LOCAL.lat));
+                    self.map_view = map::home_view(pos);
+                    ctx.request_repaint();
+                    tracing::debug!("[LocalIp] 地图定位到本机点位 ({:.1}, {:.1})", pos.0, pos.1);
                 }
             }
         }

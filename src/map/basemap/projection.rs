@@ -4,8 +4,11 @@
 use eframe::egui;
 use egui::{Pos2, Rect};
 
+/// 底图数据的纬度窗口:窗口外无陆地/标签数据,视口钳制不越出该范围
+pub const FIT_MIN_LAT: f32 = -58.0;
+pub const FIT_MAX_LAT: f32 = 84.0;
 /// 全局适配视图的纬度窗口高度(不显示南极)
-const FIT_LAT_SPAN: f32 = 142.0;
+const FIT_LAT_SPAN: f32 = FIT_MAX_LAT - FIT_MIN_LAT;
 
 /// 视图:中心经纬度与缩放倍数(1.0 = 全局适配)。
 /// target_* 为滚轮/双击设置的动画目标,每帧向其平滑趋近;拖拽即时生效。
@@ -29,6 +32,21 @@ impl View {
             target_lon: 0.0,
             target_lat: 13.0,
             target_zoom: 1.0,
+        }
+    }
+
+    /// 指定中心与缩放的视图(target 同值,瞬跳无动画)。
+    /// 启动定位与双击复位等"视图整体切换"用瞬跳:若走 target 动画,
+    /// 动画期间 clamp_view 会以放大途中(小 zoom)的大纬度半窗钳制
+    /// target_lat,高纬目标会在途中被夹低,终点失准
+    pub fn at(lon: f32, lat: f32, zoom: f32) -> Self {
+        View {
+            center_lon: lon,
+            center_lat: lat,
+            zoom,
+            target_lon: lon,
+            target_lat: lat,
+            target_zoom: zoom,
         }
     }
 

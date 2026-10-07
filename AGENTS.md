@@ -35,7 +35,9 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   跟踪与单实例唤出校准;tray.rs:托盘命令分发[显示/设置/日志/询问开关/
   静默三态/退出收尾]、托盘常驻与自启动写入(管理员令牌经计划任务、标准用户经 Run 键;失败定时重试)、tooltip
   速率刷新、双入口勾选态校准;poll.rs:采集编排——连接快照 1s 轮询
-  [UDP 无远端过滤/去重→rDNS→图标→历史→询问→临时规则]、公网 IP 重探、
+  [UDP 无远端过滤/去重→rDNS→图标→历史→询问→临时规则]、公网 IP 重探
+  [启动定位窗口 15s 内首个结果把地图瞬跳到本机中心最大缩放,窗口后不再
+  自动定位]、
   总速率采样、图标纹理缓存(键=映像路径,ColorImage::from_rgba_unmultiplied
   建纹理)、WFP 目标集合同步[规则 specs+询问 pending 阻断+静默 deny
   兜底/自身放行]、悬浮球数据快照;ask_flow.rs:询问编排——入队检测、
@@ -146,8 +148,12 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   缓冲;排除无效表项与组播/广播 MAC[首字节 I/G 位],dwAddr 网络序还原;
   DeviceRow 视图行 = 库记录 + 本轮在线状态合并,免管理员权限))
 - src/map/ - 流量地图(mod.rs:画布(painter 自绘:节点聚合与脉冲、悬停
-  信息卡、视图交互 handle_input[滚轮锚点缩放/拖拽/双击复位]与 clamp_view,
-  视图状态存 NetOwlApp;经度方向无缝循环:中心经度归一化 [-180,180),节点
+  信息卡、视图交互 handle_input[滚轮锚点缩放/拖拽/双击复位默认视图]与
+  clamp_view[纬度钳制视口不脱出底图数据窗口 FIT_MIN/MAX_LAT -58..84],
+  home_view 默认视图 = 本机中心+最大缩放(与双击复位共用,app 层启动
+  定位复用;定位用 View::at 瞬跳——走 target 动画会被途中小 zoom 的
+  大纬度半窗钳坏 target_lat),视图状态存 NetOwlApp;经度方向无缝循环:
+  中心经度归一化 [-180,180),节点
   按可见副本平移绘制,悬停按模周期距离);flights.rs:贝塞尔连线与粒子尾迹
   (远端归属+主导方向聚合 LOD 一城一线,线宽随聚合数增长;连线取最短方向
   走短弧,按可见世界副本平移铺开);basemap/:地图底图(mod.rs:绘制入口

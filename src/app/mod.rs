@@ -63,6 +63,10 @@ const RESTORE_TIMEOUT: Duration = Duration::from_secs(2);
 const RESTORE_TOLERANCE: i32 = 2;
 /// 本机公网 IP 重探间隔(重拨/换网后点位跟随更新)
 const LOCAL_IP_PROBE_INTERVAL: Duration = Duration::from_secs(10 * 60);
+/// 启动地图定位窗口:窗口内收到首个探测结果即把地图跳到本机中心最大缩放;
+/// 覆盖单接口 4s×两段超时的最坏探测时长,窗口后(如断网启动后重探成功)
+/// 不再自动定位,避免会话中途视图突然飞走
+const MAP_LOCATE_WINDOW: Duration = Duration::from_secs(15);
 /// 总速率采样间隔:可见/隐藏(托盘)均 1s——托盘悬停提示按秒跟随刷新,
 /// GetIfTable2 为本地内核查询开销极小,无需为功耗放宽
 const TRAFFIC_INTERVAL_ACTIVE: Duration = Duration::from_secs(1);
@@ -184,6 +188,10 @@ pub struct NetOwlApp {
     /// 本机公网 IP 的归属定位键;探测失败/未收录时为 None(地图用默认点位)
     local_place: Option<Place>,
     local_probe_at: Instant,
+    /// 启动地图定位待执行标志(首个探测结果消费即清,含窗口超期情形)
+    map_locate_pending: bool,
+    /// 启动地图定位的截止时刻(超过则放弃本次自动定位)
+    map_locate_deadline: Instant,
     i18n: crate::i18n::I18n,
     config: Config,
     conns: Vec<Connection>,

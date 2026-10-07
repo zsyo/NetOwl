@@ -22,7 +22,7 @@ mod primitives;
 
 use primitives::{draw_rivers, draw_south_sea_line, push_culled_segment, push_tri, tri_visible};
 
-pub use projection::{Projection, View};
+pub use projection::{FIT_MAX_LAT, FIT_MIN_LAT, Projection, View};
 
 /// 放大超过该倍数后切换到 50m 精细档
 const DETAIL_ZOOM: f32 = 3.0;
