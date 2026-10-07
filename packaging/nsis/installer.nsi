@@ -21,6 +21,10 @@
 ;      simply overwrite files, portable data is untouched.
 ;   4. Uninstaller icon (MUI_UNICON) reuses the installer icon: upstream
 ;      leaves it undefined so uninstall.exe showed the default NSIS icon.
+;   5. Uninstall confirm page gains a "clear user data" checkbox (off by
+;      default): deletes config.toml(.bak), data and logs next to the exe;
+;      the install directory itself is only removed when it ends up empty
+;      (plain RMDir skips non-empty dirs).
 ; Re-diff against upstream when bumping cargo-packager.
 
 ; Set the compression algorithm.
@@ -441,6 +445,34 @@ Function un.ConfirmLeave
     SendMessage $DeleteAppDataCheckbox ${BM_GETCHECK} 0 0 $DeleteAppDataCheckboxState
 FunctionEnd
 {{/if}}
+; Local addition: "clear user data" checkbox on the uninstall confirm page.
+; The template's appdata_paths block above stays unrendered (not configured);
+; this mirrors its Show/Leave pattern with a fixed portable-data file set.
+; Unchecked by default: deleting history/rules/config is opt-in per uninstall.
+Var DeleteUserDataCheckbox
+Var DeleteUserDataState
+!define /ifndef WS_EX_LAYOUTRTL         0x00400000
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW un.UserDataShow
+Function un.UserDataShow
+    FindWindow $1 "#32770" "" $HWNDPARENT ; Find inner dialog
+    ${If} $LANGUAGE == 2052
+      StrCpy $2 "同时清除配置与用户数据(config.toml、data、logs)"
+    ${Else}
+      StrCpy $2 "Also remove configuration and user data (config.toml, data, logs)"
+    ${EndIf}
+    ${If} $(^RTL) == 1
+      System::Call 'USER32::CreateWindowEx(i${__NSD_CheckBox_EXSTYLE}|${WS_EX_LAYOUTRTL},t"${__NSD_CheckBox_CLASS}",t "$2",i${__NSD_CheckBox_STYLE},i 50,i 100,i 400, i 25,i$1,i0,i0,i0)i.s'
+    ${Else}
+      System::Call 'USER32::CreateWindowEx(i${__NSD_CheckBox_EXSTYLE},t"${__NSD_CheckBox_CLASS}",t "$2",i${__NSD_CheckBox_STYLE},i 0,i 100,i 400, i 25,i$1,i0,i0,i0)i.s'
+    ${EndIf}
+    Pop $DeleteUserDataCheckbox
+    SendMessage $HWNDPARENT ${WM_GETFONT} 0 0 $1
+    SendMessage $DeleteUserDataCheckbox ${WM_SETFONT} $1 1
+FunctionEnd
+!define MUI_PAGE_CUSTOMFUNCTION_LEAVE un.UserDataLeave
+Function un.UserDataLeave
+    SendMessage $DeleteUserDataCheckbox ${BM_GETCHECK} 0 0 $DeleteUserDataState
+FunctionEnd
 !insertmacro MUI_UNPAGE_CONFIRM
 
 ; 2. Uninstalling Page
@@ -712,6 +744,16 @@ Section Uninstall
   {{#each resources_dirs}}
   RMDir /REBOOTOK "$INSTDIR\\{{this}}"
   {{/each}}
+  ; Clear user data when the confirm-page checkbox was checked (default off):
+  ; portable data files next to the exe. The plain RMDir below only removes
+  ; the install directory when it ends up empty, so unrelated files a user
+  ; may keep there (wrong install path etc.) are never touched.
+  ${If} $DeleteUserDataState == 1
+    RMDir /r "$INSTDIR\data"
+    RMDir /r "$INSTDIR\logs"
+    Delete "$INSTDIR\config.toml"
+    Delete "$INSTDIR\config.toml.bak"
+  ${EndIf}
   RMDir "$INSTDIR"
 
   ; Remove start menu shortcut
