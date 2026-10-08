@@ -176,6 +176,7 @@ pub(super) fn hover_panel(
                     icons::ARROW_UP,
                     theme::c().outbound,
                     data.default_icon.as_ref(),
+                    data.today.1,
                     i18n,
                 );
                 ui.add_space(theme::sp::SM);
@@ -186,6 +187,7 @@ pub(super) fn hover_panel(
                     icons::ARROW_DOWN,
                     theme::c().inbound,
                     data.default_icon.as_ref(),
+                    data.today.0,
                     i18n,
                 );
             } else {
@@ -216,7 +218,9 @@ pub(super) fn hover_panel(
         });
 }
 
-/// 榜单分组:标题 + 行(空榜显示占位提示)
+/// 榜单分组:标题 + 行(空榜显示占位提示);`today` = 该方向今日
+/// 累计总量(本地时区自然日),显示在标题行右端
+#[allow(clippy::too_many_arguments)]
 fn section(
     ui: &mut egui::Ui,
     title: &str,
@@ -224,13 +228,27 @@ fn section(
     glyph: &str,
     color: egui::Color32,
     default_icon: Option<&egui::TextureHandle>,
+    today: u64,
     i18n: &I18n,
 ) {
-    ui.label(
-        RichText::new(title)
-            .size(theme::font::XS)
-            .color(theme::c().text_dim),
-    );
+    ui.horizontal(|ui| {
+        ui.label(
+            RichText::new(title)
+                .size(theme::font::XS)
+                .color(theme::c().text_dim),
+        );
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            ui.label(
+                RichText::new(format!(
+                    "{} {}",
+                    i18n.t("ball-total-today"),
+                    fmt_bytes(today)
+                ))
+                .size(theme::font::XS)
+                .color(theme::c().text_dim),
+            );
+        });
+    });
     ui.add_space(theme::sp::XS);
     if rows.is_empty() {
         hint_line(ui, &i18n.t("ball-empty"));

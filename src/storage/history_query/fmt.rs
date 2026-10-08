@@ -90,6 +90,21 @@ pub fn month_start() -> u64 {
     }
 }
 
+/// 本地时区当日 0 时起的 unix 秒(今日总量口径)
+pub fn day_start() -> u64 {
+    unsafe {
+        let mut st = GetLocalTime();
+        st.wHour = 0;
+        st.wMinute = 0;
+        st.wSecond = 0;
+        st.wMilliseconds = 0;
+        let mut ft = FILETIME::default();
+        SystemTimeToFileTime(&st, &mut ft).expect("[History] 当日起点换算失败");
+        let ticks = ((ft.dwHighDateTime as u64) << 32) | ft.dwLowDateTime as u64;
+        (ticks.saturating_sub(EPOCH_DELTA * 10_000_000)) / 10_000_000
+    }
+}
+
 /// unix 秒 -> 本地时间 "MM-DD HH:MM:SS"
 pub fn fmt_local(unix: u64) -> String {
     unsafe {

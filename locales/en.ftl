@@ -137,6 +137,7 @@ settings-floating-ball-hint = Dock to the screen edge with live rates; hover for
 
 ball-realtime-up = Live upload
 ball-realtime-down = Live download
+ball-total-today = Today
 ball-detail = View details
 ball-no-etw = Running without elevation, per-process rates unavailable
 ball-empty = No active traffic

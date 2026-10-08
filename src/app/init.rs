@@ -189,6 +189,8 @@ impl NetOwlApp {
             floating_ball: ball_state,
             ball_data: floating_ball::BallData::default(),
             ball_data_at: Instant::now(),
+            today_db_bytes: (0, 0),
+            today_bytes_at: Instant::now(),
             tray_tip_at: Instant::now(),
             silent_synced: None,
             ask_synced: None,

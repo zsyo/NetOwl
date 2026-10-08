@@ -200,3 +200,21 @@ pub fn query_month_bytes(db: &Db) -> u64 {
         }
     }
 }
+
+/// 当日(本地时区)累计收发字节,拆 (入站, 出站) 两列:悬浮窗浮窗
+/// "今日总量"的数据源(口径同上,不套历史页筛选;活跃连接的实时
+/// 字节由调用方叠加)
+pub fn query_today_bytes(db: &Db) -> (u64, u64) {
+    match db.query_row(
+        "SELECT COALESCE(SUM(bytes_in), 0), COALESCE(SUM(bytes_out), 0)
+         FROM conn_events WHERE last_seen >= ?1",
+        [super::fmt::day_start() as i64],
+        |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
+    ) {
+        Ok((inn, out)) => (inn.max(0) as u64, out.max(0) as u64),
+        Err(e) => {
+            tracing::warn!("[History] 当日用量查询失败: {e}");
+            (0, 0)
+        }
+    }
+}

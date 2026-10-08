@@ -137,6 +137,7 @@ settings-floating-ball-hint = 贴边显示实时速率,悬浮展开进程流量�
 
 ball-realtime-up = 实时上传
 ball-realtime-down = 实时下载
+ball-total-today = 今日总量
 ball-detail = 查看详情
 ball-no-etw = 未提权运行,无法统计进程速率
 ball-empty = 暂无活跃流量

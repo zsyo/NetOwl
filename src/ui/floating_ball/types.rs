@@ -83,6 +83,8 @@ pub struct BallData {
     pub default_icon: Option<egui::TextureHandle>,
     /// 总速率 (下行, 上行)
     pub rates: (u64, u64),
+    /// 今日累计总量 (下行, 上行),本地时区自然日
+    pub today: (u64, u64),
     pub up_top: Vec<ProcRate>,
     pub down_top: Vec<ProcRate>,
     /// 提权可用;否则 ETW 关闭,进程速率不可统计(浮窗显示提示)

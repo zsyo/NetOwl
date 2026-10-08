@@ -90,6 +90,9 @@ const TRAY_PIN_RETRY_INTERVAL: Duration = Duration::from_secs(60);
 const AUTOSTART_RETRY_INTERVAL: Duration = Duration::from_secs(60);
 /// 托盘悬停提示的速率刷新间隔(秒级,与速率采样同频)
 const TRAY_TIP_INTERVAL: Duration = Duration::from_secs(1);
+/// 当日用量(本地时区)查库间隔:浮窗"今日总量"= 落库值 + 活跃连接
+/// 实时字节,秒级 SUM 全表开销不值当,分钟级即可
+const TODAY_BYTES_INTERVAL: Duration = Duration::from_secs(60);
 
 /// 待恢复的窗口几何(物理像素)
 pub(super) type WindowRect = (i32, i32, i32, i32, bool);
@@ -235,6 +238,10 @@ pub struct NetOwlApp {
     /// 悬浮球数据快照(总速率 + 进程速率榜,1s 节流聚合)
     ball_data: floating_ball::BallData,
     ball_data_at: Instant,
+    /// 当日(本地时区)落库收发字节 (入站, 出站) 与查询时刻:
+    /// 浮窗"今日总量"= 此值 + 活跃连接实时字节(分钟级查库)
+    today_db_bytes: (u64, u64),
+    today_bytes_at: Instant,
     /// 托盘悬停提示上次刷新时刻(速率跟随)
     tray_tip_at: Instant,
     /// 静默模式上次同步值(config 变化或采集器重建后重同步:兜底规则

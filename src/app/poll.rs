@@ -10,7 +10,7 @@ use eframe::egui;
 
 use super::{
     CONNS_REFRESH_INTERVAL, LOCAL_IP_PROBE_INTERVAL, NetOwlApp, RATE_HIST_LEN,
-    TRAFFIC_INTERVAL_ACTIVE, TRAFFIC_INTERVAL_HIDDEN, WFP_SYNC_INTERVAL,
+    TODAY_BYTES_INTERVAL, TRAFFIC_INTERVAL_ACTIVE, TRAFFIC_INTERVAL_HIDDEN, WFP_SYNC_INTERVAL,
 };
 use crate::collector::{self, CollectorKind};
 use crate::map;
@@ -212,7 +212,8 @@ impl NetOwlApp {
     }
 
     /// 悬浮球数据快照:总速率与进程速率榜 1s 节流重建(与连接采集同频);
-    /// 仅开关开启时计算
+    /// 仅开关开启时计算。今日总量 = 落库当日收发(分钟级查库)+ 活跃
+    /// 连接实时累计(未落库部分,每秒叠加)
     pub(super) fn poll_ball_data(&mut self) {
         if !self.config.floating_ball.enabled
             || self.ball_data_at.elapsed() < Duration::from_secs(1)
@@ -220,16 +221,26 @@ impl NetOwlApp {
             return;
         }
         self.ball_data_at = Instant::now();
+        if self.today_bytes_at.elapsed() >= TODAY_BYTES_INTERVAL {
+            self.today_bytes_at = Instant::now();
+            self.today_db_bytes =
+                crate::storage::history_query::query_today_bytes(&self.history_db);
+        }
         let (up_top, down_top) = floating_ball::collect_proc_rates(
             &self.conns,
             &self.conn_rates,
             &self.config,
             &self.icon_tex,
         );
+        let today = (
+            self.today_db_bytes.0 + self.conns.iter().map(|c| c.bytes_in).sum::<u64>(),
+            self.today_db_bytes.1 + self.conns.iter().map(|c| c.bytes_out).sum::<u64>(),
+        );
         self.ball_data = floating_ball::BallData {
             logo: Some(self.logo_tex.clone()),
             default_icon: self.default_icon_tex.clone(),
             rates: self.rates,
+            today,
             up_top,
             down_top,
             elevated: self.elevated,

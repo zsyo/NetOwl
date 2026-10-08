@@ -17,8 +17,11 @@ pub const QUERY_LIMIT: usize = 500;
 pub use filter::{
     AggregateRow, AggregateSort, DetailRow, Filter, SummaryRow, SummarySort, UsageRow,
 };
-pub use fmt::{fmt_duration, fmt_local, local_tz_offset_secs, month_start, parse_ip_prefix};
+pub use fmt::{
+    day_start, fmt_duration, fmt_local, local_tz_offset_secs, month_start, parse_ip_prefix,
+};
 pub use page::{PageState, Range, Rows, ViewMode};
 pub use query::{
     PendingDelete, delete_aggregate_group, delete_detail, delete_process, query_month_bytes,
+    query_today_bytes,
 };
