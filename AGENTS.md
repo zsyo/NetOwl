@@ -196,7 +196,8 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   sort.rs:表头排序);
   settings/:设置页(mod.rs:ScrollArea 编排 + section_card/setting_row 行式
   布局[左标签右控件] + locate_log_file;general.rs:常规卡(语言/主题
-  分段切换/悬浮球开关/托盘图标常驻/开机自启动);monitor.rs:监控卡
+  分段切换/悬浮球开关/托盘图标常驻/开机自启动/全局快捷键预设下拉;
+  monitor.rs:监控卡
   (数据源/保留期/询问/静默模式三态分段
   [off/allow/deny]/新设备接入提醒/新监听端口提醒;
   logging.rs:日志文件开关/级别/浏览入口);
@@ -260,9 +261,11 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   IsPromoted,按 ExecutablePath 匹配本进程定位);shutdown_hook.rs:关机
   落库钩子(子类化主窗口拦 WM_ENDSESSION,执行 tracker.flush+
   writer.shutdown——winit 不处理 ENDSESSION,关机时进程被强杀,该钩子是
-  托盘退出外唯一落库路径);global_hotkey.rs:全局热键 Ctrl+Alt+N 唤出
-  主窗(后台线程自建 HWND_MESSAGE 消息窗口注册,WM_HOTKEY 经托盘命令
-  通道发 CMD_SHOW,与托盘菜单同一路径;注册失败仅告警降级))
+  托盘退出外唯一落库路径);global_hotkey.rs:全局热键唤出主窗(后台线程
+  自建 HWND_MESSAGE 消息窗口注册,WM_HOTKEY 经托盘命令通道发 CMD_SHOW,
+  与托盘菜单同一路径;组合可配置:PRESETS 预设表存 config general.hotkey,
+  线程阻塞在 GetMessageW,App 层写期望组合后 PostThreadMessageW 唤醒
+  热注销重注册,注册失败经回报通道弹 toast 明示[1409 = 组合被占用]))
 - tools/build_mapdata.py - 底图数据生成脚本(混合数据源 ->
     assets/mapdata.bin;原始 GeoJSON 放 tools/cache/,该目录不入库)
 - tools/build_geoip.py - GeoIP 归属数据生成脚本(tools/cache/ip2region_v4.xdb
