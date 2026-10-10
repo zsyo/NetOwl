@@ -63,6 +63,10 @@ impl NetOwlApp {
                     let events = self.tracker.flush(history::unix_now());
                     tracing::info!("[App] 退出收尾:补写 {} 条活跃连接", events.len());
                     self.writer.send(events);
+                    // 规则命中计数立即落盘(30s 批量的尾巴;库连接仍有效)
+                    if let Err(e) = self.rules.flush_hits(&self.history_db) {
+                        tracing::warn!("[Rules] 退出时命中计数落盘失败: {e}");
+                    }
                     self.writer.shutdown();
                     if let Some(e) = self.etw.as_mut() {
                         e.shutdown();

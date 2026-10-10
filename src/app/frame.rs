@@ -7,7 +7,7 @@ use std::time::Instant;
 
 use eframe::egui;
 
-use super::{CONFIG_SAVE_DEBOUNCE, FRAME_STATS_INTERVAL, NetOwlApp};
+use super::{CONFIG_SAVE_DEBOUNCE, FRAME_STATS_INTERVAL, HITS_FLUSH_INTERVAL, NetOwlApp};
 use crate::platform::{shutdown_hook, single_instance};
 use crate::ui::ask as ui_ask;
 use crate::ui::{self, Page, theme};
@@ -110,6 +110,13 @@ impl eframe::App for NetOwlApp {
         self.update_tray_tooltip();
         self.handle_shortcuts(ctx);
         self.sync_hotkey();
+        // 规则命中计数 30s 批量落盘(硬杀最多丢 30s 的增量)
+        if self.hits_flush_at.elapsed() >= HITS_FLUSH_INTERVAL {
+            self.hits_flush_at = Instant::now();
+            if let Err(e) = self.rules.flush_hits(&self.history_db) {
+                tracing::warn!("[Rules] 命中计数落盘失败: {e}");
+            }
+        }
         // 关机/注销落库钩子:首帧安装一次,内部防重复(winit 不处理
         // ENDSESSION,关机时唯一能把活跃连接落库的路径)
         shutdown_hook::install(

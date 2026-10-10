@@ -199,4 +199,16 @@ fn migrate(conn: &mut Connection) {
             Ok(())
         });
     }
+    if current < 8 {
+        // 版本 8:规则命中计数(累计命中连接数,每连接首次命中计一次)。
+        // 存 rules 列由 App 层 30s 批量 + 退出时落盘;内存侧按连接 id
+        // 去重防长连接每秒重复计
+        step(conn, 8, |tx| {
+            tx.execute(
+                "ALTER TABLE rules ADD COLUMN hit_count INTEGER NOT NULL DEFAULT 0",
+                [],
+            )?;
+            Ok(())
+        });
+    }
 }

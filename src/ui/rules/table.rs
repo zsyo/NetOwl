@@ -25,12 +25,12 @@ const COL_PORT: f32 = 64.0;
 const COL_HITS: f32 = 64.0;
 const COL_OPS: f32 = 128.0;
 
-fn header_cell(ui: &mut egui::Ui, w: f32, text: String) {
+fn header_cell(ui: &mut egui::Ui, w: f32, text: String) -> egui::Response {
     // 列贴列布局:占位整列宽,内容区(w - 2×CELL_PAD_X)内居中,与数据格
     // (fixed_cell 内容同缩进)同心;Grid 格内不能 add_space(egui 断言),
     // 用定宽占位 + 缩进子区域承载
     let pad = widgets::table::CELL_PAD_X;
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(w, 16.0), egui::Sense::hover());
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, 16.0), egui::Sense::hover());
     let mut child =
         ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(egui::vec2(pad, 0.0))));
     // add_sized(居中布局)实测表头稳定居中于列;徽章列的数据格用
@@ -44,6 +44,7 @@ fn header_cell(ui: &mut egui::Ui, w: f32, text: String) {
                 .color(theme::c().text_dim),
         ),
     );
+    resp
 }
 
 /// 规则表(自上而下即优先级从高到低)
@@ -91,7 +92,9 @@ pub(super) fn rules_table(
                     header_cell(ui, flex_w, i18n.t("col-process"));
                     header_cell(ui, flex_w, i18n.t("rules-col-remote"));
                     header_cell(ui, COL_PORT, i18n.t("col-port"));
-                    header_cell(ui, COL_HITS, i18n.t("rules-col-hits"));
+                    // 悬停说明口径:累计、每连接计一次、跨重启保留
+                    header_cell(ui, COL_HITS, i18n.t("rules-col-hits"))
+                        .on_hover_text(i18n.t("rules-col-hits-tip"));
                     header_cell(ui, COL_OPS, i18n.t("rules-col-ops"));
                     ui.end_row();
 
@@ -203,9 +206,10 @@ pub(super) fn rules_table(
                                 )),
                             );
                         });
-                        // 命中数列:会话内累计命中连接数(0 弱化灰);
-                        // 临时规则与兜底不计,poll 层 1s 口径
-                        let hits = rules.hit_count(rule.id);
+                        // 命中数列:累计命中连接数(每连接计一次,落库
+                        // 跨重启保留;0 弱化灰)。临时规则与兜底不计,
+                        // poll 层 1s 口径
+                        let hits = rule.hit_count;
                         widgets::table::fixed_num_cell(ui, COL_HITS, |ui| {
                             widgets::table::num_cell(
                                 ui,

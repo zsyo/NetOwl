@@ -301,6 +301,7 @@ rules-col-action = 动作
 rules-col-direction = 方向
 rules-col-remote = 远端
 rules-col-hits = 命中
+rules-col-hits-tip = 累计命中连接数:每连接首次命中计一次,跨重启保留
 rules-col-ops = 操作
 rules-empty = 暂无规则,点击"新建规则"添加
 rules-new-title = 新建规则

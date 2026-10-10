@@ -79,6 +79,8 @@ const RATE_HIST_LEN: usize = 60;
 /// 主窗口最小逻辑尺寸(= 默认窗口尺寸;main.rs 视口 min_inner_size 与
 /// 无边框缩放钳制同源)
 pub const MIN_WINDOW_SIZE: (f32, f32) = (1440.0, 800.0);
+/// 规则命中计数批量落盘间隔(退出时立即补写)
+pub(super) const HITS_FLUSH_INTERVAL: Duration = Duration::from_secs(30);
 /// WFP 过滤器目标集合同步间隔(与采集同频:进程路径出现/消失的生效延迟上限)
 const WFP_SYNC_INTERVAL: Duration = Duration::from_secs(1);
 /// ETW 流量事件合并间隔(与表快照采集同频)
@@ -212,6 +214,8 @@ pub struct NetOwlApp {
     hotkey_report_rx: Receiver<crate::platform::global_hotkey::HotkeyReport>,
     /// 已同步给热键线程的组合(config 变化时热切换;初值 = 启动组合)
     hotkey_synced: String,
+    /// 命中计数上次落盘时刻(30s 批量)
+    hits_flush_at: Instant,
     should_exit: bool,
     /// 是否以管理员令牌运行(启动时判定;ETW/WFP 可用性与右键"结束连接")
     elevated: bool,

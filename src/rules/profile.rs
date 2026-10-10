@@ -92,7 +92,7 @@ impl RuleSet {
         let result = (|| -> rusqlite::Result<()> {
             let mut stmt = db.prepare(
                 "SELECT id, name, enabled, priority, action, direction, proto, process,
-                        remote_kind, remote_value, port
+                        remote_kind, remote_value, port, hit_count
                  FROM rules WHERE profile_id = ?1 ORDER BY priority ASC, id ASC",
             )?;
             let rows = stmt.query_map([profile_id], |row| {
@@ -109,6 +109,7 @@ impl RuleSet {
                     remote_value: row.get(9)?,
                     port: row.get::<_, i64>(10)? as u16,
                     local_port: 0,
+                    hit_count: row.get::<_, i64>(11)?.max(0) as u64,
                 })
             })?;
             for r in rows {
@@ -130,7 +131,8 @@ impl RuleSet {
             active_profile: profile_id,
             fallback: None,
             sticky_paths: HashMap::new(),
-            hit_counts: HashMap::new(),
+            hit_counted: HashMap::new(),
+            hit_dirty: false,
             next_temp_id: -1,
         }
     }
@@ -140,9 +142,9 @@ impl RuleSet {
     pub fn switch_profile(&mut self, db: &Db, id: i64) {
         self.active_profile = id;
         self.sticky_paths.clear();
-        // 命中计数按档清零:不同档的规则集无共同基准,旧档计数带到新档
-        // 没有意义
-        self.hit_counts.clear();
+        // 命中计数不清:它随规则落库,切档后加载的是目标档各规则自己的
+        // 累计值;去重表按新档重建(旧档连接的"已计数"状态无意义)
+        self.hit_counted.clear();
         let persisted = Self::load_rules(db, id);
         // 会话临时规则(负 id)必须恒定位于全部持久规则之前:求值按数组序
         // 取首个命中(eval.rs),WFP weight 也按 priority 排名。切档后持久

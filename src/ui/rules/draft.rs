@@ -16,6 +16,8 @@ pub struct Draft {
     pub remote_kind: RemoteKind,
     pub remote_value: String,
     pub port: u16,
+    /// 原规则命中累计(编辑时原样带回,保存不清零)
+    hit_count: u64,
     /// 保存校验错误(词条键)
     pub error: Option<&'static str>,
 }
@@ -33,6 +35,7 @@ impl Draft {
             remote_kind: RemoteKind::Any,
             remote_value: String::new(),
             port: 0,
+            hit_count: 0,
             error: None,
         }
     }
@@ -49,6 +52,8 @@ impl Draft {
             remote_kind: r.remote_kind,
             remote_value: r.remote_value.clone(),
             port: r.port,
+            // 命中计数随编辑保留:改规则条件不应把历史累计清零
+            hit_count: r.hit_count,
             error: None,
         }
     }
@@ -67,6 +72,7 @@ impl Draft {
             remote_value: self.remote_value.trim().to_owned(),
             port: self.port,
             local_port: 0,
+            hit_count: self.hit_count,
         }
     }
 }

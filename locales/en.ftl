@@ -300,6 +300,7 @@ rules-col-action = Action
 rules-col-direction = Direction
 rules-col-remote = Remote
 rules-col-hits = Hits
+rules-col-hits-tip = Cumulative matched connections (counted once per connection, survives restarts)
 rules-col-ops = Ops
 rules-empty = No rules yet; click "New Rule" to add one
 rules-new-title = New Rule

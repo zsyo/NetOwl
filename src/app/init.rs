@@ -177,6 +177,7 @@ impl NetOwlApp {
             hotkey,
             hotkey_report_rx,
             hotkey_synced,
+            hits_flush_at: Instant::now(),
             should_exit: false,
             elevated,
             window_visible: !minimized,

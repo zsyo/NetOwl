@@ -92,6 +92,7 @@ impl RuleSet {
                 remote_value: entry.remote_value,
                 port: entry.port,
                 local_port: 0,
+                hit_count: 0,
             };
             if !seen.insert(dedup_key(&rule)) {
                 skipped += 1;

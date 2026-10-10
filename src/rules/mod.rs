@@ -108,6 +108,9 @@ pub struct Rule {
     /// 本地端口(0 = 任意;仅弹窗"仅本次"临时规则使用,精确锁定
     /// 单条连接,持久规则恒为 0)
     pub local_port: u16,
+    /// 累计命中连接数(每连接首次命中计一次;落库 rules.hit_count,
+    /// 跨重启保留)。内存计数,App 层 30s 批量 + 退出时 flush
+    pub hit_count: u64,
 }
 
 impl Rule {
@@ -131,6 +134,7 @@ impl Rule {
             remote_value: remote.map_or(String::new(), |ip| ip.to_string()),
             port: 0,
             local_port: 0,
+            hit_count: 0,
         }
     }
 
@@ -278,10 +282,11 @@ pub struct RuleSet {
     /// 连接被阻断后快照可能抓不到进程行,已展开路径保持,避免
     /// 拦截窗口抖动;规则删除/改进程条件时清理
     sticky_paths: HashMap<i64, std::collections::BTreeSet<String>>,
-    /// 会话内规则命中计数(持久规则 id -> 命中连接数):poll 层按 1s
-    /// 快照对每连接求值一次累计(非渲染帧),服务规则调优;不落库,
-    /// 重启归零,切换配置档清零
-    hit_counts: HashMap<i64, u64>,
+    /// 连接 id -> 已计数过的规则 id(命中去重:长连接每秒命中不重复
+    /// 计;每轮按快照重建,断连自然淘汰,内存有界)
+    hit_counted: HashMap<u64, i64>,
+    /// 命中计数是否有未落盘变更(flush 成功后清零)
+    hit_dirty: bool,
     /// 会话内临时规则(询问"仅本次")的下一个负数 id
     next_temp_id: i64,
 }

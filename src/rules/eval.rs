@@ -2,6 +2,10 @@
 //! 拒绝模式),阻断状态查询供地图面板标注联动。比较基准取 eval_cache
 //! 预计算(见 RuleMatch),求值路径零分配。
 
+use std::collections::HashMap;
+
+use rusqlite::params;
+
 use super::{
     Action, Direction, MatchReq, RemoteKind, Rule, RuleSet, SILENT_FALLBACK_ID, is_subdomain,
     process_hit,
@@ -25,6 +29,7 @@ impl RuleSet {
             remote_value: String::new(),
             port: 0,
             local_port: 0,
+            hit_count: 0,
         });
         if want.as_ref().map(|r| r.id) != self.fallback.as_ref().map(|r| r.id) {
             self.fallback = want;
@@ -40,25 +45,49 @@ impl RuleSet {
             .or(self.fallback.as_ref())
     }
 
-    /// 命中计数累计:对快照内每条连接求值一次,命中的持久规则计数 +1。
-    /// 由 app 层按 1s 采集节流调用(非渲染帧——连接页每帧渲染也会
-    /// evaluate,按帧计数会随重绘节奏虚高)。静默兜底(负基准 id)与
-    /// 会话临时规则(负 id)不计:前者非用户规则,后者是"仅本次"的
-    /// 会话决策,计数无调优意义
+    /// 命中计数累计:对快照内每条连接求值,每连接首次命中某持久规则
+    /// (或命中规则发生变化)计一次——长连接存活期间每秒命中不重复计,
+    /// 口径为"累计命中连接数",落库跨重启保留。由 app 层按 1s 采集
+    /// 节流调用(非渲染帧——连接页每帧渲染也会 evaluate,按帧计数会随
+    /// 重绘节奏虚高)。静默兜底(负基准 id)与会话临时规则(负 id)不计:
+    /// 前者非用户规则,后者是"仅本次"的会话决策,计数无调优意义
     pub fn note_hits(&mut self, conns: &[Connection], rdns: &crate::net::rdns::Rdns) {
+        // 去重表每轮按快照重建:断连的连接自然淘汰,内存有界
+        let mut counted = HashMap::with_capacity(conns.len());
         for c in conns {
             let req = MatchReq::from_conn(c, rdns.lookup(c.remote_ip));
-            if let Some(hit) = self.evaluate(&req)
-                && hit.id > 0
+            let hit_id = match self.evaluate(&req) {
+                Some(r) if r.id > 0 => r.id,
+                _ => continue,
+            };
+            counted.insert(c.id, hit_id);
+            if self.hit_counted.get(&c.id) != Some(&hit_id)
+                && let Some(rule) = self.rules.iter_mut().find(|r| r.id == hit_id)
             {
-                *self.hit_counts.entry(hit.id).or_insert(0) += 1;
+                rule.hit_count += 1;
+                self.hit_dirty = true;
             }
         }
+        self.hit_counted = counted;
     }
 
-    /// 规则 id 的会话内命中连接数(未命中过为 0)
-    pub fn hit_count(&self, id: i64) -> u64 {
-        self.hit_counts.get(&id).copied().unwrap_or(0)
+    /// 命中计数落盘(30s 批量 + 退出时):仅当前档的持久规则,无变更
+    /// 零写入;任一条失败即整体返回 Err,dirty 保留待下轮重试
+    pub fn flush_hits(&mut self, db: &crate::storage::history::Db) -> rusqlite::Result<()> {
+        if !self.hit_dirty {
+            return Ok(());
+        }
+        for r in &self.rules {
+            if r.id <= 0 {
+                continue;
+            }
+            db.execute(
+                "UPDATE rules SET hit_count = ?1 WHERE id = ?2",
+                params![r.hit_count as i64, r.id],
+            )?;
+        }
+        self.hit_dirty = false;
+        Ok(())
     }
 
     /// 规则命中判定(全部条件均满足才命中;非法网段值永不命中):

@@ -105,6 +105,7 @@ impl AskItem {
             remote_value,
             port,
             local_port,
+            hit_count: 0,
         }
     }
 
