@@ -161,36 +161,6 @@ pub(super) fn section(ui: &mut egui::Ui, config: &mut Config, i18n: &I18n, chang
                     }
                 },
             );
-            ui.add_space(theme::sp::SM);
-            setting_row(
-                ui,
-                &i18n.t("settings-tray-pin"),
-                &i18n.t("settings-tray-pin-hint"),
-                |ui| {
-                    // 注册表 IsPromoted,写入失败静默保持系统默认;新会话生效
-                    *changed |= widgets::toggle::toggle_switch(
-                        ui,
-                        &mut config.general.tray_pinned,
-                        egui::Id::new("settings-tray-toggle"),
-                    )
-                    .changed();
-                },
-            );
-            ui.add_space(theme::sp::SM);
-            setting_row(
-                ui,
-                &i18n.t("settings-autostart"),
-                &i18n.t("settings-autostart-hint"),
-                |ui| {
-                    // 注册表 Run 键,写入失败由 App 层定时重试;自启动走静默到托盘
-                    *changed |= widgets::toggle::toggle_switch(
-                        ui,
-                        &mut config.general.autostart,
-                        egui::Id::new("settings-autostart-toggle"),
-                    )
-                    .changed();
-                },
-            );
         },
     );
 }

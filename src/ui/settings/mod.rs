@@ -1,8 +1,8 @@
-//! 设置页:分组卡片布局(外观/监控/日志/关于),行式设置项(左标签 +
-//! 右控件)。四个分组各自成文件(appearance/monitor/logging/about)。
+//! 设置页:分组卡片布局(常规/监控/日志/关于),行式设置项(左标签 +
+//! 右控件)。四个分组各自成文件(general/monitor/logging/about)。
 
 mod about;
-mod appearance;
+mod general;
 mod logging;
 mod monitor;
 
@@ -42,11 +42,11 @@ pub(super) fn settings_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     egui::ScrollArea::vertical()
         .auto_shrink(false)
         .show(ui, |ui| {
-            // ---- 外观:语言 / 主题 ----
-            appearance::section(ui, config, i18n, &mut changed);
+            // ---- 常规:语言 / 主题 / 悬浮球 / 托盘常驻 / 自启动 ----
+            general::section(ui, config, i18n, &mut changed);
             ui.add_space(theme::sp::MD);
 
-            // ---- 监控:数据源 / 历史保留期 / 新连接询问 / 托盘常驻 ----
+            // ---- 监控:数据源 / 保留期 / 询问 / 静默 ----
             monitor::section(ui, config, i18n, &mut changed);
             ui.add_space(theme::sp::MD);
 

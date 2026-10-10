@@ -195,9 +195,10 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   提权可用,非提权禁用带提示/定位程序/复制远端地址/复制进程路径];
   sort.rs:表头排序);
   settings/:设置页(mod.rs:ScrollArea 编排 + section_card/setting_row 行式
-  布局[左标签右控件] + locate_log_file;appearance.rs:语言/主题分段切换/
-  悬浮球开关;monitor.rs:数据源/保留期/询问/静默模式三态分段
-  [off/allow/deny]/托盘常驻/自启动/新设备接入提醒/新监听端口提醒;
+  布局[左标签右控件] + locate_log_file;general.rs:常规卡(语言/主题
+  分段切换/悬浮球开关/托盘图标常驻/开机自启动);monitor.rs:监控卡
+  (数据源/保留期/询问/静默模式三态分段
+  [off/allow/deny]/新设备接入提醒/新监听端口提醒;
   logging.rs:日志文件开关/级别/浏览入口);
   widgets/:公共组件库(header 页头/badge 胶囊徽章/
   segmented 分段选择/toggle 滑动开关/table 统一表头与行底色[列贴列布局

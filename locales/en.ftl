@@ -157,7 +157,7 @@ settings-log-view-hint = Locate the log file in Explorer, or open the browser wi
 settings-log-locate = Locate log file
 settings-log-open = Open window
 
-settings-section-appearance = Appearance
+settings-section-general = General
 settings-section-monitoring = Monitoring
 settings-section-logging = Logging
 settings-section-about = About

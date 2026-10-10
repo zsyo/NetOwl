@@ -157,7 +157,7 @@ settings-log-view-hint = 在文件管理器中定位日志文件,或打开浏览
 settings-log-locate = 定位日志文件
 settings-log-open = 打开窗口
 
-settings-section-appearance = 外观
+settings-section-general = 常规
 settings-section-monitoring = 监控
 settings-section-logging = 日志
 settings-section-about = 关于
