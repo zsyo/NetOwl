@@ -138,3 +138,27 @@ pub fn fmt_bytes(n: u64) -> String {
         format!("{value:.1} {}", UNITS[unit])
     }
 }
+
+/// 计数紧凑格式(命中计数等定宽数字列用):万以下精确,以上 K/M/B 一位
+/// 小数,整十去除 ".0"("1000.0K" -> "1000K")——保证最多 5 字符,
+/// 匹配等宽字体下数字列的可用宽(精确值由调用方悬停展示)
+pub fn fmt_count(n: u64) -> String {
+    if n < 10_000 {
+        return n.to_string();
+    }
+    for (div, unit) in [(1_000_000_000u64, "B"), (1_000_000, "M"), (10_000, "K")] {
+        if n >= div {
+            let v = n as f64 / div as f64;
+            if v >= 1000.0 {
+                // 万亿级以上(任何现实速率都不可达):封顶,防撑破列宽
+                return format!("999{unit}+");
+            }
+            // 去尾零必须在拼单位之前("1000.0" -> "1000";单位字母在尾部,
+            // 对整个串 trim_end_matches(".0") 永远匹配不到)
+            let value = format!("{v:.1}");
+            let value = value.trim_end_matches(".0");
+            return format!("{value}{unit}");
+        }
+    }
+    n.to_string()
+}

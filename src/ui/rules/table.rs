@@ -208,18 +208,22 @@ pub(super) fn rules_table(
                         });
                         // 命中数列:累计命中连接数(每连接计一次,落库
                         // 跨重启保留;0 弱化灰)。临时规则与兜底不计,
-                        // poll 层 1s 口径
+                        // poll 层 1s 口径。万以上紧凑显示(列宽只放得下
+                        // 5 字符),精确值悬停展示
                         let hits = rule.hit_count;
                         widgets::table::fixed_num_cell(ui, COL_HITS, |ui| {
-                            widgets::table::num_cell(
+                            let cell = widgets::table::num_cell(
                                 ui,
-                                hits.to_string(),
+                                crate::model::fmt_count(hits),
                                 if hits == 0 {
                                     theme::c().text_dim
                                 } else {
                                     theme::c().text
                                 },
                             );
+                            if hits >= 10_000 {
+                                cell.on_hover_text(hits.to_string());
+                            }
                         });
                         widgets::table::fixed_cell(ui, COL_OPS, 26.0, |ui| {
                             ui.style_mut().spacing.item_spacing.x = 2.0;
