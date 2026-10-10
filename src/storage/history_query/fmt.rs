@@ -105,19 +105,26 @@ pub fn day_start() -> u64 {
     }
 }
 
-/// unix 秒 -> 本地时间 "MM-DD HH:MM:SS"
+/// unix 秒 -> 本地时间 "MM-DD HH:MM:SS"。
+/// 库中时间戳损坏(负数/极大值)时换算失败不回退 panic:UI 线程一次
+/// expect 崩溃会拖垮整个应用,降级为占位文本,行数据照常展示
 pub fn fmt_local(unix: u64) -> String {
     unsafe {
-        let ticks = unix.saturating_add(EPOCH_DELTA) * 10_000_000;
+        let Some(ticks) = unix.saturating_add(EPOCH_DELTA).checked_mul(10_000_000) else {
+            return "--".to_owned();
+        };
         let ft = FILETIME {
             dwLowDateTime: ticks as u32,
             dwHighDateTime: (ticks >> 32) as u32,
         };
         let mut utc = SYSTEMTIME::default();
-        FileTimeToSystemTime(&ft, &mut utc).expect("[History] 时间换算失败");
+        if FileTimeToSystemTime(&ft, &mut utc).is_err() {
+            return "--".to_owned();
+        }
         let mut local = SYSTEMTIME::default();
-        SystemTimeToTzSpecificLocalTime(None, &utc, &mut local)
-            .expect("[History] 本地时间换算失败");
+        if SystemTimeToTzSpecificLocalTime(None, &utc, &mut local).is_err() {
+            return "--".to_owned();
+        }
         format!(
             "{:02}-{:02} {:02}:{:02}:{:02}",
             local.wMonth, local.wDay, local.wHour, local.wMinute, local.wSecond
