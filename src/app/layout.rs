@@ -93,6 +93,7 @@ impl NetOwlApp {
             nav_request: &mut self.nav_request,
             listens: &self.listens,
             conn_search: &mut self.conn_search,
+            focus_conn_search: &mut self.focus_conn_search,
             conn_proto: &mut self.conn_proto,
             update_check_request: &mut self.update_request,
             update_checking: self.update_rx.is_some(),

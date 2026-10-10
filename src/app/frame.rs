@@ -36,6 +36,22 @@ impl NetOwlApp {
         self.config_dirty = true;
         self.config_dirty_since = Instant::now();
     }
+
+    /// 键盘快捷键:Ctrl+F 聚焦连接页搜索(非连接页先切页);Esc 清
+    /// 搜索词由搜索框自身处理(焦点在框内时),Inspector 的 Esc 清
+    /// 选中已在其面板内实现;全局热键 Ctrl+Alt+N 走托盘命令通道
+    /// (platform::global_hotkey),与托盘菜单同一处理路径
+    fn handle_shortcuts(&mut self, ctx: &egui::Context) {
+        let focus_search =
+            ctx.input(|i| i.key_pressed(egui::Key::F) && (i.modifiers.ctrl || i.modifiers.mac_cmd));
+        if focus_search {
+            if self.page != crate::ui::Page::Connections {
+                self.page = crate::ui::Page::Connections;
+            }
+            self.focus_conn_search = true;
+            ctx.request_repaint();
+        }
+    }
 }
 
 impl eframe::App for NetOwlApp {
@@ -47,6 +63,7 @@ impl eframe::App for NetOwlApp {
         self.sync_autostart();
         self.poll_ball_data();
         self.update_tray_tooltip();
+        self.handle_shortcuts(ctx);
         // 关机/注销落库钩子:首帧安装一次,内部防重复(winit 不处理
         // ENDSESSION,关机时唯一能把活跃连接落库的路径)
         shutdown_hook::install(

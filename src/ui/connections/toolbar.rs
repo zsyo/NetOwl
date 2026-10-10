@@ -11,6 +11,7 @@ use crate::model::Protocol;
 use crate::storage::config::Config;
 
 /// 工具栏一行;返回是否直接改动了配置(隐藏本地/局域网开关)
+#[allow(clippy::too_many_arguments)]
 pub(super) fn toolbar(
     ui: &mut egui::Ui,
     i18n: &I18n,
@@ -19,6 +20,7 @@ pub(super) fn toolbar(
     config: &mut Config,
     conn_proto: &mut Option<Protocol>,
     conn_search: &mut String,
+    focus_conn_search: &mut bool,
 ) -> bool {
     // 视图切换:活动连接 / 端口监听
     let view_items = [
@@ -55,8 +57,7 @@ pub(super) fn toolbar(
             );
             widgets::search_box::search_box(ui, conn_search, i18n.t("listen-search"), 220.0);
             return false;
-        }
-        // 按进程分组:列表视图形态(平铺/分组),会话态不入 config;
+        } // 按进程分组:列表视图形态(平铺/分组),会话态不入 config;
         // 与噪音过滤含义不同,紧随视图切换、留隙与过滤组分段
         ui.checkbox(conn_grouped, i18n.t("conns-group"));
         ui.add_space(theme::sp::MD);
@@ -82,13 +83,23 @@ pub(super) fn toolbar(
         ui.add_space(theme::sp::SM);
         proto_filter_segmented(ui, conn_proto, i18n);
         ui.add_space(theme::sp::MD);
-        // 搜索框(进程/映像路径/远端 IP/rDNS 域名包含匹配,会话态)
+        // 搜索框(进程/映像路径/远端 IP/rDNS 域名包含匹配,会话态);
+        // Ctrl+F 聚焦(经 App 层标志位),焦点在框内时 Esc 清空搜索词
         ui.label(
             RichText::new(icons::SEARCH)
                 .size(theme::font::XS)
                 .color(theme::c().text_dim),
         );
-        widgets::search_box::search_box(ui, conn_search, i18n.t("conns-search"), 220.0);
+        let search = widgets::search_box::search_box_focus(
+            ui,
+            conn_search,
+            i18n.t("conns-search"),
+            220.0,
+            focus_conn_search,
+        );
+        if search.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            conn_search.clear();
+        }
         changed
     });
     toolbar_changed.inner

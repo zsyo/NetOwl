@@ -254,7 +254,9 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   IsPromoted,按 ExecutablePath 匹配本进程定位);shutdown_hook.rs:关机
   落库钩子(子类化主窗口拦 WM_ENDSESSION,执行 tracker.flush+
   writer.shutdown——winit 不处理 ENDSESSION,关机时进程被强杀,该钩子是
-  托盘退出外唯一落库路径))
+  托盘退出外唯一落库路径);global_hotkey.rs:全局热键 Ctrl+Alt+N 唤出
+  主窗(后台线程自建 HWND_MESSAGE 消息窗口注册,WM_HOTKEY 经托盘命令
+  通道发 CMD_SHOW,与托盘菜单同一路径;注册失败仅告警降级))
 - tools/build_mapdata.py - 底图数据生成脚本(混合数据源 ->
     assets/mapdata.bin;原始 GeoJSON 放 tools/cache/,该目录不入库)
 - tools/build_geoip.py - GeoIP 归属数据生成脚本(tools/cache/ip2region_v4.xdb

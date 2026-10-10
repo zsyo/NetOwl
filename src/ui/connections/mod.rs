@@ -43,6 +43,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         nav_request,
         conn_sort,
         conn_search,
+        focus_conn_search,
         conn_proto,
         conn_row_hover,
         elevated,
@@ -52,6 +53,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     let conn_sort: &mut ConnSortState = conn_sort;
     let nav_request: &mut Option<Page> = nav_request;
     let conn_search: &mut String = conn_search;
+    let focus_conn_search: &mut bool = focus_conn_search;
     let conn_proto: &mut Option<Protocol> = conn_proto;
     let conn_row_hover: &mut widgets::table::RowHover = conn_row_hover;
     let elevated = *elevated;
@@ -70,6 +72,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         config,
         conn_proto,
         conn_search,
+        focus_conn_search,
     );
     ui.add_space(theme::sp::XS);
 

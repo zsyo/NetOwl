@@ -116,6 +116,8 @@ pub struct UiCtx<'a> {
     pub listens: &'a [crate::model::ListenEntry],
     /// 连接页搜索词(进程/远端/域名包含过滤,会话态)
     pub conn_search: &'a mut String,
+    /// 连接页搜索框聚焦请求(Ctrl+F 写入,搜索框渲染时消费并清零)
+    pub focus_conn_search: &'a mut bool,
     /// 连接页协议筛选(连接/监听两视图共用,会话态)
     pub conn_proto: &'a mut Option<crate::model::Protocol>,
     /// 检查更新:UI 触发标志(设置页按钮写入,App 层帧内派发)

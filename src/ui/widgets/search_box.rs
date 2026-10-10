@@ -13,10 +13,28 @@ pub fn search_box(
     hint: String,
     width: f32,
 ) -> egui::Response {
-    ui.add(
+    let mut focus = false;
+    search_box_focus(ui, text, hint, width, &mut focus)
+}
+
+/// 搜索输入框(带聚焦请求):`focus` 为 true 时请求焦点并立即清零
+/// (Ctrl+F 快捷键经 App 层标志位驱动,见 connections 工具栏)
+pub fn search_box_focus(
+    ui: &mut egui::Ui,
+    text: &mut String,
+    hint: String,
+    width: f32,
+    focus: &mut bool,
+) -> egui::Response {
+    let resp = ui.add(
         egui::TextEdit::singleline(text)
             .hint_text(RichText::new(hint).size(theme::font::BODY))
             .font(FontId::proportional(theme::font::BODY))
             .desired_width(width),
-    )
+    );
+    if *focus {
+        resp.request_focus();
+        *focus = false;
+    }
+    resp
 }

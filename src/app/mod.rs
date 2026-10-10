@@ -172,6 +172,8 @@ pub struct NetOwlApp {
     conn_sort: ui::ConnSortState,
     /// 连接页搜索词(进程/远端/域名包含过滤,会话内,不持久化)
     conn_search: String,
+    /// 连接页搜索框聚焦请求(Ctrl+F 写入,搜索框渲染时消费)
+    focus_conn_search: bool,
     /// 连接页协议筛选(连接/监听两视图共用,会话内,不持久化)
     conn_proto: Option<crate::model::Protocol>,
     /// 检查更新:UI 触发标志(设置页按钮写入,帧内派发后台线程)

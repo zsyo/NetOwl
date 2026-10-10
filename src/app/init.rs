@@ -148,6 +148,7 @@ impl NetOwlApp {
             udp_last_remote: HashMap::new(),
             conn_sort: None,
             conn_search: String::new(),
+            focus_conn_search: false,
             conn_proto: None,
             update_request: false,
             update_rx: None,

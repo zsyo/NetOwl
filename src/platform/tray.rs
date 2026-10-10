@@ -188,6 +188,9 @@ pub fn create(
     let hwnd = tray.window_handle() as isize;
 
     let (tx, rx) = channel::<String>();
+    // 全局热键(Ctrl+Alt+N)经同一命令通道发 CMD_SHOW,与托盘菜单
+    // "显示主窗口"同一处理路径;注册失败仅告警降级
+    super::global_hotkey::spawn(tx.clone());
     MenuEvent::set_event_handler(Some(forward(tx.clone(), ctx.clone())));
     TrayIconEvent::set_event_handler(Some(move |event: TrayIconEvent| {
         if let TrayIconEvent::Click {
