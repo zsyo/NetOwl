@@ -236,16 +236,17 @@ fn capture_combo(ui: &mut egui::Ui, capture: &mut HotkeyCapture) -> ComboCapture
                 if !capturable {
                     continue;
                 }
-                // 修饰键顺序即显示顺序:Windows 惯例 Ctrl+Alt+Shift+Win+键
+                // 序列化顺序 = 显示顺序(display 归一化):主流应用式
+                // Ctrl+Shift+Alt+Win+键
                 let mut combo = String::new();
                 if modifiers.ctrl {
                     combo.push_str("ctrl+");
                 }
-                if modifiers.alt {
-                    combo.push_str("alt+");
-                }
                 if modifiers.shift {
                     combo.push_str("shift+");
+                }
+                if modifiers.alt {
+                    combo.push_str("alt+");
                 }
                 if win {
                     combo.push_str("win+");

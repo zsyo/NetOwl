@@ -36,19 +36,41 @@ const CLASS_NAME: &str = "NetOwlHotkeyMsgWnd";
 /// App 侧据此给出可读失败原因(见 HotkeyReport::Failed 的 code)
 pub const ERROR_HOTKEY_TAKEN: u32 = 1409;
 
-/// 组合串转可读形式("ctrl+alt+n" -> "Ctrl+Alt+N")
+/// 组合串转可读形式。修饰键按主流应用式固定顺序输出
+/// (Ctrl+Shift+Alt+Win+键,与物理键位和 JetBrains/浏览器类一致),
+/// 与存储顺序解耦:手改 config 或历史数据也显示一致
 pub fn display(combo: &str) -> String {
-    combo
-        .split('+')
-        .map(|part| {
-            let mut chars = part.trim().chars();
-            match chars.next() {
-                Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
-                None => String::new(),
+    let (mut ctrl, mut shift, mut alt, mut win) = (false, false, false, false);
+    let mut key = String::new();
+    for part in combo.split('+').map(str::trim).filter(|p| !p.is_empty()) {
+        match part.to_ascii_lowercase().as_str() {
+            "ctrl" => ctrl = true,
+            "shift" => shift = true,
+            "alt" => alt = true,
+            "win" => win = true,
+            _ => {
+                let mut chars = part.chars();
+                if let Some(first) = chars.next() {
+                    key = first.to_ascii_uppercase().to_string() + chars.as_str();
+                }
             }
-        })
-        .collect::<Vec<_>>()
-        .join("+")
+        }
+    }
+    let mut out = String::new();
+    if ctrl {
+        out.push_str("Ctrl+");
+    }
+    if shift {
+        out.push_str("Shift+");
+    }
+    if alt {
+        out.push_str("Alt+");
+    }
+    if win {
+        out.push_str("Win+");
+    }
+    out.push_str(&key);
+    out
 }
 
 /// 解析组合串(大小写不敏感):修饰键 ctrl/alt/shift/win + 主键(单个
