@@ -24,6 +24,7 @@ pub(super) fn settings_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         update_check_request,
         update_checking,
         update_result,
+        hotkey_capture,
         ..
     } = ctx;
     // &mut UiCtx 解构出的引用字段带两层 &mut,借类型注解 coerce 回单层
@@ -43,7 +44,7 @@ pub(super) fn settings_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         .auto_shrink(false)
         .show(ui, |ui| {
             // ---- 常规:语言 / 主题 / 悬浮球 / 托盘常驻 / 自启动 ----
-            general::section(ui, config, i18n, &mut changed);
+            general::section(ui, config, i18n, hotkey_capture, &mut changed);
             ui.add_space(theme::sp::MD);
 
             // ---- 监控:数据源 / 保留期 / 询问 / 静默 ----

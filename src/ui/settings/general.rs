@@ -7,9 +7,15 @@ use egui::RichText;
 use super::{section_card, setting_row};
 use crate::i18n::I18n;
 use crate::storage::config::Config;
-use crate::ui::{icons, theme, widgets};
+use crate::ui::{HotkeyCapture, icons, theme, widgets};
 
-pub(super) fn section(ui: &mut egui::Ui, config: &mut Config, i18n: &mut I18n, changed: &mut bool) {
+pub(super) fn section(
+    ui: &mut egui::Ui,
+    config: &mut Config,
+    i18n: &mut I18n,
+    hotkey_capture: &mut HotkeyCapture,
+    changed: &mut bool,
+) {
     section_card(ui, icons::GEAR, &i18n.t("settings-section-general"), |ui| {
         setting_row(
             ui,
@@ -112,30 +118,146 @@ pub(super) fn section(ui: &mut egui::Ui, config: &mut Config, i18n: &mut I18n, c
             &i18n.t("settings-hotkey"),
             &i18n.t("settings-hotkey-hint"),
             |ui| {
-                // 预设组合下拉(关闭 + 三个 Ctrl+Alt 组合);切换由 App 层
-                // 热注销重注册,失败(组合被占用)toast 明示
-                // 克隆当前值:闭包内要写回 config,不能持有其借用
-                let current = config.general.hotkey.clone();
-                let label = |p: &str| {
-                    if p.is_empty() {
-                        i18n.t("settings-hotkey-off")
-                    } else {
-                        crate::platform::global_hotkey::display(p)
-                    }
-                };
-                egui::ComboBox::from_id_salt("settings-hotkey-select")
-                    .width(180.0)
-                    .selected_text(RichText::new(label(&current)).size(theme::font::BODY))
-                    .show_ui(ui, |ui| {
-                        for p in crate::platform::global_hotkey::PRESETS {
-                            let text = RichText::new(label(p)).size(theme::font::BODY);
-                            if ui.selectable_label(p == &current, text).clicked() {
-                                config.general.hotkey = (*p).to_owned();
-                                *changed = true;
-                            }
-                        }
-                    });
+                hotkey_row(ui, config, i18n, hotkey_capture, changed);
             },
         );
     });
+}
+
+/// 全局快捷键行:自定义捕获(点击录入框 -> 按下组合键即记录)而非预设
+/// 下拉;Esc 取消,裸键(无修饰键)忽略。录制结果由 App 层 sync_hotkey
+/// 热注销重注册,失败(组合被占用)toast 明示
+fn hotkey_row(
+    ui: &mut egui::Ui,
+    config: &mut Config,
+    i18n: &I18n,
+    capture: &mut HotkeyCapture,
+    changed: &mut bool,
+) {
+    // 捕获中逐帧扫描键盘;Win 键不在 egui 修饰符里,见 capture_combo
+    if capture.active {
+        match capture_combo(ui, capture) {
+            ComboCapture::Done(combo) => {
+                capture.active = false;
+                if config.general.hotkey != combo {
+                    config.general.hotkey = combo;
+                    *changed = true;
+                }
+            }
+            ComboCapture::Cancel => capture.active = false,
+            ComboCapture::None => {}
+        }
+    }
+    // 录入框按钮:显示当前组合(Windows 惯例 Win 而非 Super),捕获中
+    // 显示等待提示;再次点击取消捕获
+    let text = if capture.active {
+        i18n.t("settings-hotkey-capturing")
+    } else if config.general.hotkey.is_empty() {
+        i18n.t("settings-hotkey-none")
+    } else {
+        crate::platform::global_hotkey::display(&config.general.hotkey)
+    };
+    let resp = ui.add_sized(
+        [140.0, 26.0],
+        egui::Button::new(RichText::new(text).size(theme::font::BODY)).selected(capture.active),
+    );
+    if resp.clicked() {
+        capture.active = !capture.active;
+    }
+    // 关闭按钮:仅已设置组合时显示(空串 = 不注册)
+    if !config.general.hotkey.is_empty() && !capture.active {
+        ui.add_space(theme::sp::SM);
+        if ui
+            .add_sized(
+                [60.0, 26.0],
+                egui::Button::new(
+                    RichText::new(i18n.t("settings-hotkey-off")).size(theme::font::BODY),
+                ),
+            )
+            .clicked()
+        {
+            config.general.hotkey = String::new();
+            *changed = true;
+        }
+    }
+}
+
+/// 单帧捕获结果
+enum ComboCapture {
+    /// 无(继续等待)
+    None,
+    /// Esc 取消
+    Cancel,
+    /// 录制到组合(序列化形式,如 "ctrl+alt+n"/"win+d")
+    Done(String),
+}
+
+/// 扫描本帧键盘事件录制组合键:Ctrl/Alt/Shift 取 Modifiers 状态,
+/// Win 键 egui 不跟踪为修饰符(egui-winit 仅在 mac 映射 super),靠
+/// SuperLeft/SuperRight 的按下/释放事件跨帧维持;首个带修饰键的
+/// 非修饰键即记录,裸键忽略(全局热键至少带一个修饰键)
+fn capture_combo(ui: &mut egui::Ui, capture: &mut HotkeyCapture) -> ComboCapture {
+    use egui::{Event, Key};
+    let mut win = capture.win_held;
+    let mut result = ComboCapture::None;
+    for ev in ui.input(|i| i.events.clone()) {
+        let Event::Key {
+            key,
+            pressed,
+            modifiers,
+            ..
+        } = ev
+        else {
+            continue;
+        };
+        match key {
+            Key::SuperLeft | Key::SuperRight => win = pressed,
+            Key::Escape if pressed => {
+                capture.win_held = win;
+                return ComboCapture::Cancel;
+            }
+            _ if pressed => {
+                let name = key.name().to_ascii_lowercase();
+                let capturable = (name.len() == 1 && name.as_bytes()[0].is_ascii_alphanumeric())
+                    || matches!(
+                        name.as_str(),
+                        "f1" | "f2"
+                            | "f3"
+                            | "f4"
+                            | "f5"
+                            | "f6"
+                            | "f7"
+                            | "f8"
+                            | "f9"
+                            | "f10"
+                            | "f11"
+                            | "f12"
+                    );
+                if !capturable {
+                    continue;
+                }
+                // 修饰键顺序即显示顺序:Windows 惯例 Ctrl+Alt+Shift+Win+键
+                let mut combo = String::new();
+                if modifiers.ctrl {
+                    combo.push_str("ctrl+");
+                }
+                if modifiers.alt {
+                    combo.push_str("alt+");
+                }
+                if modifiers.shift {
+                    combo.push_str("shift+");
+                }
+                if win {
+                    combo.push_str("win+");
+                }
+                if !combo.is_empty() {
+                    combo.push_str(&name);
+                    result = ComboCapture::Done(combo);
+                }
+            }
+            _ => {}
+        }
+    }
+    capture.win_held = win;
+    result
 }

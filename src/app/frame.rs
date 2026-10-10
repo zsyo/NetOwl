@@ -45,6 +45,11 @@ impl NetOwlApp {
     /// 重启);注册失败(组合被其它程序占用)弹 toast——冲突从静默死亡
     /// 变为可见,用户可改选其它预设组合
     fn sync_hotkey(&mut self) {
+        // 离开设置页即取消快捷键捕获:录入框不在渲染,挂起的捕获会让
+        // 下次进入设置页时任何按键都被当成组合键录制
+        if self.hotkey_capture.active && self.page != crate::ui::Page::Settings {
+            self.hotkey_capture.active = false;
+        }
         if self.config.general.hotkey != self.hotkey_synced {
             self.hotkey_synced = self.config.general.hotkey.clone();
             tracing::debug!("[Hotkey] 应用组合切换 -> {:?}", self.config.general.hotkey);

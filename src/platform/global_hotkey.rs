@@ -16,7 +16,7 @@ use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, RegisterHotKey,
+    HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, MOD_WIN, RegisterHotKey,
     UnregisterHotKey,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -36,10 +36,6 @@ const CLASS_NAME: &str = "NetOwlHotkeyMsgWnd";
 /// App 侧据此给出可读失败原因(见 HotkeyReport::Failed 的 code)
 pub const ERROR_HOTKEY_TAKEN: u32 = 1409;
 
-/// 预设组合(设置页下拉同源;空串 = 关闭)。均含 Ctrl+Alt:Windows 自身
-/// 极少占用该族,与浏览器常用快捷键的冲突面也小
-pub const PRESETS: &[&str] = &["", "ctrl+alt+n", "ctrl+alt+o", "ctrl+alt+s"];
-
 /// 组合串转可读形式("ctrl+alt+n" -> "Ctrl+Alt+N")
 pub fn display(combo: &str) -> String {
     combo
@@ -55,8 +51,9 @@ pub fn display(combo: &str) -> String {
         .join("+")
 }
 
-/// 解析组合串(大小写不敏感):修饰键 ctrl/alt/shift + 单字母键;
-/// 恒带 MOD_NOREPEAT(防长按连续触发)。无法识别返回 None
+/// 解析组合串(大小写不敏感):修饰键 ctrl/alt/shift/win + 主键(单个
+/// 字母/数字或 F1..F12);恒带 MOD_NOREPEAT(防长按连续触发)。
+/// 无法识别、无主键或多个主键返回 None
 fn parse_combo(combo: &str) -> Option<(HOT_KEY_MODIFIERS, u32)> {
     let mut modifiers = MOD_NOREPEAT;
     let mut vk = None;
@@ -66,14 +63,29 @@ fn parse_combo(combo: &str) -> Option<(HOT_KEY_MODIFIERS, u32)> {
             "ctrl" => modifiers |= MOD_CONTROL,
             "alt" => modifiers |= MOD_ALT,
             "shift" => modifiers |= MOD_SHIFT,
-            _ if lower.len() == 1 && lower.as_bytes()[0].is_ascii_alphabetic() => {
-                // A-Z 的虚拟键码即 ASCII 大写值
-                vk = Some(lower.to_ascii_uppercase().as_bytes()[0] as u32);
+            "win" => modifiers |= MOD_WIN,
+            _ => {
+                let v = key_vk(&lower)?;
+                if vk.replace(v).is_some() {
+                    return None; // 只允许一个主键
+                }
             }
-            _ => return None,
         }
     }
     vk.map(|v| (modifiers, v))
+}
+
+/// 主键名 -> 虚拟键码:单个字母/数字(ASCII 大写值即 VK)或 F1..F12
+/// (VK_F1 = 0x70 起)。其余键不支持(全局热键的实用面外)
+fn key_vk(name: &str) -> Option<u32> {
+    if name.len() == 1 {
+        let c = name.as_bytes()[0];
+        return c
+            .is_ascii_alphanumeric()
+            .then(|| u32::from(c.to_ascii_uppercase()));
+    }
+    let f: u32 = name.strip_prefix('f')?.parse().ok()?;
+    (1..=12).contains(&f).then_some(0x70 + f - 1)
 }
 
 /// 注册结果回报(热键线程 -> App 层)

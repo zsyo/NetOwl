@@ -22,12 +22,12 @@ pub mod widgets;
 
 mod connections;
 mod lan;
+mod map_chrome;
 mod settings;
 
 use std::collections::HashMap;
 
 use eframe::egui;
-use egui::{Color32, Sense};
 
 use crate::i18n::I18n;
 use crate::map;
@@ -77,6 +77,16 @@ pub enum Page {
 /// 混排高低控件会基线错位;统一抬高让整行垂直居中(历史/规则/日志工具栏共用)
 pub(crate) const TOOLBAR_ROW_H: f32 = 26.0;
 
+/// 全局快捷键捕获状态(设置页"全局快捷键"行点击录入框后逐帧扫描键盘)
+#[derive(Default)]
+pub struct HotkeyCapture {
+    /// 是否处于捕获模式(等待用户按下组合键)
+    pub active: bool,
+    /// Win 键是否按住:egui 不把 Win 跟踪为修饰符(egui-winit 仅在 mac
+    /// 映射 super),靠 SuperLeft/SuperRight 键事件自行维持
+    pub win_held: bool,
+}
+
 /// 侧栏字体下文本宽度(居中偏移计算用;地图面板行宽计算共用)
 pub(crate) fn text_width(ui: &egui::Ui, text: &str, size: f32) -> f32 {
     ui.painter()
@@ -118,6 +128,8 @@ pub struct UiCtx<'a> {
     pub conn_search: &'a mut String,
     /// 连接页搜索框聚焦请求(Ctrl+F 写入,搜索框渲染时消费并清零)
     pub focus_conn_search: &'a mut bool,
+    /// 全局快捷键捕获状态(设置页点击录入框后逐帧扫描键盘)
+    pub hotkey_capture: &'a mut HotkeyCapture,
     /// 连接页协议筛选(连接/监听两视图共用,会话态)
     pub conn_proto: &'a mut Option<crate::model::Protocol>,
     /// 检查更新:UI 触发标志(设置页按钮写入,App 层帧内派发)
@@ -163,7 +175,7 @@ use crate::rules as rules_engine;
 pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
     match page {
         Page::Map => {
-            map_header(ui, ctx);
+            map_chrome::map_header(ui, ctx);
             ui.add_space(6.0);
             let click = map::draw(
                 ui,
@@ -215,75 +227,6 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
         ),
         Page::Settings => settings::settings_ui(ui, ctx),
     }
-}
-
-/// 地图页标题行:标题、副标题、图例与左右面板开关(开关在图例之后,
-/// 从右往左排布)
-fn map_header(ui: &mut egui::Ui, ctx: &mut UiCtx) {
-    widgets::header::page_header_row(
-        ui,
-        &ctx.i18n.t("map-title"),
-        &ctx.i18n.t("map-subtitle"),
-        |ui| {
-            let panels = &mut *ctx.map_panels;
-            panel_toggle(
-                ui,
-                &mut panels.show_right,
-                icons::LAYOUT_TEXT_SIDEBAR_REVERSE,
-                &ctx.i18n.t("map-panel-toggle-inspector"),
-            );
-            panel_toggle(
-                ui,
-                &mut panels.show_left,
-                icons::LAYOUT_SIDEBAR,
-                &ctx.i18n.t("map-panel-toggle-list"),
-            );
-            ui.add_space(theme::sp::MD);
-            legend(ui, theme::c().outbound, &ctx.i18n.t("map-legend-out"));
-            ui.add_space(theme::sp::SM);
-            legend(ui, theme::c().inbound, &ctx.i18n.t("map-legend-in"));
-        },
-    );
-}
-
-/// 面板开关小按钮(图标高亮 = 面板显示)
-fn panel_toggle(ui: &mut egui::Ui, on: &mut bool, glyph: &str, tip: &str) {
-    // 全自绘(替代 frame(false) Button):垫底必须画在图标之前,否则
-    // 悬停底色把图标盖住;悬停同时把非选中图标提亮,浅色主题下
-    // hover_bg 近白与弱化灰的对比才够
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(24.0, 24.0), egui::Sense::click());
-    let p = theme::c();
-    let hovered = resp.hovered();
-    if hovered {
-        ui.painter().rect_filled(rect, theme::RADIUS_SM, p.hover_bg);
-    }
-    let color = if *on {
-        p.accent
-    } else if hovered {
-        p.text
-    } else {
-        p.text_dim
-    };
-    ui.painter().text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
-        glyph,
-        egui::FontId::proportional(theme::font::H3),
-        color,
-    );
-    let resp = resp
-        .on_hover_cursor(egui::CursorIcon::PointingHand)
-        .on_hover_text(tip);
-    if resp.clicked() {
-        *on = !*on;
-    }
-}
-
-/// 图例:语义色圆点 + 文字
-fn legend(ui: &mut egui::Ui, color: Color32, label: &str) {
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), Sense::hover());
-    ui.painter().circle_filled(rect.center(), 4.0, color);
-    ui.label(theme::dim_text(label, theme::font::SM));
 }
 
 /// 连接显示过滤:本地/局域网远端噪音(config 持久化;连接列表与

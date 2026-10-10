@@ -155,6 +155,7 @@ impl NetOwlApp {
             conn_sort: None,
             conn_search: String::new(),
             focus_conn_search: false,
+            hotkey_capture: Default::default(),
             conn_proto: None,
             update_request: false,
             update_rx: None,

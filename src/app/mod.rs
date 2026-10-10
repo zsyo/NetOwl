@@ -174,6 +174,8 @@ pub struct NetOwlApp {
     conn_search: String,
     /// 连接页搜索框聚焦请求(Ctrl+F 写入,搜索框渲染时消费)
     focus_conn_search: bool,
+    /// 全局快捷键捕获状态(设置页录入框逐帧扫描键盘;离开设置页取消)
+    hotkey_capture: ui::HotkeyCapture,
     /// 连接页协议筛选(连接/监听两视图共用,会话内,不持久化)
     conn_proto: Option<crate::model::Protocol>,
     /// 检查更新:UI 触发标志(设置页按钮写入,帧内派发后台线程)
