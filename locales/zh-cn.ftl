@@ -131,8 +131,8 @@ settings-tray-pin-hint = 写入系统托盘设置,新会话生效;失败时保�
 
 settings-autostart = 开机自启动
 settings-autostart-hint = 登录后自动在后台运行,主窗口不弹出
-settings-hotkey = 全局快捷键
-settings-hotkey-hint = 点击右侧录入框后按下组合键(至少一个修饰键),Esc 取消;组合被占用时会提示
+settings-hotkey = 唤出主窗口
+settings-hotkey-hint = 任意界面下按下即唤出主窗口并显示流量地图;点击右侧录入框录制,Esc 取消
 settings-hotkey-off = 关闭
 settings-hotkey-none = 未设置
 settings-hotkey-capturing = 请按下组合键…

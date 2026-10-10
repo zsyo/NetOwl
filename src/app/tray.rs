@@ -21,10 +21,13 @@ impl NetOwlApp {
             tracing::debug!("[Tray] 托盘命令: {cmd}");
             match cmd.as_str() {
                 tray::CMD_SHOW | tray::CMD_SETTINGS => {
-                    // 设置项在恢复窗口的基础上落到设置页
-                    if cmd == tray::CMD_SETTINGS {
-                        self.page = Page::Settings;
-                    }
+                    // 唤出即回到流量地图(应用主页):托盘菜单、托盘左键与
+                    // 全局热键都走这条 CMD_SHOW 路径;设置项覆盖为设置页
+                    self.page = if cmd == tray::CMD_SETTINGS {
+                        Page::Settings
+                    } else {
+                        Page::Map
+                    };
                     self.window_visible = true;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
                     // 最小化的窗口样式仍为可见,Visible 是空操作,需显式解除

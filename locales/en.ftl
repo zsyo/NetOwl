@@ -131,8 +131,8 @@ settings-tray-pin-hint = Writes the system tray setting; takes effect next sessi
 
 settings-autostart = Launch at login
 settings-autostart-hint = Run in the background after you sign in without showing the main window
-settings-hotkey = Global hotkey
-settings-hotkey-hint = Click the field, then press a combo (needs at least one modifier); Esc cancels; conflicts are reported
+settings-hotkey = Show main window
+settings-hotkey-hint = Summons the main window to the traffic map. Click the field to record; Esc cancels
 settings-hotkey-off = Off
 settings-hotkey-none = Not set
 settings-hotkey-capturing = Press a combo…

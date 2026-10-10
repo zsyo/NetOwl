@@ -269,7 +269,8 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   SuperLeft/SuperRight 事件维持;Esc 取消,裸键忽略),序列化存 config
   general.hotkey,线程阻塞在 GetMessageW,App 层写期望组合后
   PostThreadMessageW 唤醒热注销重注册,注册失败经回报通道弹 toast
-  明示[1409 = 组合被占用];显示顺序按主流应用式归一化
+  明示[1409 = 组合被占用];唤出即固定回流量地图页(CMD_SHOW 路径,
+  托盘菜单/左键同);显示顺序按主流应用式归一化
   Ctrl+Shift+Alt+Win+键(display 与存储顺序解耦),win -> Win))
 - tools/build_mapdata.py - 底图数据生成脚本(混合数据源 ->
     assets/mapdata.bin;原始 GeoJSON 放 tools/cache/,该目录不入库)
