@@ -44,7 +44,7 @@ impl LanState {
 
     /// 轮询:查询 ARP 表 -> 合并设备表 -> 重建视图;查询失败保留旧视图。
     /// 返回本轮新接入的设备(基线轮不计),供通知层使用
-    pub fn poll(&mut self, db: &rusqlite::Connection) -> Vec<(Ipv4Addr, String)> {
+    pub fn poll(&mut self, db: &mut rusqlite::Connection) -> Vec<(Ipv4Addr, String)> {
         if self.poll_at.elapsed() < POLL_INTERVAL {
             return Vec::new();
         }
@@ -57,20 +57,28 @@ impl LanState {
             }
         };
         let now = unix_now();
-        let fresh = self.merge(db, &entries, now);
-        self.baseline_done = true;
+        // merge 返回 None = 设备表读取失败(本轮未合并):此时不得置基线,
+        // 否则下轮会把库内存量设备当作"新接入"误报通知
+        let fresh = match self.merge(db, &entries, now) {
+            Some(f) => {
+                self.baseline_done = true;
+                f
+            }
+            None => Vec::new(),
+        };
         self.devices = self.load_view(db, &entries, now);
         fresh
     }
 
     /// ARP 条目合并进 lan_devices:新 MAC 插入(日志留痕),已知项刷新
-    /// last_seen 与最近已知 IP;返回新插入的设备(基线轮不计)
+    /// last_seen 与最近已知 IP;返回新插入的设备(基线轮不计)。
+    /// 设备表读取失败返回 None(调用方不得据此置基线)
     fn merge(
         &mut self,
-        db: &rusqlite::Connection,
+        db: &mut rusqlite::Connection,
         entries: &[lan::ArpEntry],
         now: u64,
-    ) -> Vec<(Ipv4Addr, String)> {
+    ) -> Option<Vec<(Ipv4Addr, String)>> {
         let mut fresh = Vec::new();
         // 现有 MAC 一次读出:免每条设备一次存在性查询,且区分空表与库错误
         let known: HashSet<String> = match (|| -> rusqlite::Result<HashSet<String>> {
@@ -81,12 +89,21 @@ impl LanState {
             Ok(s) => s,
             Err(e) => {
                 tracing::warn!("[Lan] 设备表读取失败,本轮合并跳过: {e}");
-                return Vec::new();
+                return None;
+            }
+        };
+        // 整轮一个事务:ARP 表大的机器上百条目,逐条独立事务 + fsync 写放大
+        // 一个量级;中途失败整体回滚,不会留下半套合并结果
+        let tx = match db.transaction() {
+            Ok(tx) => tx,
+            Err(e) => {
+                tracing::warn!("[Lan] 开启设备合并事务失败,本轮合并跳过: {e}");
+                return None;
             }
         };
         for (ip, mac) in entries {
             let result = if known.contains(mac) {
-                db.execute(
+                tx.execute(
                     "UPDATE lan_devices SET last_seen = ?1, ip = ?2 WHERE mac = ?3",
                     params![now as i64, u32::from(*ip) as i64, mac],
                 )
@@ -95,7 +112,7 @@ impl LanState {
                 if self.baseline_done {
                     fresh.push((*ip, mac.clone()));
                 }
-                db.execute(
+                tx.execute(
                     "INSERT INTO lan_devices (mac, first_seen, last_seen, ip)
                      VALUES (?1, ?2, ?2, ?3)",
                     params![mac, now as i64, u32::from(*ip) as i64],
@@ -105,7 +122,11 @@ impl LanState {
                 tracing::warn!("[Lan] 设备 {mac} 写库失败: {e}");
             }
         }
-        fresh
+        if let Err(e) = tx.commit() {
+            tracing::warn!("[Lan] 设备合并事务提交失败: {e}");
+            return None;
+        }
+        Some(fresh)
     }
 
     /// 读全表组装视图:本轮 ARP 可见 = 在线;first_seen 24h 内 = 新设备

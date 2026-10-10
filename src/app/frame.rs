@@ -61,7 +61,7 @@ impl eframe::App for NetOwlApp {
         self.ensure_collector();
         self.poll_local_ip(ctx);
         // 新设备接入通知(设置页可关):基线轮之后的插入事件入 toast 队列
-        for (ip, mac) in self.lan.poll(&self.history_db) {
+        for (ip, mac) in self.lan.poll(&mut self.history_db) {
             if self.config.general.lan_notify {
                 let text = self
                     .i18n

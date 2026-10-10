@@ -52,10 +52,18 @@ impl NetOwlApp {
                     if tmax {
                         maximized == Some(true)
                     } else {
-                        (outer.min.x * ppp).round() as i32 - tx <= RESTORE_TOLERANCE
-                            && (outer.min.y * ppp).round() as i32 - ty <= RESTORE_TOLERANCE
-                            && (inner.width() * ppp).round() as i32 - tw <= RESTORE_TOLERANCE
-                            && (inner.height() * ppp).round() as i32 - th <= RESTORE_TOLERANCE
+                        // 四分量一律取绝对差值:单边 <= 容差在窗口被系统钳制
+                        // (多屏插拔/远程桌面尺寸变化,winit 把窗口移回工作区)
+                        // 时负差值恒成立,会误判已生效,随后把被钳制的错误
+                        // 位置当正常几何写回配置
+                        let dx = (outer.min.x * ppp).round() as i32 - tx;
+                        let dy = (outer.min.y * ppp).round() as i32 - ty;
+                        let dw = (inner.width() * ppp).round() as i32 - tw;
+                        let dh = (inner.height() * ppp).round() as i32 - th;
+                        dx.abs() <= RESTORE_TOLERANCE
+                            && dy.abs() <= RESTORE_TOLERANCE
+                            && dw.abs() <= RESTORE_TOLERANCE
+                            && dh.abs() <= RESTORE_TOLERANCE
                     }
                 }
                 _ => false,

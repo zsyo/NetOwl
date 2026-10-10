@@ -55,6 +55,17 @@ impl Asker {
         let mut current = HashSet::with_capacity(conns.len());
         let mut fresh: Vec<&Connection> = Vec::new();
         for c in conns {
+            // "身份未定"的行不进已见集合,待身份补全后再评估是否询问:
+            // ① UDP 行首见时无远端(系统 UDP 表不含对端),远端由 ETW 延后
+            //    一回合填,而 conn.id 不变——首轮即记入 seen 会使该连接
+            //    终身不再是 fresh,询问永远不触发;
+            // ② 进程名未解析出的行(路径反查与名字兜底都失败时),名字补齐
+            //    后身份键随之变化,同样需要重新评估
+            if (c.proto == crate::model::Protocol::Udp && c.remote_ip.is_unspecified())
+                || c.process.is_empty()
+            {
+                continue;
+            }
             if self.seen.insert(c.id) {
                 fresh.push(c);
             }
