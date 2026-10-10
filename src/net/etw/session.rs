@@ -29,8 +29,12 @@ pub(super) static LOCK_MISSED: AtomicU64 = AtomicU64::new(0);
 pub(super) unsafe fn run_consumer(agg: Arc<Mutex<Agg>>) {
     unsafe {
         let mut session = Default::default();
-        let props = prepare_props();
-        let err = StartTraceW(&mut session, SESSION_NAME, props);
+        let mut props = prepare_props();
+        let err = StartTraceW(
+            &mut session,
+            SESSION_NAME,
+            props.as_mut_ptr() as *mut EVENT_TRACE_PROPERTIES,
+        );
         if err.is_err() {
             tracing::warn!("[ETW] 会话启动失败({err:?}),流量字节与短命连接不可用");
             return;
@@ -42,7 +46,7 @@ pub(super) unsafe fn run_consumer(agg: Arc<Mutex<Agg>>) {
             let _ = ControlTraceW(
                 Default::default(),
                 SESSION_NAME,
-                props,
+                props.as_mut_ptr() as *mut EVENT_TRACE_PROPERTIES,
                 EVENT_TRACE_CONTROL_STOP,
             );
             return;
@@ -57,29 +61,38 @@ pub(super) unsafe fn run_consumer(agg: Arc<Mutex<Agg>>) {
             PROCESS_TRACE_MODE_EVENT_RECORD | PROCESS_TRACE_MODE_REAL_TIME;
         let handle = OpenTraceW(&mut logfile);
         // INVALID_PROCESSTRACE_HANDLE = u64::MAX:消费者注册失败时会话在跑
-        // 但收不到任何事件,字节列静默归零,必须留痕
+        // 但收不到任何事件,字节列静默归零,必须留痕。对无效句柄调
+        // ProcessTrace/CloseTrace 属 API 误用,清理会话后直接返回
         if handle.Value == u64::MAX {
             tracing::warn!("[ETW] 消费者注册失败(OpenTraceW),流量字节与短命连接不可用");
+            let _ = ControlTraceW(
+                Default::default(),
+                SESSION_NAME,
+                props.as_mut_ptr() as *mut EVENT_TRACE_PROPERTIES,
+                EVENT_TRACE_CONTROL_STOP,
+            );
+            return;
         }
         let _ = ProcessTrace(&[handle], None, None);
         let _ = CloseTrace(handle);
         let _ = ControlTraceW(
             Default::default(),
             SESSION_NAME,
-            props,
+            props.as_mut_ptr() as *mut EVENT_TRACE_PROPERTIES,
             EVENT_TRACE_CONTROL_STOP,
         );
     }
 }
 
 /// 构造 StartTrace/ControlTrace 共用的会话属性缓冲
-/// (结构体后跟会话名 UTF-16 区)
-unsafe fn prepare_props() -> *mut EVENT_TRACE_PROPERTIES {
+/// (结构体后跟会话名 UTF-16 区)。返回持有所有权的 Vec:相关 FFI 调用
+/// 均在调用点同步完成,缓冲区生命周期覆盖使用点即可,无需泄漏
+unsafe fn prepare_props() -> Vec<u8> {
     unsafe {
         let name_wide = SESSION_NAME.as_wide();
         let total = size_of::<EVENT_TRACE_PROPERTIES>() + (name_wide.len() + 1) * 2;
-        let buf = vec![0u8; total].leak() as *mut [u8] as *mut u8;
-        let props = buf as *mut EVENT_TRACE_PROPERTIES;
+        let mut buf = vec![0u8; total];
+        let props = buf.as_mut_ptr() as *mut EVENT_TRACE_PROPERTIES;
         (*props).Wnode.BufferSize = total as u32;
         (*props).Wnode.Guid = SESSION_GUID;
         (*props).Wnode.Flags = WNODE_FLAG_TRACED_GUID;
@@ -94,19 +107,19 @@ unsafe fn prepare_props() -> *mut EVENT_TRACE_PROPERTIES {
         (*props).LogFileMode = EVENT_TRACE_REAL_TIME_MODE;
         (*props).LoggerNameOffset = size_of::<EVENT_TRACE_PROPERTIES>() as u32;
         (*props).LogFileNameOffset = 0;
-        props
+        buf
     }
 }
 
 /// 停止同名会话(含上次异常退出的残留);会话不存在视为已停止
 pub(super) fn stop_session() -> Result<(), String> {
     const ERROR_WMI_INSTANCE_NOT_FOUND: u32 = 4201;
-    let props = unsafe { prepare_props() };
+    let mut props = unsafe { prepare_props() };
     let err = unsafe {
         ControlTraceW(
             Default::default(),
             SESSION_NAME,
-            props,
+            props.as_mut_ptr() as *mut EVENT_TRACE_PROPERTIES,
             EVENT_TRACE_CONTROL_STOP,
         )
     };

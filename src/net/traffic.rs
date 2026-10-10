@@ -18,6 +18,8 @@ const IF_TYPE_TUNNEL: u32 = 131;
 /// 等过滤接口会与底层物理接口重复报告同一份字节计数,必须排除,
 /// 否则总速率按过滤链数量成倍虚高
 const IF_FLAG_FILTER_INTERFACE: u8 = 0x02;
+/// 基线间隔上限:超过该间隔(读表连续失败后恢复)只重建基线不计算速率
+const MAX_BASELINE_GAP_SECS: f32 = 10.0;
 
 /// 总速率采样器:poll() 按传入间隔节流,返回最近一次采样差值(字节/秒)
 pub struct Sampler {
@@ -40,7 +42,9 @@ impl Sampler {
 
     /// 距上次采样达到 interval 才重新读表;返回 None 表示本帧未产生新采样
     /// (节流沿用旧值/查询失败/首次仅建基线),调用方不应把它计入历史序列;
-    /// 表查询失败时保留旧速率(导航栏速率短暂停更,不中断界面)
+    /// 表查询失败时保留旧速率(导航栏速率短暂停更,不中断界面),但清掉
+    /// 基线——否则恢复后第一帧的 dt 是"上次成功采样到现在"的超长间隔,
+    /// 速率被严重低估,且这个错误值会进 rate_hist 持续一整轮
     pub fn poll(&mut self, interval: Duration) -> Option<(u64, u64)> {
         if self.last.is_some_and(|(_, _, at)| at.elapsed() < interval) {
             return None;
@@ -49,14 +53,17 @@ impl Sampler {
         let Some((in_octets, out_octets)) = interface_octets() else {
             if !self.read_failed {
                 self.read_failed = true;
-                tracing::debug!("[Traffic] GetIfTable2 读表失败,总速率沿用旧值");
+                tracing::debug!("[Traffic] GetIfTable2 读表失败,总速率沿用旧值(基线重建)");
             }
+            self.last = None;
             return None;
         };
         self.read_failed = false;
         if let Some((last_in, last_out, at)) = self.last.replace((in_octets, out_octets, now)) {
             let dt = now.duration_since(at).as_secs_f32();
-            if dt > 0.0 {
+            // 间隔异常长(读表连续失败后恢复)同样只重建基线:差值除以
+            // 巨大 dt 得到的低速率没有意义
+            if dt > 0.0 && dt <= MAX_BASELINE_GAP_SECS {
                 let down = in_octets.saturating_sub(last_in);
                 let up = out_octets.saturating_sub(last_out);
                 self.rates = ((down as f32 / dt) as u64, (up as f32 / dt) as u64);

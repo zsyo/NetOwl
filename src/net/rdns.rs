@@ -122,7 +122,11 @@ impl Rdns {
             && dispatched < DISPATCH_BATCH
             && let Some(ip) = self.queue.pop_front()
         {
-            ensure_winsock();
+            if !ensure_winsock() {
+                // 初始化失败:查询必然失败,放回队列等下轮重试,不进 pending
+                self.queue.push_front(ip);
+                break;
+            }
             self.queued.remove(&ip);
             self.pending.insert(ip);
             dispatched += 1;
@@ -167,16 +171,21 @@ pub(crate) fn is_queryable(ip: &Ipv4Addr) -> bool {
         || ip.octets()[0] >= 240)
 }
 
-/// WinSock 初始化(getnameinfo 前置);进程内仅一次,失败显式报错
-fn ensure_winsock() {
+/// WinSock 初始化(getnameinfo 前置);进程内仅一次。失败返回 false:
+/// Winsock 提供者损坏一类故障不应让主线程 panic 拖垮整个应用,rDNS
+/// 本身是可选增强,跳过本轮派发即可(下轮重试)
+fn ensure_winsock() -> bool {
     static INIT: std::sync::Once = std::sync::Once::new();
+    static OK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     INIT.call_once(|| {
         let mut data = WSADATA::default();
         let rc = unsafe { WSAStartup(0x0202, &mut data) };
         if rc != 0 {
-            panic!("[Rdns] WSAStartup 失败: code {rc}");
+            tracing::warn!("[Rdns] WSAStartup 失败 code {rc},域名反查不可用");
         }
+        OK.store(rc == 0, std::sync::atomic::Ordering::Release);
     });
+    OK.load(std::sync::atomic::Ordering::Acquire)
 }
 
 /// PTR 查询:无 PTR/查询失败返回 None(经系统 DNS 客户端,自带缓存)

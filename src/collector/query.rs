@@ -83,8 +83,10 @@ pub fn close_tcp_connection(conn: &Connection) -> Result<(), String> {
     }
 }
 
-/// TCP 表查询:仅活动状态行
-pub fn query_tcp() -> Result<Vec<ConnKey>, String> {
+/// TCP 表一次查询,按状态分流:(活动连接, LISTEN 行)。
+/// 连接与监听同源于一份内核快照——此前分两次 GetExtendedTcpTable,
+/// 每秒双倍内核查询与缓冲分配,且两份快照之间表可能已变化
+pub fn query_tcp_split() -> Result<(Vec<ConnKey>, Vec<ConnKey>), String> {
     let buf = query_table(|p, size| unsafe {
         GetExtendedTcpTable(p, size, false, AF_INET.0 as u32, TCP_TABLE_OWNER_PID_ALL, 0)
     })?;
@@ -92,49 +94,32 @@ pub fn query_tcp() -> Result<Vec<ConnKey>, String> {
     // ANY_SIZE 惯用法:行数组紧跟 dwNumEntries,实际行数由 dwNumEntries 给出
     let rows =
         unsafe { std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize) };
-    let mut out = Vec::with_capacity(rows.len());
+    let mut conns = Vec::with_capacity(rows.len());
+    let mut listens = Vec::new();
     for row in rows {
-        if row.dwState < STATE_ACTIVE_MIN || row.dwState > STATE_ACTIVE_MAX {
-            continue;
-        }
-        out.push(ConnKey {
+        // 表结构里的端口是 htons 后的网络序值(低 16 位),须转主机序;
+        // 直接 as u16 会得到字节序反转的端口(如 443 -> 47873),
+        // 导致与 ETW 流的合并键永远对不上
+        let key = ConnKey {
             proto: Protocol::Tcp,
             local_addr: row.dwLocalAddr,
-            // 表结构里的端口是 htons 后的网络序值(低 16 位),须转主机序;
-            // 直接 as u16 会得到字节序反转的端口(如 443 -> 47873),
-            // 导致与 ETW 流的合并键永远对不上
             local_port: u16::from_be(row.dwLocalPort as u16),
             remote_addr: row.dwRemoteAddr,
             remote_port: u16::from_be(row.dwRemotePort as u16),
             pid: row.dwOwningPid,
-        });
-    }
-    Ok(out)
-}
-
-/// TCP 监听表查询:仅 LISTEN 状态行(端口监听视图用)
-pub fn query_tcp_listen() -> Result<Vec<ConnKey>, String> {
-    let buf = query_table(|p, size| unsafe {
-        GetExtendedTcpTable(p, size, false, AF_INET.0 as u32, TCP_TABLE_OWNER_PID_ALL, 0)
-    })?;
-    let table = unsafe { &*(buf.as_ptr() as *const MIB_TCPTABLE_OWNER_PID) };
-    let rows =
-        unsafe { std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize) };
-    let mut out = Vec::new();
-    for row in rows {
-        if row.dwState != MIB_TCP_STATE_LISTEN.0 as u32 {
-            continue;
+        };
+        if row.dwState == MIB_TCP_STATE_LISTEN.0 as u32 {
+            // 监听行无对端(远端字段为零值)
+            listens.push(ConnKey {
+                remote_addr: 0,
+                remote_port: 0,
+                ..key
+            });
+        } else if (STATE_ACTIVE_MIN..=STATE_ACTIVE_MAX).contains(&row.dwState) {
+            conns.push(key);
         }
-        out.push(ConnKey {
-            proto: Protocol::Tcp,
-            local_addr: row.dwLocalAddr,
-            local_port: u16::from_be(row.dwLocalPort as u16),
-            remote_addr: 0,
-            remote_port: 0,
-            pid: row.dwOwningPid,
-        });
     }
-    Ok(out)
+    Ok((conns, listens))
 }
 
 /// UDP 表查询:本机 socket 行(无远端语义)

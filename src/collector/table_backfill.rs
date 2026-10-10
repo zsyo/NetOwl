@@ -3,6 +3,7 @@
 
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use super::windows_table::TableCollector;
 use super::{IconState, signature};
@@ -11,6 +12,9 @@ use crate::model::Signing;
 const SIG_MAX_INFLIGHT: usize = 4;
 const SIG_DISPATCH_PER_POLL: usize = 2;
 const ICON_DISPATCH_PER_POLL: usize = 4;
+/// 图标提取在途超时:提取线程卡住(UNC 路径/巨大文件)时 inflight 恒满、
+/// budget 恒 0,之后新进程的图标永不派发;超时未回的路径移除并允许重试
+const ICON_INFLIGHT_TIMEOUT: Duration = Duration::from_secs(30);
 impl TableCollector {
     /// 收割已完成的签名查询结果回填缓存
     pub(super) fn collect_signatures(&mut self) {
@@ -38,6 +42,21 @@ impl TableCollector {
             }
             self.icons.insert(path, IconState::Ready(img.map(Arc::new)));
         }
+        // 在途超时清理:提取线程无超时机制,卡住时该路径永不复位,会把
+        // 派发预算永久占满。超时路径在 icons 中仍是 Pending,下轮可重派
+        let now = Instant::now();
+        let mut timed_out = Vec::new();
+        self.icon_inflight.retain(|path, at| {
+            if now.duration_since(*at) >= ICON_INFLIGHT_TIMEOUT {
+                timed_out.push(path.clone());
+                false
+            } else {
+                true
+            }
+        });
+        for path in timed_out {
+            tracing::debug!("[Collector] 图标提取超时未返回,允许重试:{path}");
+        }
         // 未派发的 Pending 条目(超出上轮预算的)按上限补齐
         let budget = ICON_DISPATCH_PER_POLL.saturating_sub(self.icon_inflight.len());
         for path in self
@@ -48,7 +67,7 @@ impl TableCollector {
             .take(budget)
             .collect::<Vec<_>>()
         {
-            self.icon_inflight.insert(path.clone());
+            self.icon_inflight.insert(path.clone(), Instant::now());
             let tx = self.icon_tx.clone();
             std::thread::spawn(move || {
                 let img = super::icon::extract(&path);

@@ -13,9 +13,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use super::icon::IconImage;
-use super::query::{
-    ConnKey, query_process_names, query_process_path, query_tcp, query_tcp_listen, query_udp,
-};
+use super::query::{ConnKey, query_process_names, query_process_path, query_tcp_split, query_udp};
 use super::{Collector, CollectorKind, IconState};
 use crate::model::{Connection, ListenEntry, Place, Signing};
 /// 表快照间隔:连接增减的可见延迟上限(与任务管理器刷新节奏相当)
@@ -52,8 +50,9 @@ pub struct TableCollector {
     /// 图标提取回报通道(发送端克隆给每个提取线程)
     pub(super) icon_tx: Sender<(String, Option<IconImage>)>,
     pub(super) icon_rx: Receiver<(String, Option<IconImage>)>,
-    /// 已派发未返回的图标提取请求(按映像路径)
-    pub(super) icon_inflight: HashSet<String>,
+    /// 已派发未返回的图标提取请求(按映像路径;值为派发时刻,超时未回
+    /// 允许重试,见 table_backfill::collect_icons)
+    pub(super) icon_inflight: HashMap<String, Instant>,
     last_poll: Instant,
     pending_poll: bool,
 }
@@ -73,7 +72,7 @@ impl TableCollector {
             icons: HashMap::new(),
             icon_tx,
             icon_rx,
-            icon_inflight: HashSet::new(),
+            icon_inflight: HashMap::new(),
             last_poll: Instant::now(),
             pending_poll: true,
         }
@@ -81,8 +80,9 @@ impl TableCollector {
 
     /// 查询 TCP/UDP 表并重建快照;表查询失败保留上一轮快照并输出错误
     fn poll(&mut self) {
-        let tcp = match query_tcp() {
-            Ok(rows) => rows,
+        // TCP 表一次查询分流连接/监听(见 query_tcp_split)
+        let (tcp, listen) = match query_tcp_split() {
+            Ok(v) => v,
             Err(e) => {
                 tracing::warn!("[Collector] TCP 表查询失败: {e}");
                 return;
@@ -95,7 +95,6 @@ impl TableCollector {
                 return;
             }
         };
-        let listen = query_tcp_listen().unwrap_or_default();
 
         self.collect_signatures();
         self.collect_icons();
@@ -136,7 +135,12 @@ impl TableCollector {
             let local_port = key.local_port;
             let remote_port = key.remote_port;
             let remote_ip = key.remote_ip();
-            let city = crate::net::geoip::locate(remote_ip).map(Place::Geo);
+            // city 按 ConnKey 从旧快照复用:键含远端四元组,未变才命中,
+            // 省去每秒每连接一次二分查找;远端变化(ETW 回填)的行自然重算
+            let city = old.get(&key).map_or_else(
+                || crate::net::geoip::locate(remote_ip).map(Place::Geo),
+                |c| c.city,
+            );
             let first_seen = old.get(&key).map_or(now, |c| c.first_seen);
             let meta = self.proc_meta(pid, &mut nt_names);
             new_live.insert(

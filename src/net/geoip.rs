@@ -74,6 +74,14 @@ impl GeoIp {
             prev_end = end.wrapping_add(1);
             prev_idx = idx as i64;
         }
+        // loc 索引直接用于 places[idx]:数据被截断/损坏时越界 panic 会
+        // 落在地图渲染帧里且无法定位到数据问题,解析期校验带上下文报错
+        if let Some(&bad) = geo.locs.iter().find(|&&i| i as usize >= geo.places.len()) {
+            panic!(
+                "[GeoIp] geoip.bin 数据损坏: loc 索引 {bad} 超出位置表 {} 条",
+                geo.places.len()
+            );
+        }
         geo
     }
 

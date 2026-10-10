@@ -70,6 +70,10 @@ impl Probe {
                 PROBE_URLS.len()
             );
         }
+        // 先 drain 旧通道再替换:上一轮 6 个接口都慢(超过 10 分钟周期)时,
+        // 直接换 Receiver 会丢弃全部在途结果,round_done 永远为 false,
+        // 本机点位无限期停留在旧值且每轮都报"全部失败"
+        while self.rx.try_recv().is_ok() {}
         let (tx, rx) = mpsc::channel();
         self.rx = rx;
         self.round_done = false;
