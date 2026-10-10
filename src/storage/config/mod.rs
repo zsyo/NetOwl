@@ -119,6 +119,10 @@ pub struct GeneralConfig {
     /// 热注销重注册,注册失败(组合被占用)toast 明示
     #[serde(default = "default_hotkey")]
     pub hotkey: String,
+    /// 大数字计数单位制:"auto"(跟随界面语言,中文万/亿、西文 K/M/B)/
+    /// "wan"(中文四位分节)/ "kmb"(国际三位分节)
+    #[serde(default = "default_count_format")]
+    pub count_format: String,
 }
 
 impl Default for GeneralConfig {
@@ -143,6 +147,7 @@ impl Default for GeneralConfig {
             log_to_file: false,
             update_channel: String::new(),
             hotkey: default_hotkey(),
+            count_format: default_count_format(),
         }
     }
 }
@@ -162,6 +167,11 @@ fn default_log_level() -> String {
 /// 默认全局快捷键:Ctrl+Alt+N(与 PRESETS[1] 一致)
 fn default_hotkey() -> String {
     "ctrl+alt+n".to_owned()
+}
+
+/// 默认计数单位制:跟随界面语言
+fn default_count_format() -> String {
+    "auto".to_owned()
 }
 
 fn default_true() -> bool {

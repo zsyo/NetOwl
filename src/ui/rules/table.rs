@@ -1,29 +1,31 @@
-//! 规则列表表格:启停开关/上移下移/编辑/删除操作列,徽章列手动居中,
-//! 删除后立即结束本帧表格防索引越界。
+//! 规则列表表格编排:表头(命中列带口径悬停说明)、滚动 Grid 与行循环。
+//! 单行渲染在 row,列宽常量与行渲染共用。
 
 use eframe::egui;
 use egui::{Label, RichText};
-use rusqlite::Connection as Db;
 
 use super::PageState;
-use super::draft::Draft;
-use super::labels;
+use super::row;
+use rusqlite::Connection as Db;
+
 use crate::i18n::I18n;
-use crate::rules::{Action, RuleSet};
-use crate::ui::{icons, theme, widgets};
+use crate::model::CountUnits;
+use crate::rules::RuleSet;
+use crate::ui::{theme, widgets};
 
 /// 表格列宽(逻辑点);表头与数据列同宽,内容居中。
 /// 列贴列布局(Grid spacing.x = 0),内容与列缘间距由单元格内边距
 /// CELL_PAD_X 提供,定宽列 = 内容宽 + 2×CELL_PAD_X;
-/// 名称/进程/远端三列弹性均分剩余宽:窗口放大时表格铺满中央区
-const COL_ENABLED: f32 = 64.0;
-const COL_ACTION: f32 = 64.0;
-const COL_DIRECTION: f32 = 64.0;
-const COL_PROTO: f32 = 64.0;
-const COL_PORT: f32 = 64.0;
-/// 命中数列:会话内命中连接数(poll 层 1s 口径累计,非渲染帧)
-const COL_HITS: f32 = 64.0;
-const COL_OPS: f32 = 128.0;
+/// 名称/进程/远端三列弹性列宽:均分剩余宽,窗口放大时表格铺满中央区
+pub(super) const COL_ENABLED: f32 = 64.0;
+pub(super) const COL_ACTION: f32 = 64.0;
+pub(super) const COL_DIRECTION: f32 = 64.0;
+pub(super) const COL_PROTO: f32 = 64.0;
+pub(super) const COL_PORT: f32 = 64.0;
+/// 命中数列:累计命中连接数(落库,每连接计一次)。宽度按最宽紧凑值
+/// 预留(中文 "9999万"/"1000万亿" ≈ 4 半角 + 2 全角,西文 "9999T+")
+pub(super) const COL_HITS: f32 = 84.0;
+pub(super) const COL_OPS: f32 = 128.0;
 
 fn header_cell(ui: &mut egui::Ui, w: f32, text: String) -> egui::Response {
     // 列贴列布局:占位整列宽,内容区(w - 2×CELL_PAD_X)内居中,与数据格
@@ -34,7 +36,7 @@ fn header_cell(ui: &mut egui::Ui, w: f32, text: String) -> egui::Response {
     let mut child =
         ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(egui::vec2(pad, 0.0))));
     // add_sized(居中布局)实测表头稳定居中于列;徽章列的数据格用
-    // 手动 add_space 居中(见下),两者同心
+    // 手动 add_space 居中(见 row),两者同心
     child.add_sized(
         [w - 2.0 * pad, 16.0],
         Label::new(
@@ -55,6 +57,7 @@ pub(super) fn rules_table(
     db: &Db,
     rules: &mut RuleSet,
     row_hover: &mut widgets::table::RowHover,
+    count_units: CountUnits,
 ) {
     if rules.rules.is_empty() {
         ui.add_space(theme::sp::XL);
@@ -98,198 +101,28 @@ pub(super) fn rules_table(
                     header_cell(ui, COL_OPS, i18n.t("rules-col-ops"));
                     ui.end_row();
 
-                    // 删除会缩短 rules 数组,同帧继续按旧索引渲染会越界
-                    // 崩溃:删除后立即结束本帧表格,下一帧按新列表重建;
-                    // 上移/下移同样会重排 rules 数组(move_rule 末尾
-                    // sort_by_key),同帧继续会把被移动的行再画一遍
-                    let mut removed = false;
-                    let mut moved = false;
+                    // 删除会缩短 rules 数组、上移/下移会重排 rules 数组,
+                    // 同帧继续按旧索引渲染会越界崩溃或把被移动的行再画
+                    // 一遍:操作后立即结束本帧表格,下一帧按新列表重建
                     for i in 0..rules.rules.len() {
+                        // 克隆所有权副本:行内要改 rules,不能同时持有其
+                        // 规则借用(见 row::rule_row)
                         let rule = rules.rules[i].clone();
-                        let row_top = ui.cursor().top();
-                        row_hover.begin(ui, table_left, table_right, row_top, i);
-                        let mut enabled = rule.enabled;
-                        widgets::table::fixed_center_cell(ui, COL_ENABLED, 26.0, |ui| {
-                            let toggle = widgets::toggle::toggle_switch(
-                                ui,
-                                &mut enabled,
-                                egui::Id::new(("rule-enabled-toggle", rule.id)),
-                            );
-                            if toggle.changed()
-                                && let Err(e) = rules.set_enabled(db, rule.id, enabled)
-                            {
-                                tracing::warn!(
-                                    "[Rules] 切换规则 {}({}) 启停失败: {e}",
-                                    rule.name,
-                                    rule.id
-                                );
-                            }
-                        });
-                        // 会话临时规则(负 id):名称加标注并以弱化色显示
-                        let is_temp = rule.id < 0;
-                        let name_text = if is_temp {
-                            format!("{} ({})", rule.name, i18n.t("rules-temp-badge"))
-                        } else {
-                            rule.name.clone()
-                        };
-                        widgets::table::fixed_cell(ui, flex_w, 18.0, |ui| {
-                            ui.add_sized(
-                                [flex_w - 2.0 * widgets::table::CELL_PAD_X, 18.0],
-                                egui::Label::new(
-                                    RichText::new(name_text).size(theme::font::BODY).color(
-                                        if is_temp {
-                                            theme::c().text_dim
-                                        } else {
-                                            theme::c().text
-                                        },
-                                    ),
-                                )
-                                .wrap_mode(egui::TextWrapMode::Truncate),
-                            );
-                        });
-                        let (action_key, action_kind) = match rule.action {
-                            Action::Allow => ("rule-action-allow", widgets::badge::BadgeKind::Ok),
-                            Action::Block => {
-                                ("rule-action-block", widgets::badge::BadgeKind::Danger)
-                            }
-                        };
-                        widgets::badge::badge_centered(
+                        let ops = row::rule_row(
                             ui,
-                            COL_ACTION,
-                            26.0,
-                            &i18n.t(action_key),
-                            action_kind,
+                            state,
+                            i18n,
+                            db,
+                            rules,
+                            row_hover,
+                            rule,
+                            i,
+                            flex_w,
+                            table_left,
+                            table_right,
+                            count_units,
                         );
-                        widgets::table::fixed_cell(ui, COL_DIRECTION, 18.0, |ui| {
-                            ui.add_sized(
-                                [COL_DIRECTION - 2.0 * widgets::table::CELL_PAD_X, 18.0],
-                                egui::Label::new(theme::dim_text(
-                                    &labels::direction_name(i18n, rule.direction),
-                                    theme::font::BODY,
-                                )),
-                            );
-                        });
-                        let proto_text = labels::proto_name(i18n, rule.proto);
-                        widgets::badge::badge_centered(
-                            ui,
-                            COL_PROTO,
-                            26.0,
-                            &proto_text,
-                            widgets::badge::BadgeKind::Neutral,
-                        );
-                        widgets::table::fixed_cell(ui, flex_w, 18.0, |ui| {
-                            ui.add_sized(
-                                [flex_w - 2.0 * widgets::table::CELL_PAD_X, 18.0],
-                                egui::Label::new(theme::dim_text(
-                                    &labels::process_display(&rule),
-                                    theme::font::BODY,
-                                ))
-                                .wrap_mode(egui::TextWrapMode::Truncate),
-                            );
-                        });
-                        widgets::table::fixed_cell(ui, flex_w, 18.0, |ui| {
-                            ui.add_sized(
-                                [flex_w - 2.0 * widgets::table::CELL_PAD_X, 18.0],
-                                egui::Label::new(theme::dim_text(
-                                    &labels::remote_display(&rule),
-                                    theme::font::BODY,
-                                ))
-                                .wrap_mode(egui::TextWrapMode::Truncate),
-                            );
-                        });
-                        widgets::table::fixed_cell(ui, COL_PORT, 18.0, |ui| {
-                            ui.add_sized(
-                                [COL_PORT - 2.0 * widgets::table::CELL_PAD_X, 18.0],
-                                egui::Label::new(theme::dim_text(
-                                    &labels::port_display(rule.port),
-                                    theme::font::BODY,
-                                )),
-                            );
-                        });
-                        // 命中数列:累计命中连接数(每连接计一次,落库
-                        // 跨重启保留;0 弱化灰)。临时规则与兜底不计,
-                        // poll 层 1s 口径。万以上紧凑显示(列宽只放得下
-                        // 5 字符),精确值悬停展示
-                        let hits = rule.hit_count;
-                        widgets::table::fixed_num_cell(ui, COL_HITS, |ui| {
-                            let cell = widgets::table::num_cell(
-                                ui,
-                                crate::model::fmt_count(hits),
-                                if hits == 0 {
-                                    theme::c().text_dim
-                                } else {
-                                    theme::c().text
-                                },
-                            );
-                            if hits >= 10_000 {
-                                cell.on_hover_text(hits.to_string());
-                            }
-                        });
-                        widgets::table::fixed_cell(ui, COL_OPS, 26.0, |ui| {
-                            ui.style_mut().spacing.item_spacing.x = 2.0;
-                            // 首行禁上移、末行禁下移(边界置灰,不可点);
-                            // 会话临时规则(负 id)不参与排序,移动一律禁用
-                            let last = i + 1 == rules.rules.len();
-                            let movable = rule.id > 0;
-                            if widgets::button::icon_btn(
-                                ui,
-                                icons::ARROW_UP,
-                                Some(i18n.t("rules-move-up")),
-                                false,
-                                i > 0 && movable,
-                            )
-                            .clicked()
-                            {
-                                if let Err(e) = rules.move_rule(db, rule.id, -1) {
-                                    tracing::warn!("[Rules] 上移规则 {} 失败: {e}", rule.id);
-                                } else {
-                                    moved = true;
-                                }
-                            }
-                            if widgets::button::icon_btn(
-                                ui,
-                                icons::ARROW_DOWN,
-                                Some(i18n.t("rules-move-down")),
-                                false,
-                                !last && movable,
-                            )
-                            .clicked()
-                            {
-                                if let Err(e) = rules.move_rule(db, rule.id, 1) {
-                                    tracing::warn!("[Rules] 下移规则 {} 失败: {e}", rule.id);
-                                } else {
-                                    moved = true;
-                                }
-                            }
-                            if widgets::button::icon_btn(
-                                ui,
-                                icons::PENCIL,
-                                Some(i18n.t("rules-edit")),
-                                false,
-                                true,
-                            )
-                            .clicked()
-                            {
-                                state.draft = Some(Draft::from_rule(&rule));
-                            }
-                            if widgets::button::icon_btn(
-                                ui,
-                                icons::TRASH,
-                                Some(i18n.t("rules-delete")),
-                                true,
-                                true,
-                            )
-                            .clicked()
-                            {
-                                if let Err(e) = rules.delete(db, rule.id) {
-                                    tracing::warn!("[Rules] 删除规则 {} 失败: {e}", rule.id);
-                                }
-                                removed = true;
-                            }
-                        });
-                        ui.end_row();
-                        row_hover.end(ui, row_top);
-                        if removed || moved {
+                        if ops.removed || ops.moved {
                             break;
                         }
                     }

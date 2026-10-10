@@ -139,26 +139,67 @@ pub fn fmt_bytes(n: u64) -> String {
     }
 }
 
-/// 计数紧凑格式(命中计数等定宽数字列用):万以下精确,以上 K/M/B 一位
-/// 小数,整十去除 ".0"("1000.0K" -> "1000K")——保证最多 5 字符,
-/// 匹配等宽字体下数字列的可用宽(精确值由调用方悬停展示)
-pub fn fmt_count(n: u64) -> String {
-    if n < 10_000 {
+/// 大数字计数单位制:中文四位分节(万/亿/万亿/亿亿)或国际三位分节
+/// (K/M/B/T)。中文用户普遍不习惯 K/M/B 三位计数,按界面语言默认,
+/// 设置页可覆盖
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum CountUnits {
+    /// 国际三位分节:K/M/B/T
+    Western,
+    /// 中文四位分节:万/亿/万亿/亿亿
+    Chinese,
+}
+
+/// 计数紧凑格式(命中计数等定宽数字列用):最小单位以下(西文 1000 /
+/// 中文 10000)精确,以上按单位制紧凑——100 以下一位小数(去尾零),
+/// 100 以上取整。档位顶部四舍五入会产出 5 位整数(如 9_999_999_999_999_999
+/// 万亿 -> "10000万亿"),此时进位到更大单位(值略小于 1,显示 "1亿亿");
+/// 最大单位仍超宽(仅西文 T 档的不可达值)则封顶。任何输出不超过
+/// 4 半角数字 + 2 全角单位;精确值由调用方悬停展示
+pub fn fmt_count(n: u64, units: CountUnits) -> String {
+    let tiers: &[(u64, &str)] = match units {
+        CountUnits::Western => &[
+            (1_000_000_000_000, "T"),
+            (1_000_000_000, "B"),
+            (1_000_000, "M"),
+            (1_000, "K"),
+        ],
+        CountUnits::Chinese => &[
+            (10_000_000_000_000_000, "亿亿"),
+            (1_000_000_000_000, "万亿"),
+            (100_000_000, "亿"),
+            (10_000, "万"),
+        ],
+    };
+    // 最小单位以下:精确原数
+    let base = tiers.last().map_or(u64::MAX, |&(d, _)| d);
+    if n < base {
         return n.to_string();
     }
-    for (div, unit) in [(1_000_000_000u64, "B"), (1_000_000, "M"), (10_000, "K")] {
-        if n >= div {
-            let v = n as f64 / div as f64;
-            if v >= 1000.0 {
-                // 万亿级以上(任何现实速率都不可达):封顶,防撑破列宽
-                return format!("999{unit}+");
-            }
-            // 去尾零必须在拼单位之前("1000.0" -> "1000";单位字母在尾部,
-            // 对整个串 trim_end_matches(".0") 永远匹配不到)
-            let value = format!("{v:.1}");
-            let value = value.trim_end_matches(".0");
+    for (i, &(div, unit)) in tiers.iter().enumerate() {
+        if n < div {
+            continue;
+        }
+        let v = n as f64 / div as f64;
+        let value = if v >= 100.0 {
+            format!("{v:.0}")
+        } else {
+            // 去尾零必须在拼单位之前(单位字符在尾部,对整个串
+            // trim_end_matches(".0") 永远匹配不到)
+            format!("{v:.1}").trim_end_matches(".0").to_owned()
+        };
+        if value.len() <= 4 {
             return format!("{value}{unit}");
         }
+        // 5 位整数:进位到更大单位(tiers 降序,前一项即更大单位;其值
+        // 略小于 1,一位小数后为 "1X");已是最大单位则封顶防爆宽
+        if i > 0 {
+            let (bigger_div, bigger_unit) = tiers[i - 1];
+            let v2 = n as f64 / bigger_div as f64;
+            let s2 = format!("{v2:.1}").trim_end_matches(".0").to_owned();
+            return format!("{s2}{bigger_unit}");
+        }
+        return format!("9999{unit}+");
     }
     n.to_string()
 }

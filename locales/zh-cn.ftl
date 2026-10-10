@@ -344,6 +344,11 @@ rules-err-save = 保存失败,请查看日志
 settings-title = 设置
 settings-language = 语言
 settings-language-hint = 界面语言立即生效;将 .ftl 词条文件放入 locales 目录即可新增语言
+settings-count-format = 数字格式
+settings-count-format-hint = 大数字的计数单位;自动 = 跟随界面语言
+count-format-auto = 自动
+count-format-wan = 万·亿
+count-format-kmb = K·M·B
 settings-theme = 界面主题
 settings-theme-hint = 深色与浅色立即生效,并同步保存到配置文件
 theme-dark = 深色

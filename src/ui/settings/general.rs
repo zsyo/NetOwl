@@ -52,6 +52,30 @@ pub(super) fn section(
         ui.add_space(theme::sp::SM);
         setting_row(
             ui,
+            &i18n.t("settings-count-format"),
+            &i18n.t("settings-count-format-hint"),
+            |ui| {
+                // 大数字单位制:auto 跟随界面语言(中文万/亿、西文 K/M/B);
+                // 覆盖选项用单位字符本身做标签,中英界面均自明
+                let items = [
+                    (&*i18n.t("count-format-auto"), ""),
+                    (&*i18n.t("count-format-wan"), ""),
+                    (&*i18n.t("count-format-kmb"), ""),
+                ];
+                let current = match config.general.count_format.as_str() {
+                    "wan" => 1,
+                    "kmb" => 2,
+                    _ => 0,
+                };
+                if let Some(i) = widgets::segmented::segmented(ui, &items, current) {
+                    config.general.count_format = ["auto", "wan", "kmb"][i].to_owned();
+                    *changed = true;
+                }
+            },
+        );
+        ui.add_space(theme::sp::SM);
+        setting_row(
+            ui,
             &i18n.t("settings-theme"),
             &i18n.t("settings-theme-hint"),
             |ui| {

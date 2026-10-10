@@ -5,6 +5,7 @@ mod draft;
 mod edit;
 mod import_export;
 mod labels;
+mod row;
 mod table;
 
 use std::time::{Duration, Instant};
@@ -146,7 +147,14 @@ pub fn show(
     });
     ui.add_space(theme::sp::SM);
 
-    table::rules_table(ui, state, i18n, db, rules, row_hover);
+    // 大数字单位制:auto 跟随界面语言(中文万/亿、西文 K/M/B),设置页可覆盖
+    let units = match config.general.count_format.as_str() {
+        "wan" => crate::model::CountUnits::Chinese,
+        "kmb" => crate::model::CountUnits::Western,
+        _ if i18n.current_lang.starts_with("zh") => crate::model::CountUnits::Chinese,
+        _ => crate::model::CountUnits::Western,
+    };
+    table::rules_table(ui, state, i18n, db, rules, row_hover, units);
     edit::edit_window(ui, state, i18n, db, rules);
     profile_manager::show_modal(
         ui,
