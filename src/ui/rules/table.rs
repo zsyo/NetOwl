@@ -87,8 +87,11 @@ pub(super) fn rules_table(
                     ui.end_row();
 
                     // 删除会缩短 rules 数组,同帧继续按旧索引渲染会越界
-                    // 崩溃:删除后立即结束本帧表格,下一帧按新列表重建
+                    // 崩溃:删除后立即结束本帧表格,下一帧按新列表重建;
+                    // 上移/下移同样会重排 rules 数组(move_rule 末尾
+                    // sort_by_key),同帧继续会把被移动的行再画一遍
                     let mut removed = false;
+                    let mut moved = false;
                     for i in 0..rules.rules.len() {
                         let rule = rules.rules[i].clone();
                         let row_top = ui.cursor().top();
@@ -193,31 +196,39 @@ pub(super) fn rules_table(
                         });
                         widgets::table::fixed_cell(ui, COL_OPS, 26.0, |ui| {
                             ui.style_mut().spacing.item_spacing.x = 2.0;
-                            // 首行禁上移、末行禁下移(边界置灰,不可点)
+                            // 首行禁上移、末行禁下移(边界置灰,不可点);
+                            // 会话临时规则(负 id)不参与排序,移动一律禁用
                             let last = i + 1 == rules.rules.len();
+                            let movable = rule.id > 0;
                             if widgets::button::icon_btn(
                                 ui,
                                 icons::ARROW_UP,
                                 Some(i18n.t("rules-move-up")),
                                 false,
-                                i > 0,
+                                i > 0 && movable,
                             )
                             .clicked()
-                                && let Err(e) = rules.move_rule(db, rule.id, -1)
                             {
-                                tracing::warn!("[Rules] 上移规则 {} 失败: {e}", rule.id);
+                                if let Err(e) = rules.move_rule(db, rule.id, -1) {
+                                    tracing::warn!("[Rules] 上移规则 {} 失败: {e}", rule.id);
+                                } else {
+                                    moved = true;
+                                }
                             }
                             if widgets::button::icon_btn(
                                 ui,
                                 icons::ARROW_DOWN,
                                 Some(i18n.t("rules-move-down")),
                                 false,
-                                !last,
+                                !last && movable,
                             )
                             .clicked()
-                                && let Err(e) = rules.move_rule(db, rule.id, 1)
                             {
-                                tracing::warn!("[Rules] 下移规则 {} 失败: {e}", rule.id);
+                                if let Err(e) = rules.move_rule(db, rule.id, 1) {
+                                    tracing::warn!("[Rules] 下移规则 {} 失败: {e}", rule.id);
+                                } else {
+                                    moved = true;
+                                }
                             }
                             if widgets::button::icon_btn(
                                 ui,
@@ -247,7 +258,7 @@ pub(super) fn rules_table(
                         });
                         ui.end_row();
                         row_hover.end(ui, row_top);
-                        if removed {
+                        if removed || moved {
                             break;
                         }
                     }

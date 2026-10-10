@@ -209,7 +209,9 @@ pub fn parse_net(input: &str) -> Option<(u32, u32)> {
         let hi = if prefix == 0 {
             u32::MAX
         } else {
-            v | (u32::MAX >> prefix)
+            // /32 时 u32::MAX >> 32 位移溢出(debug panic),其数学值为 0,
+            // 即 hi = v(精确 IP);checked_shr 对越界位移返回 None
+            v | u32::MAX.checked_shr(prefix).unwrap_or(0)
         };
         Some((lo, hi))
     } else {

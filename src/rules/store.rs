@@ -23,9 +23,17 @@ impl RuleSet {
         self.rules.retain(|r| r.id != id);
     }
 
-    /// 新建规则并落库,追加为最低优先级(归属当前配置档)
+    /// 新建规则并落库,追加为最低优先级(归属当前配置档)。
+    /// 基准取持久规则(正 id)的最大 priority:会话临时规则恒定位于数组
+    /// 头部(见 switch_profile/insert_temp),不能用 last()
     pub fn insert(&mut self, db: &Db, mut rule: Rule) -> rusqlite::Result<()> {
-        rule.priority = self.rules.last().map_or(10, |r| r.priority + 10);
+        rule.priority = self
+            .rules
+            .iter()
+            .filter(|r| r.id > 0)
+            .map(|r| r.priority)
+            .max()
+            .map_or(10, |p| p + 10);
         db.execute(
             "INSERT INTO rules (name, enabled, priority, action, direction, proto,
                                 process, remote_kind, remote_value, port, created_at, profile_id)
@@ -110,7 +118,10 @@ impl RuleSet {
 
     /// 上移/下移:与相邻规则交换 priority(delta -1 上移 / +1 下移)。
     /// 交换的是 priority 值本身,内存与库同步后按 priority 重排,
-    /// 保证数组顺序与排序键(求值/加载顺序)一致
+    /// 保证数组顺序与排序键(求值/加载顺序)一致。
+    /// 会话临时规则(负 id)不参与:它们恒定位于持久规则之前且不落库,
+    /// 操作行或目标行是临时规则时直接返回——否则会把临时规则的极负
+    /// priority 通过 UPDATE 写进持久规则的库行
     pub fn move_rule(&mut self, db: &Db, id: i64, delta: i64) -> rusqlite::Result<()> {
         let idx = match self.rules.iter().position(|r| r.id == id) {
             Some(i) => i,
@@ -121,17 +132,32 @@ impl RuleSet {
             return Ok(());
         }
         let t = target as usize;
+        if self.rules[idx].id < 0 || self.rules[t].id < 0 {
+            return Ok(());
+        }
+        let (a_id, b_id) = (self.rules[idx].id, self.rules[t].id);
         let (a_pri, b_pri) = (self.rules[idx].priority, self.rules[t].priority);
+        // 先库后内存(与 update/delete 一致):两条 UPDATE 包在同一 SAVEPOINT
+        // 里,任一失败整体回滚,内存不动,避免库与内存分叉。
+        // rusqlite 的 transaction() 需 &mut 连接,而 UI 层经 UiCtx 全页面
+        // 共享 &Db,SAVEPOINT 经 execute_batch 在 &self 上完成同样语义
+        db.execute_batch("SAVEPOINT move_rule")?;
+        let r1 = db.execute(
+            "UPDATE rules SET priority=?1 WHERE id=?2",
+            params![b_pri, a_id],
+        );
+        let r2 = db.execute(
+            "UPDATE rules SET priority=?1 WHERE id=?2",
+            params![a_pri, b_id],
+        );
+        if r1.is_err() || r2.is_err() {
+            let _ = db.execute_batch("ROLLBACK TO move_rule");
+            let _ = db.execute_batch("RELEASE move_rule");
+            return Err(r1.and(r2).unwrap_err());
+        }
+        db.execute_batch("RELEASE move_rule")?;
         self.rules[idx].priority = b_pri;
         self.rules[t].priority = a_pri;
-        db.execute(
-            "UPDATE rules SET priority=?1 WHERE id=?2",
-            params![b_pri, self.rules[idx].id],
-        )?;
-        db.execute(
-            "UPDATE rules SET priority=?1 WHERE id=?2",
-            params![a_pri, self.rules[t].id],
-        )?;
         self.rules.sort_by_key(|r| (r.priority, r.id));
         Ok(())
     }

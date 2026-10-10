@@ -139,16 +139,26 @@ impl RuleSet {
     pub fn switch_profile(&mut self, db: &Db, id: i64) {
         self.active_profile = id;
         self.sticky_paths.clear();
-        let temps: Vec<Rule> = self.rules.iter().filter(|r| r.id < 0).cloned().collect();
-        let mut persisted = Self::load_rules(db, id);
+        let persisted = Self::load_rules(db, id);
+        // 会话临时规则(负 id)必须恒定位于全部持久规则之前:求值按数组序
+        // 取首个命中(eval.rs),WFP weight 也按 priority 排名。切档后持久
+        // 集更换,临时规则原有的 priority 基准(旧档首条规则)失效,按新档
+        // 首条规则之下重盖,维持"数组顺序 = (priority, id) 升序"不变量
+        let base = persisted.first().map_or(0, |r| r.priority);
+        let mut temps: Vec<Rule> = self.rules.iter().filter(|r| r.id < 0).cloned().collect();
+        let n = temps.len() as i64;
+        for (i, t) in temps.iter_mut().enumerate() {
+            t.priority = base - 10 * (n - i as i64);
+        }
         tracing::info!(
             "[Rules] 切换配置档 -> id {id},加载 {} 条规则,保留 {} 条会话临时规则",
             persisted.len(),
             temps.len()
         );
-        persisted.extend(temps);
-        self.eval_cache = persisted.iter().map(|r| (r.id, RuleMatch::of(r))).collect();
-        self.rules = persisted;
+        let mut merged = temps;
+        merged.extend(persisted);
+        self.eval_cache = merged.iter().map(|r| (r.id, RuleMatch::of(r))).collect();
+        self.rules = merged;
     }
 
     /// 配置档列表(id 升序)
