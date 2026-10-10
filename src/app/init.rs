@@ -7,6 +7,7 @@ use eframe::egui;
 
 use super::ask::Asker;
 use super::lan::LanState;
+use super::listen_watch::ListenWatch;
 use super::{CONNS_REFRESH_INTERVAL, MAP_LOCATE_WINDOW, NetOwlApp, RATE_HIST_LEN};
 use crate::collector::{self, CollectorKind};
 use crate::i18n::I18n;
@@ -196,6 +197,7 @@ impl NetOwlApp {
             ask_synced: None,
             ask_ui_visible: false,
             lan: LanState::new(),
+            listen_watch: ListenWatch::new(),
             _tray,
         }
     }

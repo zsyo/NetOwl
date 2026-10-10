@@ -13,6 +13,7 @@ mod etw_merge;
 mod frame;
 mod init;
 mod layout;
+mod listen_watch;
 mod poll;
 mod poll_derived;
 mod tray;
@@ -31,6 +32,7 @@ use eframe::egui;
 
 use self::ask::Asker;
 use self::lan::LanState;
+use self::listen_watch::ListenWatch;
 use crate::map::basemap;
 use crate::model::{Connection, Place};
 use crate::net::etw;
@@ -254,6 +256,8 @@ pub struct NetOwlApp {
     ask_ui_visible: bool,
     /// 局域网设备发现(ARP 轮询 + lan_devices 库合并)
     lan: LanState,
+    /// 新监听端口提醒(监听快照会话内基线 diff)
+    listen_watch: ListenWatch,
     /// 托盘句柄保活,drop 时移除托盘图标
     _tray: Tray,
 }

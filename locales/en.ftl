@@ -349,6 +349,9 @@ conns-count-suffix = ({$count})
 lan-notify-toast = New device joined: {$ip}
 settings-lan-notify = New device alert
 settings-lan-notify-hint = Show a toast when a new device joins the LAN
+listen-notify-toast = New listening port: {$process} ({$endpoint})
+settings-listen-notify = New listening port alert
+settings-listen-notify-hint = Show a toast when a program opens a new listening port
 
 # Listening ports view
 conns-view-conns = Connections

@@ -97,6 +97,10 @@ pub struct GeneralConfig {
     /// 新设备接入提醒(局域网出现新 ARP 设备时右下角 toast 通知)
     #[serde(default = "default_true")]
     pub lan_notify: bool,
+    /// 新监听端口提醒(程序打开新的 TCP LISTEN / UDP 绑定时右下角
+    /// toast 通知;启动基线不计)
+    #[serde(default = "default_true")]
+    pub listen_notify: bool,
     /// 月度流量配额(GB,本地时区月界;0 = 不启用告警)
     #[serde(default)]
     pub usage_quota_gb: u32,
@@ -128,6 +132,7 @@ impl Default for GeneralConfig {
             tray_pinned: false,
             autostart: false,
             lan_notify: true,
+            listen_notify: true,
             usage_quota_gb: 0,
             log_level: default_log_level(),
             log_to_file: false,

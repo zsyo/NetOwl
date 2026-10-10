@@ -64,6 +64,33 @@ impl NetOwlApp {
         self.poll_history();
         self.poll_ask();
         self.poll_temp_rules();
+        // 新监听端口提醒(基线后新出现的监听端口):与 listens 刷新同轮,
+        // toast 通知,设置页可关
+        if self.config.general.listen_notify {
+            for l in self.listen_watch.observe(&self.listens) {
+                let process = if l.process.is_empty() {
+                    self.i18n.t("conn-proc-unknown")
+                } else {
+                    l.process.clone()
+                };
+                let text = self.i18n.t_with_args(
+                    "listen-notify-toast",
+                    &[
+                        ("process", process),
+                        (
+                            "endpoint",
+                            format!(
+                                "{} {}:{}",
+                                l.proto.as_str().to_uppercase(),
+                                l.local_addr,
+                                l.local_port
+                            ),
+                        ),
+                    ],
+                );
+                crate::ui::toast::push(&mut self.toasts, crate::ui::toast::ToastKind::Info, text);
+            }
+        }
     }
 
     /// 本机公网 IP 探测:取每轮首个成功结果,归属变化时刷新地图本机点位;

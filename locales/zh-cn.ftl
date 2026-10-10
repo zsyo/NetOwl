@@ -350,6 +350,9 @@ conns-count-suffix = ({$count})
 lan-notify-toast = 新设备接入 {$ip}
 settings-lan-notify = 新设备接入提醒
 settings-lan-notify-hint = 局域网出现新设备时右下角通知
+listen-notify-toast = 新监听端口:{$process} ({$endpoint})
+settings-listen-notify = 新监听端口提醒
+settings-listen-notify-hint = 程序打开新的监听端口时右下角通知
 
 # 端口监听视图
 conns-view-conns = 连接

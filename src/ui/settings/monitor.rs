@@ -64,6 +64,20 @@ pub(super) fn section(ui: &mut egui::Ui, config: &mut Config, i18n: &I18n, chang
             ui.add_space(theme::sp::SM);
             setting_row(
                 ui,
+                &i18n.t("settings-listen-notify"),
+                &i18n.t("settings-listen-notify-hint"),
+                |ui| {
+                    *changed |= widgets::toggle::toggle_switch(
+                        ui,
+                        &mut config.general.listen_notify,
+                        egui::Id::new("settings-listen-notify-toggle"),
+                    )
+                    .changed();
+                },
+            );
+            ui.add_space(theme::sp::SM);
+            setting_row(
+                ui,
                 &i18n.t("settings-quota"),
                 &i18n.t("settings-quota-hint"),
                 |ui| {
