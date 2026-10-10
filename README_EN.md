@@ -8,19 +8,29 @@ NetOwl is a network connection monitor for Windows, inspired by Little Snitch on
 
 ![NetOwl screenshot](docs/screenshot.png)
 
+## Download
+
+Grab a build from [GitHub Releases](https://github.com/zsyo/NetOwl/releases) (x64 and arm64):
+
+- **Installer** `netowl_<version>_windows_x64-setup.exe`: per-user install (no admin required) with start-menu/desktop shortcuts and a "launch at startup" option; the uninstaller can optionally wipe settings and user data
+- **Portable** `netowl_<version>_windows_x64-portable.zip`: unzip and run, data lives next to the executable
+
+The app ships with built-in update checks (Settings → About), on both stable and preview channels.
+
 ## Features
 
 ### Real-time monitoring
 
-- **Traffic map** — live process connections on a world map: arc links, animated inbound/outbound particles, pulsing nodes aggregated by connection count, wheel zoom / drag / double-click reset, hover for endpoint details, click to sync with the side panel
-- **Connection list** — active connections: process (icon / signature state), protocol, remote address with rDNS hostname, GeoIP location, live rates and total bytes; sortable columns, text search, context menu (close connection / locate binary / copy)
+- **Traffic map** — live process connections on a world map: arc links, animated inbound/outbound particles, pulsing nodes aggregated by connection count, auto-centered on your machine at startup, wheel zoom / drag / double-click reset, hover for endpoint details, click to sync with the side panel
+- **Connection list** — active connections: process (icon / signature state), protocol, remote address with rDNS hostname, GeoIP location, live rates and total bytes; sortable columns, text search (Ctrl+F to focus), protocol filter, collapsible grouping by process, context menu (close connection / locate binary / copy / view history)
+- **Port listening** — TCP LISTEN and UDP bound endpoints in one view, switchable on the same page as the connection list, searchable by process/path; a toast fires when a new listening port appears
 - **Per-connection byte accounting** — ETW kernel network events (TCP/UDP send/receive bytes, short-lived connection capture), no driver required
-- **Floating ball** — an edge-docked always-on indicator of total up/down rates (bar-level tiers), expandable into a per-process rate ranking, draggable with position memory
+- **Floating ball** — an edge-docked always-on indicator of total up/down rates (bar-level tiers), expandable into a per-process rate ranking with today's totals, draggable with position memory
 
 ### Blocking & prompting
 
 - **New-connection prompt** — public connections that match no rule raise a prompt (allow/deny), scoped to this connection only / this target / the whole program; timeout defaults to deny
-- **Rule engine** — matching on action (allow/block) × direction × protocol × process × remote (CIDR or domain) × port, priority-ordered, enable toggle and reordering, SQLite persistence, multiple profiles, JSON import/export
+- **Rule engine** — matching on action (allow/block) × direction × protocol × process × remote (CIDR or domain) × port, priority-ordered, enable toggle and reordering, SQLite persistence, multiple profiles, JSON import/export; hit counters persist across restarts so dead rules stand out
 - **WFP blocking** — enabled rules are translated into Windows Filtering Platform filters that take real effect (processes matched by image path); a dynamic session self-destructs on exit, leaving no residual blocking
 - **Silent mode** — three states: off (follow the prompt switch) / allow (silent permit) / deny (block-everything fallback), reachable from both Settings and the tray
 
@@ -28,14 +38,17 @@ NetOwl is a network connection monitor for Windows, inspired by Little Snitch on
 
 - **Connection history** — each closed connection is persisted to SQLite as a whole row (including transfer bytes); the process summary view merges live connections in real time
 - **Four query views** — detail / aggregate (process × protocol × remote) / process summary / usage (daily or hourly bucketed bar chart), time range and multi-condition filters, CSV export (UTF-8 BOM)
+- **Usage quota** — monthly traffic quota (accumulated on the local-timezone month boundary) with toasts at 80%/100%
 - **Auto cleanup** — retention-based deletion that reclaims disk space, plus an over-quota reminder
 
 ### System integration
 
 - **System tray** — stays in the background, closing the window minimizes to tray, hover tooltip follows live rates, silent mode / prompt switch controlled straight from the menu
-- **LAN devices** — same-subnet devices discovered from the ARP cache, new-device badge, online state
+- **Global hotkey** — click the field and press any combo (Win/Ctrl/Alt/Shift freely combined) to summon the main window back to the traffic map from anywhere
+- **LAN devices** — same-subnet devices discovered from the ARP cache, new-device badge, online state, toast on new-device join
+- **Update check** — About section in Settings, stable and preview channels, one-click jump to the release page
 - **Logging** — leveled logs (latest.log file / live log window) with key paths and failure reasons traceable
-- **Also** — city-level GeoIP (down to prefecture-level cities in China), rDNS hostname lookup, dark/light themes, English & Simplified Chinese UI, single-instance activation, best-effort flush of live connections at system shutdown
+- **Also** — city-level GeoIP (down to prefecture-level cities in China), rDNS hostname lookup, English & Simplified Chinese UI, cold-HUD dark/light themes, number formatting (Chinese 万/亿 or international K/M/B, following the UI language or set manually), single-instance activation, best-effort flush of live connections at system shutdown
 
 ## Build & Run
 
