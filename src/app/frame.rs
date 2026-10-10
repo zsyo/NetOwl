@@ -81,13 +81,18 @@ impl NetOwlApp {
         }
     }
 
+    /// 键盘快捷键:Ctrl+F 聚焦连接页搜索框——仅连接页内有效(连接与
+    /// 监听两视图共用搜索词),其它页面按下不跳页:从地图/历史页按
+    /// Ctrl+F 突然跳到连接页不符合"就地聚焦"的直觉。Esc 清搜索词由
+    /// 搜索框自身处理(焦点在框内时),Inspector 的 Esc 清选中已在其
+    /// 面板内实现;全局热键走托盘命令通道(platform::global_hotkey),
+    /// 与托盘菜单同一处理路径
     fn handle_shortcuts(&mut self, ctx: &egui::Context) {
-        let focus_search =
-            ctx.input(|i| i.key_pressed(egui::Key::F) && (i.modifiers.ctrl || i.modifiers.mac_cmd));
+        let focus_search = self.page == crate::ui::Page::Connections
+            && ctx.input(|i| {
+                i.key_pressed(egui::Key::F) && (i.modifiers.ctrl || i.modifiers.mac_cmd)
+            });
         if focus_search {
-            if self.page != crate::ui::Page::Connections {
-                self.page = crate::ui::Page::Connections;
-            }
             self.focus_conn_search = true;
             ctx.request_repaint();
         }

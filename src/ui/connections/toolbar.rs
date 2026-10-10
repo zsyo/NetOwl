@@ -55,9 +55,18 @@ pub(super) fn toolbar(
                     .size(theme::font::XS)
                     .color(theme::c().text_dim),
             );
-            widgets::search_box::search_box(ui, conn_search, i18n.t("listen-search"), 220.0);
+            // 监听视图搜索框同样消费 Ctrl+F 聚焦请求(与连接视图共用
+            // 一份搜索词,同属连接页)
+            widgets::search_box::search_box_focus(
+                ui,
+                conn_search,
+                i18n.t("listen-search"),
+                220.0,
+                focus_conn_search,
+            );
             return false;
-        } // 按进程分组:列表视图形态(平铺/分组),会话态不入 config;
+        }
+        // 按进程分组:列表视图形态(平铺/分组),会话态不入 config;
         // 与噪音过滤含义不同,紧随视图切换、留隙与过滤组分段
         ui.checkbox(conn_grouped, i18n.t("conns-group"));
         ui.add_space(theme::sp::MD);
