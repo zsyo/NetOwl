@@ -1,5 +1,5 @@
 //! 悬浮窗三个 viewport 的帧体:浮窗与球窗口的内容绘制与几何对账;
-//! 显隐、定位与交互编排在 mod,球面绘制在 view。
+//! 显隐、定位与交互编排在 mod,长条与气泡绘制在 view/bar。
 
 use eframe::egui;
 
@@ -8,7 +8,7 @@ use super::types::{
     BALL_WIN_H, BALL_WIN_W, GEOM_EPSILON, HOVER_H, HOVER_W, Phase, REVEAL, STRIP_W,
 };
 use super::{BallData, BallOutcome, BallState};
-use super::{interaction, view};
+use super::{bar, interaction, view};
 use crate::i18n::I18n;
 
 /// 浮窗窗口帧体:气泡浮层占满窗口;窗口显隐由 show 按 phase 驱动,
@@ -68,7 +68,7 @@ pub(super) fn ball_body(
                     } else {
                         BALL_WIN_W - STRIP_W + super::types::BAR_W * 0.5
                     },
-                    view::BallMode::Docked { bars_left: !left },
+                    bar::BallMode::Docked { bars_left: !left },
                 ),
                 _ => (
                     if left {
@@ -76,10 +76,10 @@ pub(super) fn ball_body(
                     } else {
                         BALL_WIN_W - REVEAL - super::types::BAR_W * 0.5
                     },
-                    view::BallMode::Full,
+                    bar::BallMode::Full,
                 ),
             };
-            view::ball(ui, bar_cx, BALL_WIN_H * 0.5, data, mode);
+            bar::ball(ui, bar_cx, BALL_WIN_H * 0.5, data, mode);
             interaction::handle_input(ui, state, panel_visible, auto_hide, outcome);
         });
 

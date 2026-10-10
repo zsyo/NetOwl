@@ -9,8 +9,9 @@
 //! 恢复渲染即松手)松手按窗口中心吸附左/右屏幕边缘;位置记忆于 config。
 //!
 //! 类型与刻度常量在 types,交互状态机在 interaction,viewport 定位在
-//! layout,速率榜聚合在 data,viewport 帧体在 body。
+//! layout,速率榜聚合在 data,viewport 帧体在 body,长条速率条在 bar。
 
+mod bar;
 mod body;
 mod data;
 mod interaction;
