@@ -106,5 +106,36 @@ pub(super) fn section(ui: &mut egui::Ui, config: &mut Config, i18n: &mut I18n, c
                 .changed();
             },
         );
+        ui.add_space(theme::sp::SM);
+        setting_row(
+            ui,
+            &i18n.t("settings-hotkey"),
+            &i18n.t("settings-hotkey-hint"),
+            |ui| {
+                // 预设组合下拉(关闭 + 三个 Ctrl+Alt 组合);切换由 App 层
+                // 热注销重注册,失败(组合被占用)toast 明示
+                // 克隆当前值:闭包内要写回 config,不能持有其借用
+                let current = config.general.hotkey.clone();
+                let label = |p: &str| {
+                    if p.is_empty() {
+                        i18n.t("settings-hotkey-off")
+                    } else {
+                        crate::platform::global_hotkey::display(p)
+                    }
+                };
+                egui::ComboBox::from_id_salt("settings-hotkey-select")
+                    .width(180.0)
+                    .selected_text(RichText::new(label(&current)).size(theme::font::BODY))
+                    .show_ui(ui, |ui| {
+                        for p in crate::platform::global_hotkey::PRESETS {
+                            let text = RichText::new(label(p)).size(theme::font::BODY);
+                            if ui.selectable_label(p == &current, text).clicked() {
+                                config.general.hotkey = (*p).to_owned();
+                                *changed = true;
+                            }
+                        }
+                    });
+            },
+        );
     });
 }

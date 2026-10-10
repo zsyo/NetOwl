@@ -1,39 +1,143 @@
-//! 全局热键唤出主窗:Ctrl+Alt+N。后台线程自建消息窗口(HWND_MESSAGE,
-//! 不占任务栏与 ALT+TAB 序)注册热键,收到 WM_HOTKEY 经托盘命令通道
-//! 发送 CMD_SHOW——与托盘菜单"显示主窗口"同一处理路径(恢复可见/
-//! 解除最小化/聚焦)。注册失败(组合键被其它程序占用)仅告警降级,
-//! 不影响其余功能。
+//! 全局热键唤出主窗:后台线程自建消息窗口(HWND_MESSAGE,不占任务栏与
+//! ALT+TAB 序)注册热键,收到 WM_HOTKEY 经托盘命令通道发送 CMD_SHOW——
+//! 与托盘菜单"显示主窗口"同一处理路径(恢复可见/解除最小化/聚焦)。
+//!
+//! 组合可配置(预设下拉,存 config):线程阻塞在 GetMessageW,App 层经
+//! PostThreadMessageW 唤醒后比对期望组合,热注销重注册;注册失败
+//! (组合被其它程序占用)经回报通道交 App 弹 toast——冲突从静默死亡
+//! 变为可见可改。
 
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::Sender;
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, RegisterHotKey, UnregisterHotKey, VK_N,
+    HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT, RegisterHotKey,
+    UnregisterHotKey,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, GetMessageW, HWND_MESSAGE, MSG, RegisterClassW, WM_HOTKEY,
-    WNDCLASSW,
+    CreateWindowExW, DefWindowProcW, GetMessageW, HWND_MESSAGE, MSG, PostThreadMessageW,
+    RegisterClassW, WM_APP, WM_HOTKEY, WNDCLASSW,
 };
 
 /// 与托盘命令通道共用的命令字(见 platform::tray::CMD_SHOW)
 const CMD_SHOW: &str = "show";
 /// 热键标识(任意;本进程只注册一个)
 const HOTKEY_ID: i32 = 1;
+/// 唤醒热键线程重检查期望组合的线程消息(PostThreadMessageW)
+const MSG_RECHECK: u32 = WM_APP;
 /// 消息窗口类名(全局命名空间,避免与他人类名冲突)
 const CLASS_NAME: &str = "NetOwlHotkeyMsgWnd";
+/// ERROR_HOTKEY_ALREADY_REGISTERED(Win32 稳定值):组合已被占用。
+/// App 侧据此给出可读失败原因(见 HotkeyReport::Failed 的 code)
+pub const ERROR_HOTKEY_TAKEN: u32 = 1409;
 
-/// 在后台线程注册全局热键并循环处理消息;`tx` 为托盘命令通道发送端
-pub fn spawn(tx: Sender<String>) {
-    std::thread::spawn(move || {
-        if let Err(e) = run(&tx) {
-            tracing::warn!("[Hotkey] 全局热键不可用(不影响其它功能): {e}");
-        }
-    });
+/// 预设组合(设置页下拉同源;空串 = 关闭)。均含 Ctrl+Alt:Windows 自身
+/// 极少占用该族,与浏览器常用快捷键的冲突面也小
+pub const PRESETS: &[&str] = &["", "ctrl+alt+n", "ctrl+alt+o", "ctrl+alt+s"];
+
+/// 组合串转可读形式("ctrl+alt+n" -> "Ctrl+Alt+N")
+pub fn display(combo: &str) -> String {
+    combo
+        .split('+')
+        .map(|part| {
+            let mut chars = part.trim().chars();
+            match chars.next() {
+                Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("+")
 }
 
-fn run(tx: &Sender<String>) -> windows::core::Result<()> {
+/// 解析组合串(大小写不敏感):修饰键 ctrl/alt/shift + 单字母键;
+/// 恒带 MOD_NOREPEAT(防长按连续触发)。无法识别返回 None
+fn parse_combo(combo: &str) -> Option<(HOT_KEY_MODIFIERS, u32)> {
+    let mut modifiers = MOD_NOREPEAT;
+    let mut vk = None;
+    for part in combo.split('+').map(str::trim).filter(|p| !p.is_empty()) {
+        let lower = part.to_ascii_lowercase();
+        match lower.as_str() {
+            "ctrl" => modifiers |= MOD_CONTROL,
+            "alt" => modifiers |= MOD_ALT,
+            "shift" => modifiers |= MOD_SHIFT,
+            _ if lower.len() == 1 && lower.as_bytes()[0].is_ascii_alphabetic() => {
+                // A-Z 的虚拟键码即 ASCII 大写值
+                vk = Some(lower.to_ascii_uppercase().as_bytes()[0] as u32);
+            }
+            _ => return None,
+        }
+    }
+    vk.map(|v| (modifiers, v))
+}
+
+/// 注册结果回报(热键线程 -> App 层)
+pub enum HotkeyReport {
+    /// 注册成功(当前生效组合)
+    Ok(String),
+    /// 注册失败(组合, Win32 错误码;1409 = 组合已被占用)
+    Failed { combo: String, code: u32 },
+    /// 已关闭(期望组合为空)
+    Off,
+}
+
+/// 全局热键句柄(App 持有):写期望组合并唤醒线程,线程内热注销重注册
+pub struct HotkeyHandle {
+    /// 期望组合(空 = 关闭);App 写、热键线程读
+    desired: Arc<Mutex<String>>,
+    /// 热键线程 id(唤醒用;0 = 线程尚未就绪)
+    thread_id: Arc<AtomicU32>,
+}
+
+impl HotkeyHandle {
+    /// 设置期望组合(立即热切换,不必等待重启)
+    pub fn set(&self, combo: &str) {
+        *self.desired.lock().unwrap_or_else(|e| e.into_inner()) = combo.to_owned();
+        let tid = self.thread_id.load(Ordering::Acquire);
+        if tid != 0 {
+            // 唤醒阻塞在 GetMessageW 的线程;线程尚未存储 id 时无需唤醒
+            // (首轮循环即读取 desired)
+            unsafe {
+                let _ = PostThreadMessageW(tid, MSG_RECHECK, WPARAM(0), LPARAM(0));
+            }
+        }
+    }
+}
+
+/// 启动全局热键后台线程;`combo` 为初始组合(config),`tray_tx` 为托盘
+/// 命令通道发送端,`report_tx` 为注册结果回报发送端(接收端由调用方持有)
+pub fn spawn(
+    tray_tx: Sender<String>,
+    report_tx: Sender<HotkeyReport>,
+    combo: &str,
+) -> HotkeyHandle {
+    let desired = Arc::new(Mutex::new(combo.to_owned()));
+    let thread_id = Arc::new(AtomicU32::new(0));
+    let handle = HotkeyHandle {
+        desired: Arc::clone(&desired),
+        thread_id: Arc::clone(&thread_id),
+    };
+    std::thread::spawn(move || {
+        if let Err(e) = run(&tray_tx, &report_tx, &desired, &thread_id) {
+            tracing::warn!("[Hotkey] 全局热键线程退出: {e}");
+        }
+    });
+    handle
+}
+
+fn run(
+    tray_tx: &Sender<String>,
+    report_tx: &Sender<HotkeyReport>,
+    desired: &Mutex<String>,
+    thread_id: &AtomicU32,
+) -> windows::core::Result<()> {
     unsafe {
+        thread_id.store(GetCurrentThreadId(), Ordering::Release);
         let hinstance = GetModuleHandleW(None)?;
         let class_name: Vec<u16> = CLASS_NAME
             .encode_utf16()
@@ -47,7 +151,7 @@ fn run(tx: &Sender<String>) -> windows::core::Result<()> {
             ..Default::default()
         };
         RegisterClassW(&wc);
-        // 消息窗口:有消息队列但不显示、不接收广播之外的窗口消息之外的一切
+        // 消息窗口:有消息队列但不显示、不收广播之外的窗口消息
         let hwnd = CreateWindowExW(
             Default::default(),
             class,
@@ -62,19 +166,56 @@ fn run(tx: &Sender<String>) -> windows::core::Result<()> {
             Some(hinstance.into()),
             None,
         )?;
-        // Ctrl+Alt+N;NOREPEAT 防长按连续触发。注册失败(组合键被占用)
-        // 向上传递,由 spawn 记录告警后降级
-        let modifiers = MOD_CONTROL | MOD_ALT | MOD_NOREPEAT;
-        RegisterHotKey(Some(hwnd), HOTKEY_ID, modifiers, u32::from(VK_N.0))?;
-        tracing::info!("[Hotkey] 全局热键 Ctrl+Alt+N 已注册(唤出主窗)");
-        let mut msg = MSG::default();
-        // 返回 false(WM_QUIT 或错误)时退出循环;进程退出时线程随进程终止
-        while GetMessageW(&mut msg, None, 0, 0).as_bool() {
-            if msg.message == WM_HOTKEY && msg.wParam.0 as i32 == HOTKEY_ID {
-                let _ = tx.send(CMD_SHOW.to_owned());
+        // 当前已注册组合(空 = 未注册);期望变化时热切换
+        let mut current = String::new();
+        loop {
+            let want = desired.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            if want != current {
+                if !current.is_empty() {
+                    let _ = UnregisterHotKey(Some(hwnd), HOTKEY_ID);
+                }
+                current.clear();
+                if want.is_empty() {
+                    tracing::info!("[Hotkey] 全局热键已关闭");
+                    let _ = report_tx.send(HotkeyReport::Off);
+                } else if let Some((modifiers, vk)) = parse_combo(&want) {
+                    match RegisterHotKey(Some(hwnd), HOTKEY_ID, modifiers, vk) {
+                        Ok(()) => {
+                            current = want.clone();
+                            tracing::info!("[Hotkey] 全局热键 {} 已注册(唤出主窗)", display(&want));
+                            let _ = report_tx.send(HotkeyReport::Ok(current.clone()));
+                        }
+                        Err(e) => {
+                            tracing::warn!("[Hotkey] 全局热键 {} 注册失败: {e}", display(&want));
+                            let _ = report_tx.send(HotkeyReport::Failed {
+                                combo: want,
+                                code: e.code().0 as u32,
+                            });
+                        }
+                    }
+                } else {
+                    tracing::warn!("[Hotkey] 无法识别的组合串:{want}");
+                    let _ = report_tx.send(HotkeyReport::Failed {
+                        combo: want,
+                        code: 0,
+                    });
+                }
             }
+            let mut msg = MSG::default();
+            let r = GetMessageW(&mut msg, None, 0, 0);
+            // 0 = WM_QUIT,-1 = 错误:两者都退出(BOOL 的 as_bool 对 -1 为真,
+            // 不能只判 as_bool,否则错误时原地空转)
+            if r.0 == 0 || r.0 == -1 {
+                break;
+            }
+            if msg.message == WM_HOTKEY && msg.wParam.0 as i32 == HOTKEY_ID {
+                let _ = tray_tx.send(CMD_SHOW.to_owned());
+            }
+            // MSG_RECHECK 无处理体:回到循环顶部即重新对齐期望组合
         }
-        let _ = UnregisterHotKey(Some(hwnd), HOTKEY_ID);
+        if !current.is_empty() {
+            let _ = UnregisterHotKey(Some(hwnd), HOTKEY_ID);
+        }
         Ok(())
     }
 }

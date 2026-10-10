@@ -131,6 +131,13 @@ settings-tray-pin-hint = Writes the system tray setting; takes effect next sessi
 
 settings-autostart = Launch at login
 settings-autostart-hint = Run in the background after you sign in without showing the main window
+settings-hotkey = Global hotkey
+settings-hotkey-hint = Combo that summons the main window; a toast alerts if it is already taken
+settings-hotkey-off = Off
+hotkey-fail-toast = Failed to register hotkey {$combo} ({$reason})
+hotkey-reason-invalid = unrecognized combo
+hotkey-reason-taken = combo already taken by another program
+hotkey-reason-other = error code {$code}
 
 settings-floating-ball = Floating widget
 settings-floating-ball-hint = Dock to the screen edge with live rates; hover for per-process traffic

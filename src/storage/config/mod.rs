@@ -114,6 +114,11 @@ pub struct GeneralConfig {
     /// pre-release;最新为正式版时同样覆盖)
     #[serde(default)]
     pub update_channel: String,
+    /// 全局快捷键(唤出主窗):预设组合串("ctrl+alt+n" 形式,大小写不敏感),
+    /// 空 = 关闭。预设表见 platform::global_hotkey::PRESETS;切换由 App 层
+    /// 热注销重注册,注册失败(组合被占用)toast 明示
+    #[serde(default = "default_hotkey")]
+    pub hotkey: String,
 }
 
 impl Default for GeneralConfig {
@@ -137,6 +142,7 @@ impl Default for GeneralConfig {
             log_level: default_log_level(),
             log_to_file: false,
             update_channel: String::new(),
+            hotkey: default_hotkey(),
         }
     }
 }
@@ -151,6 +157,11 @@ fn default_profile() -> i64 {
 
 fn default_log_level() -> String {
     "info".to_owned()
+}
+
+/// 默认全局快捷键:Ctrl+Alt+N(与 PRESETS[1] 一致)
+fn default_hotkey() -> String {
+    "ctrl+alt+n".to_owned()
 }
 
 fn default_true() -> bool {

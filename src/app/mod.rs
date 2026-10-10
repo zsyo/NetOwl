@@ -204,6 +204,12 @@ pub struct NetOwlApp {
     config: Config,
     conns: Vec<Connection>,
     tray_rx: Receiver<String>,
+    /// 全局热键句柄(写期望组合即热注销重注册)
+    hotkey: crate::platform::global_hotkey::HotkeyHandle,
+    /// 全局热键注册结果回报(失败由 logic 弹 toast)
+    hotkey_report_rx: Receiver<crate::platform::global_hotkey::HotkeyReport>,
+    /// 已同步给热键线程的组合(config 变化时热切换;初值 = 启动组合)
+    hotkey_synced: String,
     should_exit: bool,
     /// 是否以管理员令牌运行(启动时判定;ETW/WFP 可用性与右键"结束连接")
     elevated: bool,

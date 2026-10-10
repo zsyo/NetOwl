@@ -41,6 +41,41 @@ impl NetOwlApp {
     /// 搜索词由搜索框自身处理(焦点在框内时),Inspector 的 Esc 清
     /// 选中已在其面板内实现;全局热键 Ctrl+Alt+N 走托盘命令通道
     /// (platform::global_hotkey),与托盘菜单同一处理路径
+    /// 全局热键同步:config 组合变化即热切换(线程内注销重注册,不必
+    /// 重启);注册失败(组合被其它程序占用)弹 toast——冲突从静默死亡
+    /// 变为可见,用户可改选其它预设组合
+    fn sync_hotkey(&mut self) {
+        if self.config.general.hotkey != self.hotkey_synced {
+            self.hotkey_synced = self.config.general.hotkey.clone();
+            tracing::debug!("[Hotkey] 应用组合切换 -> {:?}", self.config.general.hotkey);
+            self.hotkey.set(&self.config.general.hotkey);
+        }
+        while let Ok(report) = self.hotkey_report_rx.try_recv() {
+            let crate::platform::global_hotkey::HotkeyReport::Failed { combo, code } = report
+            else {
+                continue;
+            };
+            let reason = match code {
+                crate::platform::global_hotkey::ERROR_HOTKEY_TAKEN => {
+                    self.i18n.t("hotkey-reason-taken")
+                }
+                // 0 = 组合串无法解析(config 被手工改坏)
+                0 => self.i18n.t("hotkey-reason-invalid"),
+                _ => self
+                    .i18n
+                    .t_with_args("hotkey-reason-other", &[("code", code.to_string())]),
+            };
+            let text = self.i18n.t_with_args(
+                "hotkey-fail-toast",
+                &[
+                    ("combo", crate::platform::global_hotkey::display(&combo)),
+                    ("reason", reason),
+                ],
+            );
+            crate::ui::toast::push(&mut self.toasts, crate::ui::toast::ToastKind::Warn, text);
+        }
+    }
+
     fn handle_shortcuts(&mut self, ctx: &egui::Context) {
         let focus_search =
             ctx.input(|i| i.key_pressed(egui::Key::F) && (i.modifiers.ctrl || i.modifiers.mac_cmd));
@@ -64,6 +99,7 @@ impl eframe::App for NetOwlApp {
         self.poll_ball_data();
         self.update_tray_tooltip();
         self.handle_shortcuts(ctx);
+        self.sync_hotkey();
         // 关机/注销落库钩子:首帧安装一次,内部防重复(winit 不处理
         // ENDSESSION,关机时唯一能把活跃连接落库的路径)
         shutdown_hook::install(

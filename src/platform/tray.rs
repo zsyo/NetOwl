@@ -111,15 +111,18 @@ impl Tray {
     }
 }
 
-/// 在当前线程创建托盘与菜单,返回(句柄, 命令接收端);菜单与提示文案
-/// 经 i18n 按启动语言取词(托盘创建一次,运行期语言切换不重建),
-/// `silent` 为初始静默模式,`ask` 为新连接询问初始勾选态
+/// 在当前线程创建托盘与菜单,返回(句柄, 命令接收端, 全局热键句柄);
+/// 菜单与提示文案经 i18n 按启动语言取词(托盘创建一次,运行期语言切换
+/// 不重建),`silent` 为初始静默模式,`ask` 为新连接询问初始勾选态,
+/// `hotkey` 为全局热键初始组合(config),`report_tx` 为其注册结果回报
 pub fn create(
     ctx: egui::Context,
     i18n: &crate::i18n::I18n,
     silent: &str,
     ask: bool,
-) -> (Tray, Receiver<String>) {
+    hotkey: &str,
+    report_tx: Sender<super::global_hotkey::HotkeyReport>,
+) -> (Tray, Receiver<String>, super::global_hotkey::HotkeyHandle) {
     let menu = Menu::new();
     let show = MenuItem::with_id(CMD_SHOW, i18n.t("tray-show"), true, None);
     menu.append(&show).expect("追加托盘菜单项失败");
@@ -188,9 +191,9 @@ pub fn create(
     let hwnd = tray.window_handle() as isize;
 
     let (tx, rx) = channel::<String>();
-    // 全局热键(Ctrl+Alt+N)经同一命令通道发 CMD_SHOW,与托盘菜单
-    // "显示主窗口"同一处理路径;注册失败仅告警降级
-    super::global_hotkey::spawn(tx.clone());
+    // 全局热键经同一命令通道发 CMD_SHOW,与托盘菜单"显示主窗口"同一
+    // 处理路径;组合可配置,注册结果经 report_tx 交 App 弹 toast
+    let hotkey = super::global_hotkey::spawn(tx.clone(), report_tx, hotkey);
     MenuEvent::set_event_handler(Some(forward(tx.clone(), ctx.clone())));
     TrayIconEvent::set_event_handler(Some(move |event: TrayIconEvent| {
         if let TrayIconEvent::Click {
@@ -220,6 +223,7 @@ pub fn create(
             hmenu,
         },
         rx,
+        hotkey,
     )
 }
 

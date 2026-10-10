@@ -131,6 +131,13 @@ settings-tray-pin-hint = 写入系统托盘设置,新会话生效;失败时保�
 
 settings-autostart = 开机自启动
 settings-autostart-hint = 登录后自动在后台运行,主窗口不弹出
+settings-hotkey = 全局快捷键
+settings-hotkey-hint = 唤出主窗口的组合键;被其它程序占用时切换后会提示
+settings-hotkey-off = 关闭
+hotkey-fail-toast = 快捷键 {$combo} 注册失败({$reason})
+hotkey-reason-invalid = 无法识别的组合
+hotkey-reason-taken = 组合已被其它程序占用
+hotkey-reason-other = 错误码 {$code}
 
 settings-floating-ball = 悬浮窗
 settings-floating-ball-hint = 贴边显示实时速率,悬浮展开进程流量排行

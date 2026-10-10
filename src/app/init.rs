@@ -42,11 +42,17 @@ impl NetOwlApp {
         if autostart_on {
             config.general.autostart = true;
         }
-        let (_tray, tray_rx) = tray::create(
+        // 全局热键注册结果回报通道:失败(组合被占用)由 logic 弹 toast
+        let (hotkey_report_tx, hotkey_report_rx) = std::sync::mpsc::channel();
+        // 启动组合即已同步值:之后仅 config 变化触发热切换
+        let hotkey_synced = config.general.hotkey.clone();
+        let (_tray, tray_rx, hotkey) = tray::create(
             cc.egui_ctx.clone(),
             &i18n,
             &config.general.silent_mode,
             config.general.ask_connections,
+            &config.general.hotkey,
+            hotkey_report_tx,
         );
         let pending_restore = config.window_position();
         let pending_restore =
@@ -167,6 +173,9 @@ impl NetOwlApp {
             config,
             conns: Vec::new(),
             tray_rx,
+            hotkey,
+            hotkey_report_rx,
+            hotkey_synced,
             should_exit: false,
             elevated,
             window_visible: !minimized,
