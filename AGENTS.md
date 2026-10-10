@@ -93,7 +93,10 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   eval.rs:RuleSet impl 求值——priority 升序首个命中,未命中返回静默兜底
   (若开启)否则放行;静默拒绝兜底 = 全通配 Block 内存规则(不入 rules
   列表,evaluate 自动联动连接标注与地图开关);blocking_rule/
-  process_block_rule 供地图面板标注;store.rs:RuleSet impl CRUD 与会话
+  process_block_rule 供地图面板标注;note_hits/flush_hits:命中计数——
+  poll 层 1s 口径每连接首次命中计一次(hit_counted 去重表按快照重建,
+  长连接不重复计),计数存 Rule.hit_count 落库 rules.hit_count(v8),
+  App 层 30s 批量 + 退出补写;store.rs:RuleSet impl CRUD 与会话
   临时规则(负数 id 不落库);specs.rs:RuleSet impl wfp_specs 翻译启用规则
   为 WFP 过滤器目标集——进程条件按映像名展开为完整路径集合(粘滞缓存防
   拦截窗口抖动),网段 RANGE、端口/协议等值,Any 方向拆 CONNECT/
@@ -106,7 +109,8 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   [app id blob/网段 RANGE/协议端口等值]))
 - src/storage/ - 持久化(config.rs:应用配置(config.toml,serde TOML + 防抖
   写盘);db.rs:SQLite 连接与结构迁移(v5 = conn_events 补 bytes_in/out 列;
-  v6 = lan_devices 局域网设备表;v7 = profiles 配置档表 + rules.profile_id);
+  v6 = lan_devices 局域网设备表;v7 = profiles 配置档表 + rules.profile_id;
+  v8 = rules.hit_count 规则命中计数列);
   history/:历史落盘(mod.rs:ClosedConn、Tracker 对比前后快照生成事件
   [mock 不入库]、Writer 写线程句柄与 run 主循环、write_batch 批量事务
   [conn_events 事件表,每条已完结连接一行整行 INSERT,含收发字节——
