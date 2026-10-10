@@ -14,6 +14,7 @@ mod frame;
 mod init;
 mod layout;
 mod poll;
+mod poll_derived;
 mod tray;
 mod window;
 
