@@ -124,6 +124,7 @@ fn item_row(
     checked: Option<bool>,
 ) -> bool {
     let resp = ui.interact(rect, id, Sense::click());
+    let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
     if resp.hovered() {
         ui.painter().rect_filled(
             rect,

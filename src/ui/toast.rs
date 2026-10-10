@@ -32,7 +32,10 @@ pub struct Toast {
     at: Instant,
 }
 
-/// 入队;同文本在去重窗口内只保留一条
+/// 入队;同文本在去重窗口内只保留一条。
+/// 去重状态的存活期是 DEDUP_WINDOW(30s),长于展示时长 TOAST_TTL(6s):
+/// show() 的清理若按 TTL 执行,上一条消失后同文本立刻又能入队,去重
+/// 窗口形同虚设
 pub fn push(toasts: &mut Vec<Toast>, kind: ToastKind, text: String) {
     if toasts
         .iter()
@@ -48,14 +51,20 @@ pub fn push(toasts: &mut Vec<Toast>, kind: ToastKind, text: String) {
     });
 }
 
-/// 绘制右下角堆叠 toast 并清理过期项(每帧调用,空队列零开销)
+/// 绘制右下角堆叠 toast 并清理过期项(每帧调用,空队列零开销)。
+/// 清理按去重窗口保留(供 push 判重),绘制只画展示时长内的条目,
+/// 堆叠索引只数可见项
 pub fn show(ctx: &egui::Context, toasts: &mut Vec<Toast>) {
-    toasts.retain(|t| t.at.elapsed() < TOAST_TTL);
-    if toasts.is_empty() {
+    toasts.retain(|t| t.at.elapsed() < DEDUP_WINDOW);
+    let visible: Vec<&Toast> = toasts
+        .iter()
+        .filter(|t| t.at.elapsed() < TOAST_TTL)
+        .collect();
+    if visible.is_empty() {
         return;
     }
     let p = theme::c();
-    for (i, t) in toasts.iter().enumerate() {
+    for (i, t) in visible.iter().enumerate() {
         let (glyph, accent) = match t.kind {
             ToastKind::Info => (icons::ETHERNET, p.accent),
             ToastKind::Warn => (icons::EXCLAMATION_CIRCLE, p.status_warn),

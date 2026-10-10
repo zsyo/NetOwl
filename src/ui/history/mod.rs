@@ -53,7 +53,16 @@ pub fn show(
         ui.add_space(theme::sp::SM);
     }
 
-    toolbar::toolbar(ui, state, i18n, db, writer, config, &mut config_changed);
+    toolbar::toolbar(
+        ui,
+        state,
+        i18n,
+        db,
+        writer,
+        config,
+        &mut config_changed,
+        conns,
+    );
     ui.add_space(theme::sp::SM);
 
     rows_table(
@@ -99,8 +108,11 @@ fn remind_card(
                         .size(theme::font::BODY)
                         .color(theme::c().text),
                 );
+                // 绑定局部变量而非 &mut false:后者令复选框恒显示未勾选,
+                // 点击无任何状态反馈(卡片消失前的那一帧也不可信)
+                let mut dismiss = false;
                 if ui
-                    .checkbox(&mut false, i18n.t("history-remind-dismiss"))
+                    .checkbox(&mut dismiss, i18n.t("history-remind-dismiss"))
                     .clicked()
                 {
                     config.general.history_remind = false;

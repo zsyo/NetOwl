@@ -95,6 +95,7 @@ fn nav_item(
 
     let (rect, resp) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), NAV_ITEM_H), Sense::click());
+    let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
     let radius = CornerRadius::same(theme::RADIUS_MD);
     if selected {
         ui.painter().rect_filled(rect, radius, p.accent_soft);

@@ -7,13 +7,15 @@ use rusqlite::Connection as Db;
 
 use super::export;
 use crate::i18n::I18n;
-use crate::model::{Protocol, fmt_bytes};
+use crate::model::{Connection, Protocol, fmt_bytes};
 use crate::storage::config::Config;
 use crate::storage::history;
 use crate::storage::history_query::{self, ViewMode};
 use crate::ui::{TOOLBAR_ROW_H, icons, theme, widgets};
 
-/// 工具栏:视图切换、筛选与刷新(左),库大小与清空(右)
+/// 工具栏:视图切换、筛选与刷新(左),库大小与清空(右)。
+/// conns 供汇总视图导出时做活跃合并(与页面同口径)
+#[allow(clippy::too_many_arguments)]
 pub(super) fn toolbar(
     ui: &mut egui::Ui,
     state: &mut history_query::PageState,
@@ -22,6 +24,7 @@ pub(super) fn toolbar(
     writer: &history::Writer,
     config: &mut Config,
     config_changed: &mut bool,
+    conns: &[Connection],
 ) {
     ui.horizontal(|ui| {
         // 行高抬升只作用于本工具栏行(style_mut 泄漏到整页会把表格
@@ -126,7 +129,7 @@ pub(super) fn toolbar(
             .button(RichText::new(i18n.t("history-export")).size(theme::font::BODY))
             .clicked()
         {
-            export::export_csv(state, i18n);
+            export::export_csv(state, i18n, conns, config);
         }
         // 输入中防抖重查(合并连续按键);失焦视为输入结束立即刷新
         if process.changed() || remote.changed() {

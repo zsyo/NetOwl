@@ -17,6 +17,51 @@ use crate::ui::{conn_visible, theme, widgets};
 /// 保证每次常规重绘都会拿到新鲜活跃字节,交互帧复用不重算
 const SUMMARY_MERGE_TTL: Duration = Duration::from_millis(900);
 
+/// 确保汇总合并缓存新鲜(过期则重建)。视图与 CSV 导出共用:
+/// 工具栏先于表格绘制,切到汇总视图的第一帧点导出时缓存尚未建立,
+/// 这里即时合并,避免静默写出只有表头的空文件
+pub(super) fn refresh_merged(
+    state: &mut history_query::PageState,
+    conns: &[Connection],
+    config: &Config,
+) {
+    let expired = state
+        .summary_merged
+        .as_ref()
+        .is_none_or(|(at, _)| at.elapsed() >= SUMMARY_MERGE_TTL);
+    if !expired {
+        return;
+    }
+    // 实时叠加活跃连接(口径注记见下):克隆+聚合+重排开销大,
+    // 缓存于 summary_merged 按秒失效,交互帧直接复用不重算;
+    // 不写回 state.rows(活跃字节逐轮增长,固化进查询缓存会
+    // 污染 dirty 门控的下次重查)
+    let mut merged = match &state.rows {
+        Rows::Summary(rows) => rows.clone(),
+        _ => Vec::new(),
+    };
+    for (process, live) in live_proc_sums(conns, config) {
+        match merged.iter_mut().find(|r| r.process == process) {
+            Some(r) => {
+                r.bytes_out += live.bytes_out;
+                r.bytes_in += live.bytes_in;
+                r.count += live.count;
+                r.total_secs += live.total_secs;
+            }
+            None => merged.push(SummaryRow {
+                process,
+                proc_path: live.proc_path,
+                bytes_out: live.bytes_out,
+                bytes_in: live.bytes_in,
+                count: live.count,
+                total_secs: live.total_secs,
+            }),
+        }
+    }
+    sort_summary(&mut merged, state.summary_sort);
+    state.summary_merged = Some((Instant::now(), merged));
+}
+
 pub(super) fn table(
     ui: &mut egui::Ui,
     state: &mut history_query::PageState,
@@ -26,40 +71,7 @@ pub(super) fn table(
     conns: &[Connection],
     config: &Config,
 ) {
-    // 实时叠加活跃连接(口径注记见下):克隆+聚合+重排开销大,
-    // 缓存于 summary_merged 按秒失效,交互帧直接复用不重算;
-    // 不写回 state.rows(活跃字节逐轮增长,固化进查询缓存会
-    // 污染 dirty 门控的下次重查)
-    let expired = state
-        .summary_merged
-        .as_ref()
-        .is_none_or(|(at, _)| at.elapsed() >= SUMMARY_MERGE_TTL);
-    if expired {
-        let mut merged = match &state.rows {
-            Rows::Summary(rows) => rows.clone(),
-            _ => Vec::new(),
-        };
-        for (process, live) in live_proc_sums(conns, config) {
-            match merged.iter_mut().find(|r| r.process == process) {
-                Some(r) => {
-                    r.bytes_out += live.bytes_out;
-                    r.bytes_in += live.bytes_in;
-                    r.count += live.count;
-                    r.total_secs += live.total_secs;
-                }
-                None => merged.push(SummaryRow {
-                    process,
-                    proc_path: live.proc_path,
-                    bytes_out: live.bytes_out,
-                    bytes_in: live.bytes_in,
-                    count: live.count,
-                    total_secs: live.total_secs,
-                }),
-            }
-        }
-        sort_summary(&mut merged, state.summary_sort);
-        state.summary_merged = Some((Instant::now(), merged));
-    }
+    refresh_merged(state, conns, config);
     let Some((_, merged)) = state.summary_merged.as_ref() else {
         return;
     };

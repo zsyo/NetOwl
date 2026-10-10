@@ -85,6 +85,11 @@ fn draw_spaced_upper(painter: &egui::Painter, center: Pos2, text: &str, size: f3
             .width()
     };
     let chars: Vec<char> = upper.chars().collect();
+    // 空串(数据源存在无名要素)时 chars.len()-1 下溢:release 回绕成
+    // usize::MAX,标签被画到无穷远;saturating_sub 兜底并提前返回
+    if chars.is_empty() {
+        return;
+    }
     let total: f32 = chars.iter().map(|c| width(&c.to_string())).sum::<f32>()
         + SPACING * (chars.len() - 1) as f32;
     let mut x = center.x - total * 0.5;

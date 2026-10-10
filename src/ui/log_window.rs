@@ -189,6 +189,21 @@ fn toolbar(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n) {
     });
 }
 
+/// 大小写不敏感的包含判断(needle 已小写化)。ASCII needle 走字节窗
+/// 逐字节比较,零分配:1000 行上限下每行一次 to_lowercase 在事件驱动
+/// 重绘时是纯浪费;含非 ASCII 时回退分配版(偶发,可接受)
+fn contains_ci(haystack: &str, needle_lower: &str) -> bool {
+    if needle_lower.is_ascii() {
+        let n = needle_lower.as_bytes();
+        // 合法 UTF-8 中 ASCII 字节只属于 ASCII 字符,跨字符边界不会误匹配
+        return haystack
+            .as_bytes()
+            .windows(n.len())
+            .any(|w| w.eq_ignore_ascii_case(n));
+    }
+    haystack.to_lowercase().contains(needle_lower)
+}
+
 /// 日志滚动区:关键字过滤(大小写不敏感)+ 等级着色;消息体自动换行
 /// (Label 默认 wrap,长行不再截断),时间与级别列等宽字体固定宽度
 fn log_list(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n) {
@@ -196,7 +211,7 @@ fn log_list(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n) {
     let rows: Vec<&logging::LogLine> = state
         .lines
         .iter()
-        .filter(|line| filter.is_empty() || line.message.to_lowercase().contains(&filter))
+        .filter(|line| filter.is_empty() || contains_ci(&line.message, &filter))
         .collect();
 
     if rows.is_empty() {

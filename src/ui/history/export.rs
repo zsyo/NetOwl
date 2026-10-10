@@ -1,10 +1,12 @@
 //! 历史页 CSV 导出:按当前视图与筛选导出全部结果(UTF-8 BOM,Excel
 //! 直开中文不乱码),列结构与页面一致,位置列实时反查。
 
+use super::summary;
 use super::usage;
 use crate::i18n::I18n;
-use crate::model::Place;
+use crate::model::{Connection, Place};
 use crate::net::geoip;
+use crate::storage::config::Config;
 use crate::storage::history_query::{self, Rows};
 
 /// CSV 单元格转义:含逗号/引号/换行的字段加引号包裹,内部引号翻倍
@@ -26,9 +28,14 @@ fn location_text(i18n: &I18n, ip: std::net::Ipv4Addr) -> String {
 
 /// 导出当前视图的查询结果为 CSV(UTF-8 BOM,Excel 直开中文不乱码);
 /// 列结构与页面一致(位置列实时反查)。汇总视图带活跃连接实时合并
-/// (与页面同口径,缓存过期时含近期数据)。
+/// (与页面同口径:缓存未建立时先即时合并再导出,不写空文件)。
 /// 保存对话框与规则页导入导出同为 rfd 模态,取消即不做任何写入
-pub(super) fn export_csv(state: &history_query::PageState, i18n: &I18n) {
+pub(super) fn export_csv(
+    state: &mut history_query::PageState,
+    i18n: &I18n,
+    conns: &[Connection],
+    config: &Config,
+) {
     let Some(path) = rfd::FileDialog::new()
         .add_filter("CSV", &["csv"])
         .set_file_name("netowl-history.csv")
@@ -36,6 +43,12 @@ pub(super) fn export_csv(state: &history_query::PageState, i18n: &I18n) {
     else {
         return;
     };
+    // 汇总视图与页面同口径:缓存过期(或尚未建立)时先即时合并,避免
+    // 静默写出只有表头的 CSV。须在下面 match &state.rows 的不可用借用
+    // 开始前完成
+    if matches!(state.rows, Rows::Summary(_)) {
+        summary::refresh_merged(state, conns, config);
+    }
     let rows: Vec<Vec<String>> = match &state.rows {
         Rows::Detail(rows) => {
             let mut out = vec![
@@ -103,7 +116,7 @@ pub(super) fn export_csv(state: &history_query::PageState, i18n: &I18n) {
             let merged = state
                 .summary_merged
                 .as_ref()
-                .map(|(_, m)| m.clone())
+                .map(|(_, m)| m.iter())
                 .unwrap_or_default();
             let mut out = vec![
                 [
@@ -119,7 +132,7 @@ pub(super) fn export_csv(state: &history_query::PageState, i18n: &I18n) {
             ];
             for r in merged {
                 out.push(vec![
-                    r.process,
+                    r.process.clone(),
                     r.bytes_out.to_string(),
                     r.bytes_in.to_string(),
                     r.count.to_string(),

@@ -104,6 +104,7 @@ pub fn show(ui: &mut egui::Ui, app_name: &str) -> TitleAction {
 fn sys_button(ui: &mut egui::Ui, glyph: &str, danger: bool) -> bool {
     let p = theme::c();
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(BUTTON_W, HEIGHT), Sense::click());
+    let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
     let hovered = resp.hovered();
     let pressed = resp.is_pointer_button_down_on();
     if hovered {
