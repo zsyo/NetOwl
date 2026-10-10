@@ -60,7 +60,9 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   与静默模式互斥,allow/deny 下队列与弹窗一并清空;
   lan.rs:局域网设备发现编排——10s 轮询 ARP(net/lan.rs),条目合并
   lan_devices 表(新 MAC 插入留痕,已知项刷新 last_seen),视图行带
-  online/is_new 合并口径)
+  online/is_new 合并口径);listen_watch.rs:新监听端口提醒——监听
+  快照按 (进程,协议,地址,端口) 会话内基线 diff,启动首个非空
+  快照记基线,之后新出现端口交通知层 toast
 - src/model/ - 共享数据模型(mod.rs:Connection/Protocol/Place 等数据结构;
   city 为 Option<Place>:内网/保留段/未收录 IP 归属未知,地图不绘制,列表
   显示占位;UDP 表行远端以 *:* 占位,ETW 合并后仍无远端的行由 app 层
@@ -190,7 +192,8 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   settings/:设置页(mod.rs:ScrollArea 编排 + section_card/setting_row 行式
   布局[左标签右控件] + locate_log_file;appearance.rs:语言/主题分段切换/
   悬浮球开关;monitor.rs:数据源/保留期/询问/静默模式三态分段
-  [off/allow/deny]/托盘常驻/自启动;logging.rs:日志文件开关/级别/浏览入口);
+  [off/allow/deny]/托盘常驻/自启动/新设备接入提醒/新监听端口提醒;
+  logging.rs:日志文件开关/级别/浏览入口);
   widgets/:公共组件库(header 页头/badge 胶囊徽章/
   segmented 分段选择/toggle 滑动开关/table 统一表头与行底色[列贴列布局
   (Grid spacing.x=0),内容与列缘间距由 CELL_PAD_X 提供,定宽列宽须含
