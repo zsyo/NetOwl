@@ -199,23 +199,28 @@ pub const ROW_H: f32 = 22.0;
 /// 行悬停高亮辅助:跨帧记录实测行高。
 /// 行底色必须画在行内容之前才能垫底(同层内先画者在下,见 ui 层根背景层说明),
 /// 而行高要 end_row 后才确定,故行首用上一帧实测行高判定悬停并垫底;
-/// 行高由行内最高单元格决定,列表稳态下恒定,首帧(未测量)不高亮
+/// 行高由行内最高单元格决定,列表稳态下恒定,首帧(未测量)不高亮。
+/// 斑马纹按调用方传入的绝对行号判定:虚拟化表格(show_rows)里 Grid 的
+/// striped 按可见行重起计数,滚动时条纹会整屏翻转,故斑马纹不交给 Grid
 #[derive(Default)]
 pub struct RowHover {
     row_h: f32,
 }
 
 impl RowHover {
-    /// 行首调用(读行顶之后、本行单元格之前):指针落在本行则垫底色,
-    /// 并在行左缘画 accent 强调竖条(HUD 行悬停标识)
-    pub fn begin(&mut self, ui: &egui::Ui, left: f32, right: f32, top: f32) {
+    /// 行首调用(读行顶之后、本行单元格之前):奇数列垫斑马底色,指针
+    /// 落在本行再垫悬停底色并在行左缘画 accent 强调竖条(HUD 标识)
+    pub fn begin(&mut self, ui: &egui::Ui, left: f32, right: f32, top: f32, idx: usize) {
         if self.row_h <= 0.0 {
             return;
         }
         let rect =
             egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, top + self.row_h));
+        let p = theme::c();
+        if idx % 2 == 1 {
+            ui.painter().rect_filled(rect, 0.0, p.faint);
+        }
         if ui.rect_contains_pointer(rect) {
-            let p = theme::c();
             ui.painter().rect_filled(rect, 0.0, p.hover_bg);
             ui.painter().rect_filled(
                 egui::Rect::from_min_max(

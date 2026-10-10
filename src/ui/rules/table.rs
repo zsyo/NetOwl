@@ -80,7 +80,7 @@ pub(super) fn rules_table(
                 .max(220.0);
             egui::Grid::new("rules_grid")
                 .num_columns(10)
-                .striped(true)
+                .striped(false)
                 .spacing([0.0, widgets::table::ROW_SPACING_Y])
                 .show(ui, |ui| {
                     header_cell(ui, COL_ENABLED, i18n.t("rules-col-enabled"));
@@ -104,7 +104,7 @@ pub(super) fn rules_table(
                     for i in 0..rules.rules.len() {
                         let rule = rules.rules[i].clone();
                         let row_top = ui.cursor().top();
-                        row_hover.begin(ui, table_left, table_right, row_top);
+                        row_hover.begin(ui, table_left, table_right, row_top, i);
                         let mut enabled = rule.enabled;
                         widgets::table::fixed_center_cell(ui, COL_ENABLED, 26.0, |ui| {
                             let toggle = widgets::toggle::toggle_switch(

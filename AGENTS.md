@@ -184,9 +184,14 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   隐藏到托盘同路径,app 层处理 TitleAction);
   connections/:连接页(mod.rs:过滤/搜索编排与表头可排序[header_sort_cell
   整格可点,常驻置灰上下双三角标识可排序,激活列点亮当前方向,占位与状态
-  无关防列宽抖动];rows.rs:行渲染[行悬停高亮 Order::Background 垫底、进程
+  无关防列宽抖动];扁平行列表(分组头/连接行交错,统一 36 行高)+
+  show_rows 虚拟化只布局可见行,斑马纹按绝对行号经 RowHover 绘制
+  [虚拟化下 Grid striped 按可见行重起计数,滚动时条纹会整屏翻转];
+  rows.rs:行渲染[行悬停高亮 Order::Background 垫底、进程
   两行列/协议徽章/rDNS 域名两行列/速率与累计数字列右对齐/规则求值动作
-  徽章];menu.rs:行右键菜单[结束连接=SetTcpEntry DELETE_TCB,仅 TCP 行且
+  徽章];group.rs:分组头行[图标+名称+连接数徽章+组累计,整行可点折叠,
+  预计算 HeaderData];toolbar.rs:视图切换/噪音过滤/分组/协议筛选/搜索
+  [Ctrl+F 聚焦、焦点在框内 Esc 清空];menu.rs:行右键菜单[结束连接=SetTcpEntry DELETE_TCB,仅 TCP 行且
   提权可用,非提权禁用带提示/定位程序/复制远端地址/复制进程路径];
   sort.rs:表头排序);
   settings/:设置页(mod.rs:ScrollArea 编排 + section_card/setting_row 行式

@@ -151,45 +151,60 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         &|k| i18n.t(k),
     );
 
-    egui::ScrollArea::vertical()
-        .auto_shrink(false)
-        .show(ui, |ui| {
+    // 虚拟化:扁平行列表(分组头/连接行交错,统一 36 行高)后
+    // show_rows 只布局可见行——连接数上百时全量 Grid 的帧耗时
+    // 随连接数线性增长(每行含规则求值与十余次文本布局)
+    let mut flat: Vec<FlatRow> = Vec::with_capacity(shown.len() + 8);
+    if *conn_grouped {
+        // 按进程分组:shown 排序后同进程相邻,聚合保持首现顺序;
+        // 组头行点击折叠/展开(状态键 = 进程名,会话态)
+        let mut groups: Vec<(String, Vec<&Connection>)> = Vec::new();
+        for c in &shown {
+            match groups.last_mut() {
+                Some((name, list)) if *name == c.process => list.push(c),
+                _ => groups.push((c.process.clone(), vec![c])),
+            }
+        }
+        for (name, group) in groups {
+            let (up, down) = group
+                .iter()
+                .fold((0u64, 0u64), |a, c| (a.0 + c.bytes_out, a.1 + c.bytes_in));
+            flat.push(FlatRow::Header(group::HeaderData {
+                name: name.clone(),
+                proc_path: group.iter().find_map(|c| c.proc_path.clone()),
+                count: group.len(),
+                bytes_in: down,
+                bytes_out: up,
+            }));
+            if conn_collapsed.contains(&name) {
+                continue;
+            }
+            flat.extend(group.into_iter().map(FlatRow::Conn));
+        }
+    } else {
+        // 进程/远端弹性列长文本 Truncate 逐步展示;列贴列布局,
+        // 内容间隔由单元格水平内边距形成
+        flat.extend(shown.into_iter().map(FlatRow::Conn));
+    }
+    // 行距对齐:show_rows 按全局 item_spacing.y 计算行步进与内容总高,
+    // 而数据 Grid 的实际行距是 ROW_SPACING_Y——不一致会让底部行画到
+    // 声明 rect 之外,滚动范围被反测撑大(与历史页同坑)
+    ui.spacing_mut().item_spacing.y = widgets::table::ROW_SPACING_Y;
+    egui::ScrollArea::vertical().auto_shrink(false).show_rows(
+        ui,
+        CONN_ROW_H,
+        flat.len(),
+        |ui, row_range| {
             let table_left = ui.max_rect().left();
             let table_right = ui.max_rect().right();
             egui::Grid::new("connections_grid")
                 .num_columns(9)
-                .striped(true)
+                .striped(false)
                 .spacing([0.0, widgets::table::ROW_SPACING_Y])
                 .show(ui, |ui| {
-                    if *conn_grouped {
-                        // 按进程分组:shown 排序后同进程相邻,聚合保持首现顺序;
-                        // 组头行点击折叠/展开(状态键 = 进程名,会话态)
-                        let mut groups: Vec<(String, Vec<&Connection>)> = Vec::new();
-                        for c in &shown {
-                            match groups.last_mut() {
-                                Some((name, list)) if *name == c.process => list.push(c),
-                                _ => groups.push((c.process.clone(), vec![c])),
-                            }
-                        }
-                        for (name, group) in groups {
-                            if group::group_header(
-                                ui,
-                                &name,
-                                &group,
-                                i18n,
-                                icon_tex,
-                                *default_icon_tex,
-                                flex_w,
-                                table_left,
-                                table_right,
-                            ) && !conn_collapsed.remove(&name)
-                            {
-                                conn_collapsed.insert(name.clone());
-                            }
-                            if conn_collapsed.contains(&name) {
-                                continue;
-                            }
-                            for conn in group {
+                    for idx in row_range {
+                        match &flat[idx] {
+                            FlatRow::Conn(conn) => {
                                 if rows::conn_row(
                                     ui,
                                     conn,
@@ -204,40 +219,44 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                                     table_right,
                                     flex_w,
                                     elevated,
+                                    idx,
                                 ) {
                                     history.set_process_filter(conn.process.clone());
                                     *nav_request = Some(Page::History);
                                 }
                             }
-                        }
-                    } else {
-                        // 进程/远端弹性列长文本 Truncate 逐步展示;列贴列布局,
-                        // 内容间隔由单元格水平内边距形成
-                        for conn in shown {
-                            if rows::conn_row(
-                                ui,
-                                conn,
-                                i18n,
-                                icon_tex,
-                                *default_icon_tex,
-                                rdns,
-                                conn_rates,
-                                rules,
-                                conn_row_hover,
-                                table_left,
-                                table_right,
-                                flex_w,
-                                elevated,
-                            ) {
-                                history.set_process_filter(conn.process.clone());
-                                *nav_request = Some(Page::History);
+                            FlatRow::Header(data) => {
+                                if group::group_header(
+                                    ui,
+                                    data,
+                                    i18n,
+                                    icon_tex,
+                                    *default_icon_tex,
+                                    flex_w,
+                                    table_left,
+                                    table_right,
+                                    idx,
+                                ) && !conn_collapsed.remove(&data.name)
+                                {
+                                    conn_collapsed.insert(data.name.clone());
+                                }
                             }
                         }
                     }
                 });
-        });
+        },
+    );
     changed
 }
+
+/// 虚拟化扁平行:分组头行或连接行(统一行高,show_rows 只布局可见行)
+enum FlatRow<'a> {
+    Conn(&'a Connection),
+    Header(group::HeaderData),
+}
+
+/// 连接表行内容高(与 show_rows 的行高参数一致;分组头同行高)
+const CONN_ROW_H: f32 = 36.0;
 
 /// 进程/远端两弹性列的单列宽:表格总宽减定宽列均分,窗口过窄时兜底 320
 fn flex_w_of(table_w: f32) -> f32 {

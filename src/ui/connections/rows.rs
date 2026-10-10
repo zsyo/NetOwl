@@ -31,10 +31,11 @@ pub(super) fn conn_row(
     table_right: f32,
     flex_w: f32,
     elevated: bool,
+    idx: usize,
 ) -> bool {
     use super::{C_ACTION_W, C_LOC_W, C_PROTO_W, C_RATE_W, C_TOTAL_W};
     let row_top = ui.cursor().top();
-    conn_row_hover.begin(ui, table_left, table_right, row_top);
+    conn_row_hover.begin(ui, table_left, table_right, row_top, idx);
     // 行整格右键菜单(Sense::click 使行级 hit-test 胜过
     // 行内仅 hover 的文本控件);左键无动作
     let row_rect = egui::Rect::from_min_max(
