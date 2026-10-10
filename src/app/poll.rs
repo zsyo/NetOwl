@@ -64,6 +64,8 @@ impl NetOwlApp {
         self.poll_history();
         self.poll_ask();
         self.poll_temp_rules();
+        // 规则命中计数(1s 快照口径,非渲染帧):供规则页调优参考
+        self.rules.note_hits(&self.conns, &self.rdns);
         // 新监听端口提醒(基线后新出现的监听端口):与 listens 刷新同轮,
         // toast 通知,设置页可关
         if self.config.general.listen_notify {

@@ -40,6 +40,27 @@ impl RuleSet {
             .or(self.fallback.as_ref())
     }
 
+    /// 命中计数累计:对快照内每条连接求值一次,命中的持久规则计数 +1。
+    /// 由 app 层按 1s 采集节流调用(非渲染帧——连接页每帧渲染也会
+    /// evaluate,按帧计数会随重绘节奏虚高)。静默兜底(负基准 id)与
+    /// 会话临时规则(负 id)不计:前者非用户规则,后者是"仅本次"的
+    /// 会话决策,计数无调优意义
+    pub fn note_hits(&mut self, conns: &[Connection], rdns: &crate::net::rdns::Rdns) {
+        for c in conns {
+            let req = MatchReq::from_conn(c, rdns.lookup(c.remote_ip));
+            if let Some(hit) = self.evaluate(&req)
+                && hit.id > 0
+            {
+                *self.hit_counts.entry(hit.id).or_insert(0) += 1;
+            }
+        }
+    }
+
+    /// 规则 id 的会话内命中连接数(未命中过为 0)
+    pub fn hit_count(&self, id: i64) -> u64 {
+        self.hit_counts.get(&id).copied().unwrap_or(0)
+    }
+
     /// 规则命中判定(全部条件均满足才命中;非法网段值永不命中):
     /// 比较基准取预计算缓存,零分配
     pub(super) fn rule_matches(&self, r: &Rule, req: &MatchReq) -> bool {

@@ -130,6 +130,7 @@ impl RuleSet {
             active_profile: profile_id,
             fallback: None,
             sticky_paths: HashMap::new(),
+            hit_counts: HashMap::new(),
             next_temp_id: -1,
         }
     }
@@ -139,6 +140,9 @@ impl RuleSet {
     pub fn switch_profile(&mut self, db: &Db, id: i64) {
         self.active_profile = id;
         self.sticky_paths.clear();
+        // 命中计数按档清零:不同档的规则集无共同基准,旧档计数带到新档
+        // 没有意义
+        self.hit_counts.clear();
         let persisted = Self::load_rules(db, id);
         // 会话临时规则(负 id)必须恒定位于全部持久规则之前:求值按数组序
         // 取首个命中(eval.rs),WFP weight 也按 priority 排名。切档后持久

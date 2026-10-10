@@ -278,6 +278,10 @@ pub struct RuleSet {
     /// 连接被阻断后快照可能抓不到进程行,已展开路径保持,避免
     /// 拦截窗口抖动;规则删除/改进程条件时清理
     sticky_paths: HashMap<i64, std::collections::BTreeSet<String>>,
+    /// 会话内规则命中计数(持久规则 id -> 命中连接数):poll 层按 1s
+    /// 快照对每连接求值一次累计(非渲染帧),服务规则调优;不落库,
+    /// 重启归零,切换配置档清零
+    hit_counts: HashMap<i64, u64>,
     /// 会话内临时规则(询问"仅本次")的下一个负数 id
     next_temp_id: i64,
 }

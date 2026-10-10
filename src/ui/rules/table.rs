@@ -21,6 +21,8 @@ const COL_ACTION: f32 = 64.0;
 const COL_DIRECTION: f32 = 64.0;
 const COL_PROTO: f32 = 64.0;
 const COL_PORT: f32 = 64.0;
+/// 命中数列:会话内命中连接数(poll 层 1s 口径累计,非渲染帧)
+const COL_HITS: f32 = 64.0;
 const COL_OPS: f32 = 128.0;
 
 fn header_cell(ui: &mut egui::Ui, w: f32, text: String) {
@@ -67,11 +69,17 @@ pub(super) fn rules_table(
             // grid 布局器接管,返回当前列宽(上帧值)而非总宽
             let table_w = ui.available_width();
             let flex_w = ((table_w
-                - (COL_ENABLED + COL_ACTION + COL_DIRECTION + COL_PROTO + COL_PORT + COL_OPS))
+                - (COL_ENABLED
+                    + COL_ACTION
+                    + COL_DIRECTION
+                    + COL_PROTO
+                    + COL_PORT
+                    + COL_HITS
+                    + COL_OPS))
                 / 3.0)
                 .max(220.0);
             egui::Grid::new("rules_grid")
-                .num_columns(9)
+                .num_columns(10)
                 .striped(true)
                 .spacing([0.0, widgets::table::ROW_SPACING_Y])
                 .show(ui, |ui| {
@@ -83,6 +91,7 @@ pub(super) fn rules_table(
                     header_cell(ui, flex_w, i18n.t("col-process"));
                     header_cell(ui, flex_w, i18n.t("rules-col-remote"));
                     header_cell(ui, COL_PORT, i18n.t("col-port"));
+                    header_cell(ui, COL_HITS, i18n.t("rules-col-hits"));
                     header_cell(ui, COL_OPS, i18n.t("rules-col-ops"));
                     ui.end_row();
 
@@ -192,6 +201,20 @@ pub(super) fn rules_table(
                                     &labels::port_display(rule.port),
                                     theme::font::BODY,
                                 )),
+                            );
+                        });
+                        // 命中数列:会话内累计命中连接数(0 弱化灰);
+                        // 临时规则与兜底不计,poll 层 1s 口径
+                        let hits = rules.hit_count(rule.id);
+                        widgets::table::fixed_num_cell(ui, COL_HITS, |ui| {
+                            widgets::table::num_cell(
+                                ui,
+                                hits.to_string(),
+                                if hits == 0 {
+                                    theme::c().text_dim
+                                } else {
+                                    theme::c().text
+                                },
                             );
                         });
                         widgets::table::fixed_cell(ui, COL_OPS, 26.0, |ui| {
