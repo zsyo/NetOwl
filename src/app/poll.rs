@@ -79,12 +79,7 @@ impl NetOwlApp {
                         ("process", process),
                         (
                             "endpoint",
-                            format!(
-                                "{} {}:{}",
-                                l.proto.as_str().to_uppercase(),
-                                l.local_addr,
-                                l.local_port
-                            ),
+                            format!("{} {}:{}", l.proto.as_str(), l.local_addr, l.local_port),
                         ),
                     ],
                 );
