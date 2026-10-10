@@ -64,6 +64,8 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   快照按 (进程,协议,地址,端口) 会话内基线 diff,启动首个非空
   快照记基线,之后新出现端口交通知层 toast
 - src/model/ - 共享数据模型(mod.rs:Connection/Protocol/Place 等数据结构;
+  CountUnits 大数字单位制(中文万/亿/万亿/亿亿 vs 国际 K/M/B/T,
+  界面语言默认+设置页覆盖)与 fmt_count 紧凑格式;
   city 为 Option<Place>:内网/保留段/未收录 IP 归属未知,地图不绘制,列表
   显示占位;UDP 表行远端以 *:* 占位,ETW 合并后仍无远端的行由 app 层
   retain 排除:列表/地图不显示,Tracker 不落库)
@@ -201,7 +203,8 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   sort.rs:表头排序);
   settings/:设置页(mod.rs:ScrollArea 编排 + section_card/setting_row 行式
   布局[左标签右控件] + locate_log_file;general.rs:常规卡(语言/主题
-  分段切换/悬浮球开关/托盘图标常驻/开机自启动/全局快捷键自定义捕获;
+  分段切换/数字格式(auto 跟随语言/万·亿/K·M·B)/悬浮球开关/托盘图标常驻/
+  开机自启动/全局快捷键自定义捕获;
   monitor.rs:监控卡
   (数据源/保留期/询问/静默模式三态分段
   [off/allow/deny]/新设备接入提醒/新监听端口提醒;
@@ -232,8 +235,10 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   同连接页];表格口径与连接页一致);
   rules/:规则页(mod.rs:show 入口/PageState/Feedback/WFP 拦截状态行
   [盾形图标]/工具栏档位下拉切换与管理按钮/primary_btn;draft.rs:编辑草稿
-  与 Rule 互转;table.rs:规则表格[toggle 启停、动作/协议徽章、图标操作钮
-  (删除悬停警示),删除后立即结束本帧表格防索引越界];edit.rs:编辑弹窗
+  与 Rule 互转(命中计数 hit_count 原样带回);table.rs:规则表格编排
+  [表头/滚动 Grid/列宽常量,命中列悬停说明口径,操作后结束本帧防索引
+  越界];row.rs:规则表单行渲染[toggle 启停/动作协议徽章/命中数列
+  (fmt_count 双单位制)/上移下移编辑删除];edit.rs:编辑弹窗
   带校验与落库;labels.rs:方向/协议/动作/远端显示文案;import_export.rs:
   当前档规则 JSON 导入导出[rfd 模态];profile_manager.rs 弹窗:档列表带
   规则数/新建/行内重命名/复制档/删除(当前档置灰,确认后连同规则删除),
