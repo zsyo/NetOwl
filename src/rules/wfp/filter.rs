@@ -4,15 +4,16 @@
 use windows::Win32::NetworkManagement::WindowsFilteringPlatform::{
     FWP_ACTION_BLOCK, FWP_ACTION_PERMIT, FWP_BYTE_BLOB, FWP_BYTE_BLOB_TYPE, FWP_CONDITION_VALUE0,
     FWP_CONDITION_VALUE0_0, FWP_MATCH_EQUAL, FWP_MATCH_RANGE, FWP_RANGE_TYPE, FWP_RANGE0,
-    FWP_UINT8, FWP_UINT16, FWP_UINT32, FWP_VALUE0, FWP_VALUE0_0, FWPM_ACTION0,
-    FWPM_CONDITION_ALE_APP_ID, FWPM_CONDITION_IP_PROTOCOL, FWPM_CONDITION_IP_REMOTE_ADDRESS,
-    FWPM_CONDITION_IP_REMOTE_PORT, FWPM_DISPLAY_DATA0, FWPM_FILTER_CONDITION0, FWPM_FILTER0,
-    FWPM_LAYER_ALE_AUTH_CONNECT_V4, FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4, FwpmFilterAdd0,
-    FwpmFreeMemory0, FwpmGetAppIdFromFileName0,
+    FWP_UINT8, FWP_UINT16, FWP_UINT32, FWP_V6_ADDR_AND_MASK, FWP_V6_ADDR_MASK, FWP_VALUE0,
+    FWP_VALUE0_0, FWPM_ACTION0, FWPM_CONDITION_ALE_APP_ID, FWPM_CONDITION_IP_PROTOCOL,
+    FWPM_CONDITION_IP_REMOTE_ADDRESS, FWPM_CONDITION_IP_REMOTE_PORT, FWPM_DISPLAY_DATA0,
+    FWPM_FILTER_CONDITION0, FWPM_FILTER0, FWPM_LAYER_ALE_AUTH_CONNECT_V4,
+    FWPM_LAYER_ALE_AUTH_CONNECT_V6, FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4,
+    FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6, FwpmFilterAdd0, FwpmFreeMemory0, FwpmGetAppIdFromFileName0,
 };
 use windows::core::{GUID, PCWSTR, PWSTR};
 
-use super::{Layer, SUBLAYER_KEY, Spec};
+use super::{Layer, RemoteNet, SUBLAYER_KEY, Spec};
 use windows::Win32::Foundation::HANDLE;
 
 /// 添加一条过滤器并返回其运行时 GUID;app id blob 经
@@ -21,6 +22,7 @@ use windows::Win32::Foundation::HANDLE;
 pub(super) fn add_filter(engine: HANDLE, spec: &Spec) -> Result<GUID, String> {
     let mut blob: *mut FWP_BYTE_BLOB = std::ptr::null_mut();
     let mut range = FWP_RANGE0::default();
+    let mut v6 = FWP_V6_ADDR_AND_MASK::default();
     let mut conditions: Vec<FWPM_FILTER_CONDITION0> = Vec::new();
 
     if let Some(path) = &spec.app_path {
@@ -38,19 +40,40 @@ pub(super) fn add_filter(engine: HANDLE, spec: &Spec) -> Result<GUID, String> {
             },
         });
     }
-    if let Some((lo, hi)) = spec.remote {
-        range.valueLow = uint32(lo);
-        range.valueHigh = uint32(hi);
-        conditions.push(FWPM_FILTER_CONDITION0 {
-            fieldKey: FWPM_CONDITION_IP_REMOTE_ADDRESS,
-            matchType: FWP_MATCH_RANGE,
-            conditionValue: FWP_CONDITION_VALUE0 {
-                r#type: FWP_RANGE_TYPE,
-                Anonymous: FWP_CONDITION_VALUE0_0 {
-                    rangeValue: &mut range,
-                },
-            },
-        });
+    if let Some(remote) = spec.remote {
+        match remote {
+            // v4:主机序 u32 闭区间走 RANGE 条件
+            RemoteNet::V4(lo, hi) => {
+                range.valueLow = uint32(lo);
+                range.valueHigh = uint32(hi);
+                conditions.push(FWPM_FILTER_CONDITION0 {
+                    fieldKey: FWPM_CONDITION_IP_REMOTE_ADDRESS,
+                    matchType: FWP_MATCH_RANGE,
+                    conditionValue: FWP_CONDITION_VALUE0 {
+                        r#type: FWP_RANGE_TYPE,
+                        Anonymous: FWP_CONDITION_VALUE0_0 {
+                            rangeValue: &mut range,
+                        },
+                    },
+                });
+            }
+            // v6:CIDR 前缀走 FWP_V6_ADDR_AND_MASK 等值条件(地址为
+            // 网络序字节,单 IP 即 /128)
+            RemoteNet::V6 { addr, prefix } => {
+                v6.addr = u128::to_be_bytes(addr);
+                v6.prefixLength = prefix;
+                conditions.push(FWPM_FILTER_CONDITION0 {
+                    fieldKey: FWPM_CONDITION_IP_REMOTE_ADDRESS,
+                    matchType: FWP_MATCH_EQUAL,
+                    conditionValue: FWP_CONDITION_VALUE0 {
+                        r#type: FWP_V6_ADDR_MASK,
+                        Anonymous: FWP_CONDITION_VALUE0_0 {
+                            v6AddrMask: &mut v6,
+                        },
+                    },
+                });
+            }
+        }
     }
     if let Some(p) = spec.proto {
         conditions.push(cond_u8(FWPM_CONDITION_IP_PROTOCOL, p));
@@ -71,6 +94,8 @@ pub(super) fn add_filter(engine: HANDLE, spec: &Spec) -> Result<GUID, String> {
         layerKey: match spec.layer {
             Layer::Out => FWPM_LAYER_ALE_AUTH_CONNECT_V4,
             Layer::In => FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4,
+            Layer::Out6 => FWPM_LAYER_ALE_AUTH_CONNECT_V6,
+            Layer::In6 => FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6,
         },
         subLayerKey: SUBLAYER_KEY,
         displayData: FWPM_DISPLAY_DATA0 {

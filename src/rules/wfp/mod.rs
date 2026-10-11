@@ -38,11 +38,36 @@ const SUBLAYER_KEY: GUID = GUID::from_u128(0x8f3a9c2e_5b14_4d7e_9a6c_3e2d1b0f8a5
 /// ERROR_ACCESS_DENIED:非管理员打开引擎
 const OPEN_ACCESS_DENIED: u32 = 5;
 
-/// 过滤器所在 ALE 层:出站连入 vs 入站接受
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+/// 过滤器所在 ALE 层:出站连入 vs 入站接受,按地址族分四层
+/// (v4/v6 层的地址条件类型不通用,同一规则的远端条件按族落到对应层)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Layer {
     Out,
     In,
+    Out6,
+    In6,
+}
+
+impl Layer {
+    /// 是否 IPv6 层
+    pub fn is_v6(self) -> bool {
+        matches!(self, Layer::Out6 | Layer::In6)
+    }
+}
+
+/// 远端网段条件:v4 为主机序 u32 闭区间;v6 为 CIDR 前缀(单 IP 即
+/// /128),与 WFP 的 FWP_V6_ADDR_AND_MASK 条件同语义
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum RemoteNet {
+    V4(u32, u32),
+    V6 { addr: u128, prefix: u8 },
+}
+
+impl RemoteNet {
+    /// 是否 IPv6 条件(层选择用)
+    pub fn is_v6(self) -> bool {
+        matches!(self, RemoteNet::V6 { .. })
+    }
 }
 
 /// 一条 WFP 过滤器的描述;引擎线程按此增删
@@ -55,8 +80,8 @@ pub struct Spec {
     pub block: bool,
     /// 进程映像完整路径(Win32 形式,引擎线程转 app id blob)
     pub app_path: Option<String>,
-    /// 远端网段区间 [lo, hi](主机序);域名展开的单 IP 为 (ip, ip)
-    pub remote: Option<(u32, u32)>,
+    /// 远端网段条件;域名展开的单 IP 为单地址区间/前缀
+    pub remote: Option<RemoteNet>,
     pub proto: Option<u8>,
     pub port: Option<u16>,
 }

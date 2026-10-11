@@ -2,7 +2,8 @@
 //! 展开为命中过的完整路径集合(粘滞缓存)、域名规则按解析 IP 集展开
 //! (一 IP 一过滤器),方向 Any 拆 Out/In 两层。拦截执行引擎见 super::wfp。
 
-use super::{Action, Direction, RemoteKind, Rule, RuleSet};
+use super::wfp::RemoteNet;
+use super::{Action, Direction, NetRange, RemoteKind, Rule, RuleSet};
 use crate::model::{Connection, Protocol};
 
 /// WFP 的 TCP/UDP 协议号(IPPROTO)
@@ -54,20 +55,25 @@ impl RuleSet {
             // 同级);用户规则超过 14 条后钳制到 1,恒高于兜底,避免同 weight
             // 时 WFP 动作未定义
             let weight = (MAX_WEIGHT - 1 - rank.min(MAX_WEIGHT - 2)) as u8;
-            // 远端条件展开为区间列表:网段 -> 单区间,域名 -> 解析 IP 集
-            //(一 IP 一区间),None = 不限远端;列表为空 = 无可用条件,跳过
-            let remotes: Vec<Option<(u32, u32)>> = match r.remote_kind {
+            // 远端条件展开为区间列表:网段 -> 单条件,域名 -> 解析 IP 集
+            //(一 IP 一条件),None = 不限远端;列表为空 = 无可用条件,跳过
+            let remotes: Vec<Option<RemoteNet>> = match r.remote_kind {
                 RemoteKind::Any => vec![None],
-                // 网段区间取预计算缓存;None = 非法值,与求值一致跳过
+                // 网段条件取预计算缓存(v4 区间 / v6 前缀);None = 非法值,
+                // 与求值一致跳过
                 RemoteKind::Ip => match self.eval_cache.get(&r.id).and_then(|m| m.remote_range) {
-                    Some(v) => vec![Some(v)],
+                    Some(NetRange::V4(lo, hi)) => vec![Some(RemoteNet::V4(lo, hi))],
+                    Some(NetRange::V6 { addr, prefix }) => {
+                        vec![Some(RemoteNet::V6 { addr, prefix })]
+                    }
                     None => continue,
                 },
+                // 域名解析首期仅 A 记录(v4),AAAA 随 v6 解析扩展
                 RemoteKind::Domain => match self.domain_ips.get(&r.id) {
                     Some(ips) => ips
                         .iter()
                         .take(DOMAIN_IP_LIMIT)
-                        .map(|ip| Some((*ip, *ip)))
+                        .map(|ip| Some(RemoteNet::V4(*ip, *ip)))
                         .collect(),
                     None => continue,
                 },
@@ -99,11 +105,34 @@ impl RuleSet {
                 Protocol::Udp => PROTO_UDP,
             });
             let port = (r.port != 0).then_some(r.port);
-            let layers: &[super::wfp::Layer] = match r.direction {
-                Direction::Any => &[super::wfp::Layer::Out, super::wfp::Layer::In],
-                Direction::Out => &[super::wfp::Layer::Out],
-                Direction::In => &[super::wfp::Layer::In],
-            };
+            // 层按远端条件的地址族分派:网段/单 IP 条件落到对应族;
+            // 不限远端(进程/端口/协议规则)在 v4/v6 四层同时生效,
+            // 否则另一族流量不受该规则约束
+            let layers: &[super::wfp::Layer] =
+                if remotes.iter().any(|r| r.is_some_and(|n| n.is_v6())) {
+                    match r.direction {
+                        Direction::Any => &[super::wfp::Layer::Out6, super::wfp::Layer::In6],
+                        Direction::Out => &[super::wfp::Layer::Out6],
+                        Direction::In => &[super::wfp::Layer::In6],
+                    }
+                } else if remotes.iter().all(|r| r.is_none()) {
+                    match r.direction {
+                        Direction::Any => &[
+                            super::wfp::Layer::Out,
+                            super::wfp::Layer::In,
+                            super::wfp::Layer::Out6,
+                            super::wfp::Layer::In6,
+                        ],
+                        Direction::Out => &[super::wfp::Layer::Out, super::wfp::Layer::Out6],
+                        Direction::In => &[super::wfp::Layer::In, super::wfp::Layer::In6],
+                    }
+                } else {
+                    match r.direction {
+                        Direction::Any => &[super::wfp::Layer::Out, super::wfp::Layer::In],
+                        Direction::Out => &[super::wfp::Layer::Out],
+                        Direction::In => &[super::wfp::Layer::In],
+                    }
+                };
             for remote in &remotes {
                 for path in &paths {
                     for &layer in layers {

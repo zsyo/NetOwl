@@ -294,12 +294,18 @@ impl NetOwlApp {
             specs.insert(0, item.pending_block_spec());
         }
         // 静默拒绝:兜底全通配阻断(weight 0,低于全部用户规则)+ 自身
-        // 放行(weight 15,防兜底切断 NetOwl 自身连接)。与询问 pending
-        // spec 互斥:deny 下询问关闭,pending 不存在
+        // 放行(weight 15,防兜底切断 NetOwl 自身连接)。不限远端的条件
+        // 在 v4/v6 四层同时铺,任一族流量都不脱管。与询问 pending spec
+        // 互斥:deny 下询问关闭,pending 不存在
         if self.config.general.silent_mode == "deny" && self.collector.kind() == CollectorKind::Real
         {
             // 自身路径启动时缓存一次(进程路径不变),不逐秒系统调用
-            for layer in [wfp::Layer::Out, wfp::Layer::In] {
+            for layer in [
+                wfp::Layer::Out,
+                wfp::Layer::In,
+                wfp::Layer::Out6,
+                wfp::Layer::In6,
+            ] {
                 specs.push(wfp::Spec {
                     layer,
                     weight: rules::WEIGHT_RESERVED_HIGH,

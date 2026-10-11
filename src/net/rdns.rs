@@ -171,20 +171,28 @@ pub fn display(host: &str, port: u16, max_chars: usize) -> String {
 /// 可发起 PTR 查询的地址:排除回环/私网/链路本地等非公网段
 /// (240/4 保留段手工判断,Ipv4Addr::is_reserved 尚未稳定);
 /// 询问弹窗的可询问判定(is_askable)与之同口径共用。
-/// IPv6 一律返回 false:PTR 与 v6 私网判定(ULA/链路本地)随 v6
-/// 适配一并接入,过渡期 v6 连接不反查、不进询问
+/// v6:排除未指定/回环/ULA(fc00::/7)/链路本地/组播;PTR 反查派发
+/// 仍仅覆盖 v4(update 的目标筛选),v6 判定供询问链路使用
 pub(crate) fn is_queryable(ip: &IpAddr) -> bool {
-    let IpAddr::V4(v4) = ip else {
-        return false;
-    };
-    !(v4.is_unspecified()
-        || v4.is_loopback()
-        || v4.is_private()
-        || v4.is_link_local()
-        || v4.is_multicast()
-        || v4.is_broadcast()
-        || v4.is_documentation()
-        || v4.octets()[0] >= 240)
+    match ip {
+        IpAddr::V4(v4) => {
+            !(v4.is_unspecified()
+                || v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_multicast()
+                || v4.is_broadcast()
+                || v4.is_documentation()
+                || v4.octets()[0] >= 240)
+        }
+        IpAddr::V6(v6) => {
+            !(v6.is_unspecified()
+                || v6.is_loopback()
+                || v6.is_unique_local()
+                || v6.is_unicast_link_local()
+                || v6.is_multicast())
+        }
+    }
 }
 
 /// WinSock 初始化(getnameinfo 前置);进程内仅一次。失败返回 false:

@@ -341,7 +341,7 @@ rule-remote-ip = IP range
 rule-remote-domain = Domain
 rules-process-hint = Image name or path suffix, e.g. chrome.exe; empty matches any process
 rules-direction-hint = Approximated by remote port for now; >=49152 counts as inbound
-rules-remote-ip-hint = e.g. 10.0.0.0/8, 142.250. or 1.2.3.4
+rules-remote-ip-hint = e.g. 10.0.0.0/8, 142.250., 1.2.3.4 or 2001:db8::/32
 rules-remote-domain-hint = Domain suffix, e.g. example.com
 rules-remote-domain-desc = Enforced in-kernel via resolved IPs after save; resolution refreshes about every 10 minutes
 rules-port-any-hint = - = any port

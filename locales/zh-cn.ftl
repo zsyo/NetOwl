@@ -342,7 +342,7 @@ rule-remote-ip = IP 网段
 rule-remote-domain = 域名
 rules-process-hint = 映像名或路径结尾,如 chrome.exe;留空匹配任意进程
 rules-direction-hint = 当前按远端端口近似判定,>=49152 视为入站
-rules-remote-ip-hint = 如 10.0.0.0/8、142.250. 或 1.2.3.4
+rules-remote-ip-hint = 如 10.0.0.0/8、142.250.、1.2.3.4 或 2001:db8::/32
 rules-remote-domain-hint = 域名后缀,如 example.com
 rules-remote-domain-desc = 保存后经域名解析展开为 IP 在内核拦截,结果约每 10 分钟刷新
 rules-port-any-hint = - = 任意端口

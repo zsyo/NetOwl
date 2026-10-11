@@ -18,7 +18,7 @@ mod specs;
 mod store;
 
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use crate::model::{Connection, Protocol};
 
@@ -196,32 +196,70 @@ pub fn conn_direction(conn: &Connection) -> Direction {
     }
 }
 
-/// 网段解析:CIDR "10.0.0.0/8"、前缀 "142.250."、单 IP "1.2.3.4";
-/// 返回区间 [min, max],前缀风格与历史页远端筛选一致
-pub fn parse_net(input: &str) -> Option<(u32, u32)> {
-    let s = input.trim();
-    if let Some((addr, mask)) = s.split_once('/') {
-        let ip: Ipv4Addr = addr.trim().parse().ok()?;
-        let prefix: u32 = mask.trim().parse().ok()?;
-        if prefix > 32 {
-            return None;
-        }
-        let v = u32::from(ip);
-        let lo = if prefix == 0 {
+/// 网段区间:求值(WFP 条件展开共用)。v4 为主机序 u32 闭区间;
+/// v6 用 CIDR 前缀(addr + prefix ≤ 128)表达——WFP 的 v6 地址条件
+/// (FWP_V6_ADDR_AND_MASK)同为前缀语义,单 IP 即 /128
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NetRange {
+    V4(u32, u32),
+    V6 { addr: u128, prefix: u8 },
+}
+
+impl NetRange {
+    /// v6 前缀的网络掩码
+    pub fn v6_mask(prefix: u8) -> u128 {
+        if prefix == 0 {
             0
         } else {
-            v & (u32::MAX << (32 - prefix))
-        };
-        let hi = if prefix == 0 {
-            u32::MAX
-        } else {
-            // /32 时 u32::MAX >> 32 位移溢出(debug panic),其数学值为 0,
-            // 即 hi = v(精确 IP);checked_shr 对越界位移返回 None
-            v | u32::MAX.checked_shr(prefix).unwrap_or(0)
-        };
-        Some((lo, hi))
+            u128::MAX << (128 - prefix)
+        }
+    }
+}
+
+/// 网段解析:CIDR "10.0.0.0/8"、"2001:db8::/32"、单 IP(v6 单 IP 即
+/// /128)、前缀 "142.250."(v4 专属风格);返回区间,前缀风格与历史页
+/// 远端筛选一致
+pub fn parse_net(input: &str) -> Option<NetRange> {
+    let s = input.trim();
+    if let Some((addr, mask)) = s.split_once('/') {
+        let prefix: u32 = mask.trim().parse().ok()?;
+        if let Ok(ip) = addr.trim().parse::<Ipv4Addr>() {
+            if prefix > 32 {
+                return None;
+            }
+            let v = u32::from(ip);
+            let lo = if prefix == 0 {
+                0
+            } else {
+                v & (u32::MAX << (32 - prefix))
+            };
+            let hi = if prefix == 0 {
+                u32::MAX
+            } else {
+                // /32 时 u32::MAX >> 32 位移溢出(debug panic),其数学值为 0,
+                // 即 hi = v(精确 IP);checked_shr 对越界位移返回 None
+                v | u32::MAX.checked_shr(prefix).unwrap_or(0)
+            };
+            return Some(NetRange::V4(lo, hi));
+        }
+        let ip: Ipv6Addr = addr.trim().parse().ok()?;
+        if prefix > 128 {
+            return None;
+        }
+        Some(NetRange::V6 {
+            addr: u128::from(ip),
+            prefix: prefix as u8,
+        })
+    } else if let Ok(ip) = s.parse::<Ipv4Addr>() {
+        Some(NetRange::V4(u32::from(ip), u32::from(ip)))
+    } else if let Ok(ip) = s.parse::<Ipv6Addr>() {
+        // v6 无点分前缀风格,单 IP 即精确地址(/128)
+        Some(NetRange::V6 {
+            addr: u128::from(ip),
+            prefix: 128,
+        })
     } else {
-        crate::storage::history_query::parse_ip_prefix(s)
+        crate::storage::history_query::parse_ip_prefix(s).map(|(lo, hi)| NetRange::V4(lo, hi))
     }
 }
 
@@ -253,7 +291,7 @@ struct RuleMatch {
     process_lower: String,
     remote_lower: String,
     /// RemoteKind::Ip 的网段区间;None = 非法值永不命中
-    remote_range: Option<(u32, u32)>,
+    remote_range: Option<NetRange>,
 }
 
 impl RuleMatch {

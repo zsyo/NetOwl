@@ -8,8 +8,8 @@ use std::net::IpAddr;
 use rusqlite::params;
 
 use super::{
-    Action, Direction, MatchReq, RemoteKind, Rule, RuleSet, SILENT_FALLBACK_ID, is_subdomain,
-    process_hit,
+    Action, Direction, MatchReq, NetRange, RemoteKind, Rule, RuleSet, SILENT_FALLBACK_ID,
+    is_subdomain, process_hit,
 };
 use crate::model::Connection;
 
@@ -122,9 +122,16 @@ impl RuleSet {
         }
         match r.remote_kind {
             RemoteKind::Any => {}
-            // IPv6 远端不与 v4 网段区间比较(v6 网段规则随 v6 适配一并生效)
+            // v4 闭区间数值比较;v6 按前缀掩码等值(网段语义)
             RemoteKind::Ip => match (m.remote_range, req.remote_ip) {
-                (Some((lo, hi)), IpAddr::V4(v4)) if u32::from(v4) >= lo && u32::from(v4) <= hi => {}
+                (Some(NetRange::V4(lo, hi)), IpAddr::V4(v4))
+                    if u32::from(v4) >= lo && u32::from(v4) <= hi => {}
+                (Some(NetRange::V6 { addr, prefix }), IpAddr::V6(v6)) => {
+                    let mask = NetRange::v6_mask(prefix);
+                    if u128::from(v6) & mask != addr & mask {
+                        return false;
+                    }
+                }
                 _ => return false,
             },
             RemoteKind::Domain => match (&req.domain_lower, &m.remote_lower) {

@@ -2,7 +2,7 @@
 //! 过滤器与决策结果转规则;含可询问目标与身份键判定。
 
 use std::hash::{Hash, Hasher};
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::IpAddr;
 use std::time::Instant;
 
 use crate::model::Protocol;
@@ -42,7 +42,7 @@ pub struct AskItem {
     pub process: String,
     pub pid: u32,
     pub local_port: u16,
-    pub remote_ip: Ipv4Addr,
+    pub remote_ip: IpAddr,
     pub remote_port: u16,
     pub proto: Protocol,
     /// 首见时的 rDNS 域名(未解析为 None)
@@ -58,15 +58,28 @@ impl AskItem {
         remote_text(&self.remote_ip, self.remote_port, self.domain.as_deref())
     }
 
-    /// 询问等待期间的临时阻断过滤器(精确锁定该连接身份)
+    /// 询问等待期间的临时阻断过滤器(精确锁定该连接身份;单地址条件,
+    /// v4 单 IP 区间 / v6 /128 前缀,层随地址族)
     pub fn pending_block_spec(&self) -> crate::rules::wfp::Spec {
-        let ip = u32::from(self.remote_ip);
+        let (layer, remote) = match self.remote_ip {
+            IpAddr::V4(v4) => (
+                crate::rules::wfp::Layer::Out,
+                crate::rules::wfp::RemoteNet::V4(u32::from(v4), u32::from(v4)),
+            ),
+            IpAddr::V6(v6) => (
+                crate::rules::wfp::Layer::Out6,
+                crate::rules::wfp::RemoteNet::V6 {
+                    addr: u128::from(v6),
+                    prefix: 128,
+                },
+            ),
+        };
         crate::rules::wfp::Spec {
-            layer: crate::rules::wfp::Layer::Out,
+            layer,
             weight: PENDING_WEIGHT,
             block: true,
             app_path: self.proc_path.clone(),
-            remote: Some((ip, ip)),
+            remote: Some(remote),
             proto: Some(proto_num(self.proto)),
             port: Some(self.remote_port),
         }
@@ -126,7 +139,7 @@ fn proto_num(p: Protocol) -> u8 {
 }
 
 /// 远端显示文本(域名优先,回退裸 IP);弹窗与入队日志共用
-pub(super) fn remote_text(ip: &Ipv4Addr, port: u16, domain: Option<&str>) -> String {
+pub(super) fn remote_text(ip: &IpAddr, port: u16, domain: Option<&str>) -> String {
     match domain {
         Some(d) => format!("{d}:{port}"),
         None => format!("{ip}:{port}"),
