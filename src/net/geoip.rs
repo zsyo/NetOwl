@@ -1,6 +1,7 @@
-//! GeoIP 归属定位:构建期生成的 assets/geoip.bin(IPv4 区间 -> 位置表),
-//! 中国(含港澳台)到省级行政区,其余按 ISO 码到国家;私网/保留段无归属。
-//! 数据源与生成见 tools/build_geoip.py;编译期内嵌,首次使用时解析一次。
+//! GeoIP 归属定位:构建期生成的 assets/geoip.bin(IPv4 区间 -> 位置表,
+//! 另有区间 -> 运营商表),中国(含港澳台)到省级行政区,其余按 ISO 码到
+//! 国家;私网/保留段无归属。数据源与生成见 tools/build_geoip.py;编译期
+//! 内嵌,首次使用时解析一次。
 
 use std::net::Ipv4Addr;
 use std::sync::OnceLock;
@@ -22,6 +23,12 @@ struct GeoIp {
     starts: Vec<u32>,
     ends: Vec<u32>,
     locs: Vec<u32>,
+    /// 运营商/机构名表与 ISP 区间(布局同归属区间表,值指向 orgs);
+    /// 数据源无机构信息的段不在表内
+    orgs: Vec<String>,
+    isp_starts: Vec<u32>,
+    isp_ends: Vec<u32>,
+    isp_orgs: Vec<u32>,
 }
 
 static GEOIP: OnceLock<GeoIp> = OnceLock::new();
@@ -38,8 +45,8 @@ impl GeoIp {
             panic!("[GeoIp] geoip.bin 格式错误: magic 不符");
         }
         let version = r.u16();
-        if version != 1 {
-            panic!("[GeoIp] geoip.bin 版本不支持: {version}");
+        if version != 2 {
+            panic!("[GeoIp] geoip.bin 版本不支持: {version}(需以 tools/build_geoip.py 重新生成)");
         }
         let n = r.u32() as usize;
         let mut places = Vec::with_capacity(n);
@@ -54,56 +61,95 @@ impl GeoIp {
                 lat,
             });
         }
-        let n = r.u32() as usize;
-        let mut geo = GeoIp {
+        let n_ranges = r.u32() as usize;
+        let (starts, ends, locs) = Self::parse_ranges(&mut r, n_ranges);
+        // loc 索引直接用于 places[idx]:数据被截断/损坏时越界 panic 会
+        // 落在地图渲染帧里且无法定位到数据问题,解析期校验带上下文报错
+        if let Some(&bad) = locs.iter().find(|&&i| i as usize >= places.len()) {
+            panic!(
+                "[GeoIp] geoip.bin 数据损坏: loc 索引 {bad} 超出位置表 {} 条",
+                places.len()
+            );
+        }
+        let n_orgs = r.u32() as usize;
+        let mut orgs = Vec::with_capacity(n_orgs);
+        for _ in 0..n_orgs {
+            orgs.push(r.str());
+        }
+        let n_isp = r.u32() as usize;
+        let (isp_starts, isp_ends, isp_orgs) = Self::parse_ranges(&mut r, n_isp);
+        if let Some(&bad) = isp_orgs.iter().find(|&&i| i as usize >= orgs.len()) {
+            panic!(
+                "[GeoIp] geoip.bin 数据损坏: org 索引 {bad} 超出机构表 {} 条",
+                orgs.len()
+            );
+        }
+        GeoIp {
             places,
-            starts: Vec::with_capacity(n),
-            ends: Vec::with_capacity(n),
-            locs: Vec::with_capacity(n),
-        };
-        // 区间按 LEB128 delta 编码(起点距上区间末尾,区间长度,loc 索引 zigzag)
+            starts,
+            ends,
+            locs,
+            orgs,
+            isp_starts,
+            isp_ends,
+            isp_orgs,
+        }
+    }
+
+    /// 区间表解析:LEB128 delta(起点距上区间末尾、区间长度、值索引 zigzag)
+    fn parse_ranges(r: &mut Reader, n: usize) -> (Vec<u32>, Vec<u32>, Vec<u32>) {
+        let (mut starts, mut ends, mut vals) = (
+            Vec::with_capacity(n),
+            Vec::with_capacity(n),
+            Vec::with_capacity(n),
+        );
         let mut prev_end = 0u32;
         let mut prev_idx = 0i64;
         for _ in 0..n {
             let start = prev_end.wrapping_add(r.varint() as u32);
             let end = start.wrapping_add(r.varint().wrapping_sub(1) as u32);
             let idx = (prev_idx + r.zigzag()) as u32;
-            geo.starts.push(start);
-            geo.ends.push(end);
-            geo.locs.push(idx);
+            starts.push(start);
+            ends.push(end);
+            vals.push(idx);
             prev_end = end.wrapping_add(1);
             prev_idx = idx as i64;
         }
-        // loc 索引直接用于 places[idx]:数据被截断/损坏时越界 panic 会
-        // 落在地图渲染帧里且无法定位到数据问题,解析期校验带上下文报错
-        if let Some(&bad) = geo.locs.iter().find(|&&i| i as usize >= geo.places.len()) {
-            panic!(
-                "[GeoIp] geoip.bin 数据损坏: loc 索引 {bad} 超出位置表 {} 条",
-                geo.places.len()
-            );
-        }
-        geo
+        (starts, ends, vals)
     }
 
     fn locate(&self, ip: u32) -> Option<u32> {
-        let (mut lo, mut hi) = (0i64, self.starts.len() as i64 - 1);
-        while lo <= hi {
-            let mid = (lo + hi) / 2;
-            if ip < self.starts[mid as usize] {
-                hi = mid - 1;
-            } else if ip > self.ends[mid as usize] {
-                lo = mid + 1;
-            } else {
-                return Some(self.locs[mid as usize]);
-            }
-        }
-        None
+        bisect(&self.starts, &self.ends, &self.locs, ip)
     }
+}
+
+/// 区间表二分(starts 升序且互不重叠);命中返回值索引
+fn bisect(starts: &[u32], ends: &[u32], vals: &[u32], ip: u32) -> Option<u32> {
+    let (mut lo, mut hi) = (0i64, starts.len() as i64 - 1);
+    while lo <= hi {
+        let mid = (lo + hi) / 2;
+        if ip < starts[mid as usize] {
+            hi = mid - 1;
+        } else if ip > ends[mid as usize] {
+            lo = mid + 1;
+        } else {
+            return Some(vals[mid as usize]);
+        }
+    }
+    None
 }
 
 /// 远端 IP 的归属位置索引;私网/保留段/未收录返回 None
 pub fn locate(ip: Ipv4Addr) -> Option<u32> {
     table().locate(ip.to_bits())
+}
+
+/// 远端 IP 的运营商/机构名(数据源机构字段原文直显,国内多为"电信/
+/// 联通/移动"等,国外为机构注册名);该段无机构信息时返回 None
+pub fn locate_isp(ip: Ipv4Addr) -> Option<&'static str> {
+    let t = table();
+    let idx = bisect(&t.isp_starts, &t.isp_ends, &t.isp_orgs, ip.to_bits())?;
+    t.orgs.get(idx as usize).map(String::as_str)
 }
 
 /// 归属地的地图坐标(经度,纬度)

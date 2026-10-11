@@ -13,11 +13,18 @@
 # 否则回退国家级;私网/保留段无归属。显示名双语内嵌:中国城市 zh=市名,
 # en=GeoNames 最近邻英文名(未命中则同中文);外国城市 zh/en 均为 GeoNames 英文名。
 #
-# 输出格式(NWGI v1):
+# 输出格式(NWGI v2):
 #   magic "NWGI" | u16 version | u32 loc_count
 #   locs[]: u8 zh_len + zh | u8 en_len + en | f32 lon | f32 lat
 #   u32 range_count
 #   ranges[](按 start_ip 升序):LEB128 距上区间末尾距离 | 区间长度 | zigzag(loc_idx delta)
+#   u32 org_count
+#   orgs[]: u8 len + utf-8(运营商/机构名,单语言直显)
+#   u32 isp_range_count
+#   isp_ranges[](按 start_ip 升序):LEB128 同款(delta | 长度 | zigzag(org_idx delta))
+#
+# ISP 与城市边界独立:org 变化打断合并,同一城市不同运营商各成区间;
+# 机构字段为 "0"/空串的段(多为国外)不进 ISP 区间表,查询返回空。
 
 import json
 import struct
@@ -31,7 +38,7 @@ CACHE = Path(__file__).parent / "cache"
 OUT = Path(__file__).parent.parent / "assets" / "geoip.bin"
 
 MAGIC = b"NWGI"
-VERSION = 1
+VERSION = 2
 
 DATAV_BASE = "https://geo.datav.aliyun.com/areas_v3/bound/{}_full.json"
 GEONAMES_URL = "http://download.geonames.org/export/dump/cities15000.zip"
@@ -219,6 +226,9 @@ def main():
     places = []          # [(zh, en, lon, lat)]
     place_index = {}     # 键 -> 位置索引(去重)
     ranges = []          # [(start, end, loc_idx)]
+    orgs = []            # 运营商/机构名表(去重)
+    org_index = {}       # 名 -> org 索引
+    isp_ranges = []      # [(start, end, org_idx)]
     stats = Counter()    # 归属粒度统计
 
     def place(key, zh, en, lon, lat):
@@ -234,7 +244,7 @@ def main():
         return place(("nat", "CN"), nat[0], nat[1], nat[2], nat[3])
 
     for sip, eip, region in records:
-        country, province, city, _org, iso = (region.split("|") + ["0"] * 5)[:5]
+        country, province, city, org, iso = (region.split("|") + ["0"] * 5)[:5]
         if country == "中国":
             prov_key = norm_region(province) if province != "0" else None
             city_key = norm_region(city) if city != "0" else None
@@ -266,6 +276,13 @@ def main():
             stats["跳过|保留段"] += 1
             continue
         ranges.append((sip, eip, loc))
+        # 运营商/机构:占位 "0"/空串表示数据源无此信息,不进 ISP 区间表
+        org = org.strip()
+        if org and org != "0":
+            if org not in org_index:
+                org_index[org] = len(orgs)
+                orgs.append(org[:255])
+            isp_ranges.append((sip, eip, org_index[org]))
 
     ranges.sort()
     # 合并相邻且归属相同的区间(xdb 索引段之间不重叠)
@@ -275,6 +292,14 @@ def main():
             merged[-1] = (merged[-1][0], e, loc)
         else:
             merged.append((s, e, loc))
+
+    isp_ranges.sort()
+    isp_merged = []
+    for s, e, o in isp_ranges:
+        if isp_merged and isp_merged[-1][1] + 1 == s and isp_merged[-1][2] == o:
+            isp_merged[-1] = (isp_merged[-1][0], e, o)
+        else:
+            isp_merged.append((s, e, o))
 
     # 序列化
     buf = bytearray()
@@ -299,12 +324,32 @@ def main():
         prev_end = (e + 1) & 0xFFFFFFFF
         prev_idx = loc
 
+    buf += struct.pack("<I", len(orgs))
+    for org in orgs:
+        ob = org.encode("utf-8")
+        buf.append(len(ob))
+        buf += ob
+    buf += struct.pack("<I", len(isp_merged))
+    prev_end = 0
+    prev_idx = 0
+    for s, e, o in isp_merged:
+        write_varint(buf, s - prev_end)
+        write_varint(buf, e - s + 1)
+        write_varint(buf, zigzag(o - prev_idx))
+        prev_end = (e + 1) & 0xFFFFFFFF
+        prev_idx = o
+
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_bytes(buf)
 
     print(f"places: {len(places)}")
     print(f"ranges: {len(records)} -> 合并 {len(merged)}")
+    print(f"isp: orgs {len(orgs)},ranges {len(isp_ranges)} -> 合并 {len(isp_merged)}")
     print(f"output: {OUT} {len(buf)} bytes")
+    print("运营商分布:")
+    org_counter = Counter(o for _, _, o in isp_ranges)
+    for name, cnt in sorted(((orgs[i], c) for i, c in org_counter.items()), key=lambda kv: -kv[1])[:10]:
+        print(f"  {name}: {cnt} 段")
     print("归属粒度:")
     for key, cnt in stats.most_common(20):
         print(f"  {key}: {cnt}")
