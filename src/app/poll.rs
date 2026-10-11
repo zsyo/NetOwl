@@ -4,7 +4,7 @@
 //! 全部按 1s 节流,高帧率重绘帧内跳过。
 
 use std::collections::HashSet;
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -96,7 +96,7 @@ impl NetOwlApp {
     /// 启动定位窗口内的首个结果把地图瞬跳到本机中心最大缩放(默认视图)
     pub(super) fn poll_local_ip(&mut self, ctx: &egui::Context) {
         if let Some((ip, source)) = self.local_probe.poll() {
-            let place = geoip::locate(ip).map(Place::Geo);
+            let place = geoip::locate(IpAddr::V4(ip)).map(Place::Geo);
             if place != self.local_place {
                 self.local_place = place;
                 if place.is_some() {
@@ -207,8 +207,11 @@ impl NetOwlApp {
         let mut wanted: HashSet<Ipv4Addr> = self
             .conns
             .iter()
-            .map(|c| c.remote_ip)
-            .filter(rdns::is_queryable)
+            .filter_map(|c| match c.remote_ip {
+                // 质量探测(ICMP/TCP 计时)暂为 IPv4,v6 随 v6 适配接入
+                IpAddr::V4(v4) if rdns::is_queryable(&c.remote_ip) => Some(v4),
+                _ => None,
+            })
             .collect();
         for ip in &wanted {
             self.quality.enqueue(*ip, None);

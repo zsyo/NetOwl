@@ -24,7 +24,7 @@ pub mod lan;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 
@@ -181,7 +181,7 @@ pub struct NetOwlApp {
     /// UDP 行最近已知远端缓存:表快照无远端,活跃流回填仅在流活跃的轮次
     /// 生效,流空闲收割后行会回落 *:*;缓存 socket 最后通信的远端,
     /// socket 存活期间持续展示(键 = (pid, 本地端口),表行消失时清理)
-    udp_last_remote: HashMap<(u32, u16), (Ipv4Addr, u16)>,
+    udp_last_remote: HashMap<(u32, u16), (IpAddr, u16)>,
     /// 连接列表表头排序状态(会话内,不持久化)
     conn_sort: ui::ConnSortState,
     /// 连接页搜索词(进程/远端/域名包含过滤,会话内,不持久化)

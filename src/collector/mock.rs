@@ -2,7 +2,7 @@
 //! 供演示与测试(设置页可切换数据源)。
 
 use std::collections::HashMap;
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::collector::{Collector, CollectorKind};
@@ -102,19 +102,39 @@ impl MockCollector {
     }
 
     fn spawn(&mut self) {
-        let idx = self.rng.range(CITIES.len() as u64) as usize;
-        let city = &CITIES[idx];
-        let prefix = CITY_PREFIX
-            .iter()
-            .find(|(key, _)| *key == city.key)
-            .map(|(_, p)| *p)
-            .expect("CITY_PREFIX 覆盖了全部城市");
-        let ip = Ipv4Addr::new(
-            prefix,
-            (self.rng.range(256)) as u8,
-            (self.rng.range(256)) as u8,
-            (1 + self.rng.range(254)) as u8,
-        );
+        // 约六分之一为 IPv6 模拟行(2001:db8::/32 文档前缀,演示数据不出
+        // 真实 v6 地址):归属未知占位(地图不绘制),验证列表/过滤/排序
+        // 对 v6 的兼容
+        let (remote_ip, city) = if self.rng.chance(15) {
+            (
+                IpAddr::V6(Ipv6Addr::new(
+                    0x2001,
+                    0xdb8,
+                    self.rng.range(0x10000) as u16,
+                    0,
+                    0,
+                    0,
+                    0,
+                    1 + self.rng.range(0xffff) as u16,
+                )),
+                None,
+            )
+        } else {
+            let idx = self.rng.range(CITIES.len() as u64) as usize;
+            let city = &CITIES[idx];
+            let prefix = CITY_PREFIX
+                .iter()
+                .find(|(key, _)| *key == city.key)
+                .map(|(_, p)| *p)
+                .expect("CITY_PREFIX 覆盖了全部城市");
+            let ip = Ipv4Addr::new(
+                prefix,
+                (self.rng.range(256)) as u8,
+                (self.rng.range(256)) as u8,
+                (1 + self.rng.range(254)) as u8,
+            );
+            (IpAddr::V4(ip), Some(Place::City(city.key)))
+        };
         let port = match self.rng.range(10) {
             0..=5 => 443,
             6 => 80,
@@ -139,11 +159,11 @@ impl MockCollector {
                 } else {
                     Protocol::Udp
                 },
-                local_addr: std::net::Ipv4Addr::new(192, 168, 1, 100),
+                local_addr: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)),
                 local_port: (1024 + self.rng.range(60000)) as u16,
-                remote_ip: ip,
+                remote_ip,
                 remote_port: port,
-                city: Some(Place::City(city.key)),
+                city,
                 initiated_out: if self.rng.chance(85) {
                     Some(self.rng.chance(80))
                 } else {
@@ -190,7 +210,15 @@ impl Collector for MockCollector {
                 process: "System".into(),
                 proc_path: None,
                 proto: Protocol::Udp,
-                local_addr: Ipv4Addr::LOCALHOST,
+                local_addr: IpAddr::V4(Ipv4Addr::LOCALHOST),
+                local_port: 5353,
+            },
+            ListenEntry {
+                pid: 4,
+                process: "System".into(),
+                proc_path: None,
+                proto: Protocol::Udp,
+                local_addr: IpAddr::V6(Ipv6Addr::UNSPECIFIED),
                 local_port: 5353,
             },
             ListenEntry {
@@ -198,7 +226,7 @@ impl Collector for MockCollector {
                 process: "mockd.exe".into(),
                 proc_path: Some(r"C:\\Program Files\\mockd\\mockd.exe".into()),
                 proto: Protocol::Tcp,
-                local_addr: Ipv4Addr::UNSPECIFIED,
+                local_addr: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
                 local_port: 8443,
             },
         ]

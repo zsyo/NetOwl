@@ -3,7 +3,7 @@
 //! 国家;私网/保留段无归属。数据源与生成见 tools/build_geoip.py;编译期
 //! 内嵌,首次使用时解析一次。
 
-use std::net::Ipv4Addr;
+use std::net::IpAddr;
 use std::sync::OnceLock;
 
 use crate::i18n::I18n;
@@ -139,16 +139,24 @@ fn bisect(starts: &[u32], ends: &[u32], vals: &[u32], ip: u32) -> Option<u32> {
     None
 }
 
-/// 远端 IP 的归属位置索引;私网/保留段/未收录返回 None
-pub fn locate(ip: Ipv4Addr) -> Option<u32> {
-    table().locate(ip.to_bits())
+/// 远端 IP 的归属位置索引;私网/保留段/未收录返回 None。
+/// 仅覆盖 IPv4(区间表为 u32),IPv6 归属随 v6 数据源一并接入
+pub fn locate(ip: IpAddr) -> Option<u32> {
+    let IpAddr::V4(v4) = ip else {
+        return None;
+    };
+    table().locate(v4.to_bits())
 }
 
 /// 远端 IP 的运营商/机构名(数据源机构字段原文直显,国内多为"电信/
-/// 联通/移动"等,国外为机构注册名);该段无机构信息时返回 None
-pub fn locate_isp(ip: Ipv4Addr) -> Option<&'static str> {
+/// 联通/移动"等,国外为机构注册名);该段无机构信息时返回 None。
+/// 仅覆盖 IPv4,IPv6 随 v6 数据源一并接入
+pub fn locate_isp(ip: IpAddr) -> Option<&'static str> {
+    let IpAddr::V4(v4) = ip else {
+        return None;
+    };
     let t = table();
-    let idx = bisect(&t.isp_starts, &t.isp_ends, &t.isp_orgs, ip.to_bits())?;
+    let idx = bisect(&t.isp_starts, &t.isp_ends, &t.isp_orgs, v4.to_bits())?;
     t.orgs.get(idx as usize).map(String::as_str)
 }
 

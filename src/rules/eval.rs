@@ -3,6 +3,7 @@
 //! 预计算(见 RuleMatch),求值路径零分配。
 
 use std::collections::HashMap;
+use std::net::IpAddr;
 
 use rusqlite::params;
 
@@ -121,8 +122,9 @@ impl RuleSet {
         }
         match r.remote_kind {
             RemoteKind::Any => {}
-            RemoteKind::Ip => match m.remote_range {
-                Some((lo, hi)) if req.remote_ip >= lo && req.remote_ip <= hi => {}
+            // IPv6 远端不与 v4 网段区间比较(v6 网段规则随 v6 适配一并生效)
+            RemoteKind::Ip => match (m.remote_range, req.remote_ip) {
+                (Some((lo, hi)), IpAddr::V4(v4)) if u32::from(v4) >= lo && u32::from(v4) <= hi => {}
                 _ => return false,
             },
             RemoteKind::Domain => match (&req.domain_lower, &m.remote_lower) {

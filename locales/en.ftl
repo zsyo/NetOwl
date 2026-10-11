@@ -99,6 +99,7 @@ conn-action-allow = Allow
 conn-action-block = Block
 menu-kill = Close connection
 menu-kill-need-admin = Run as administrator to close connections
+menu-kill-v6 = Killing IPv6 connections is not supported
 menu-locate = Reveal program
 menu-copy-remote = Copy remote address
 menu-copy-path = Copy process path

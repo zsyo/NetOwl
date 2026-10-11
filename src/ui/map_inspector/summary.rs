@@ -34,7 +34,7 @@ pub(super) fn view(
     let visible: Vec<&Connection> = conns.iter().filter(|c| conn_visible(config, c)).collect();
     let procs: std::collections::HashSet<&str> =
         visible.iter().map(|c| c.process.as_str()).collect();
-    let remotes: std::collections::HashSet<std::net::Ipv4Addr> =
+    let remotes: std::collections::HashSet<std::net::IpAddr> =
         visible.iter().map(|c| c.remote_ip).collect();
     ui.label(theme::dim_text(
         &i18n.t_with_args(

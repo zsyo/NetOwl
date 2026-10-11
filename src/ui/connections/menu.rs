@@ -12,14 +12,19 @@ use crate::ui::{theme, widgets};
 /// 行右键菜单;返回"查看历史记录"是否被点击(跳转由调用方执行)
 pub(super) fn conn_menu(ui: &mut egui::Ui, conn: &Connection, elevated: bool, i18n: &I18n) -> bool {
     if conn.proto == Protocol::Tcp {
+        // 强制关闭走 SetTcpEntry(MIB_TCPROW),内核无 IPv6 等价入口,
+        // v6 行禁用并提示
+        let is_v4 = conn.local_addr.is_ipv4() && conn.remote_ip.is_ipv4();
         let kill = ui.add_enabled(
-            elevated,
+            elevated && is_v4,
             egui::Button::new(RichText::new(i18n.t("menu-kill")).size(theme::font::BODY)),
         );
-        let kill = if elevated {
-            kill
-        } else {
+        let kill = if !elevated {
             kill.on_disabled_hover_text(i18n.t("menu-kill-need-admin"))
+        } else if !is_v4 {
+            kill.on_disabled_hover_text(i18n.t("menu-kill-v6"))
+        } else {
+            kill
         };
         if kill.clicked() {
             match collector::close_tcp_connection(conn) {

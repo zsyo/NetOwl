@@ -21,6 +21,7 @@ fn csv_field(s: &str) -> String {
 /// 位置列文本(与页面 location_cell 同口径):GeoIP 反查 + 运营商后缀,
 /// 未知占位
 fn location_text(i18n: &I18n, ip: std::net::Ipv4Addr) -> String {
+    let ip = std::net::IpAddr::V4(ip);
     let mut text = match geoip::locate(ip).map(Place::Geo) {
         Some(place) => geoip::place_label(place, i18n),
         None => i18n.t("conn-loc-unknown"),

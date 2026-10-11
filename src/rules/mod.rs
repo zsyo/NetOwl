@@ -18,7 +18,7 @@ mod specs;
 mod store;
 
 use std::collections::HashMap;
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
 
 use crate::model::{Connection, Protocol};
 
@@ -116,8 +116,10 @@ pub struct Rule {
 impl Rule {
     /// 构造持久阻断规则(地图面板一键阻断):`remote` 传 None 阻断整个
     /// 进程,传目标 IP 只阻断该进程到此远端(不限端口);方向/协议任意,
-    /// process 填映像名(规则语义:映像名或路径结尾)
-    pub fn block(process: &str, remote: Option<Ipv4Addr>) -> Rule {
+    /// process 填映像名(规则语义:映像名或路径结尾)。
+    /// IPv6 目标:规则值正常落库与显示,网段求值与 WFP 翻译随 v6 适配
+    /// 一并生效
+    pub fn block(process: &str, remote: Option<IpAddr>) -> Rule {
         Rule {
             id: 0,
             name: match remote {
@@ -140,7 +142,7 @@ impl Rule {
 
     /// 构造持久放行规则(静默拒绝兜底的撤销 = 为目标建允许规则覆盖):
     /// 条件构造与 [`Rule::block`] 完全一致,仅动作相反
-    pub fn permit(process: &str, remote: Option<Ipv4Addr>) -> Rule {
+    pub fn permit(process: &str, remote: Option<IpAddr>) -> Rule {
         let mut rule = Rule::block(process, remote);
         rule.action = Action::Allow;
         rule
@@ -157,7 +159,7 @@ pub struct MatchReq {
     /// rDNS 域名小写(未解析/无 PTR 为 None)
     pub domain_lower: Option<String>,
     pub proto: Protocol,
-    pub remote_ip: u32,
+    pub remote_ip: IpAddr,
     pub remote_port: u16,
     /// 本地端口(临时规则的连接级精确匹配用)
     pub local_port: u16,
@@ -171,7 +173,7 @@ impl MatchReq {
             proc_path_lower: conn.proc_path.as_deref().map(str::to_lowercase),
             domain_lower: domain.map(str::to_lowercase),
             proto: conn.proto,
-            remote_ip: u32::from(conn.remote_ip),
+            remote_ip: conn.remote_ip,
             remote_port: conn.remote_port,
             local_port: conn.local_port,
             direction: conn_direction(conn),

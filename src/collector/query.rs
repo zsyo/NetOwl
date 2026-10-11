@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use windows::Wdk::System::SystemInformation::{NtQuerySystemInformation, SystemProcessInformation};
 use windows::Win32::Foundation::{
@@ -11,11 +11,11 @@ use windows::Win32::Foundation::{
 };
 use windows::Win32::NetworkManagement::IpHelper::{
     GetExtendedTcpTable, GetExtendedUdpTable, MIB_TCP_STATE_DELETE_TCB, MIB_TCP_STATE_LAST_ACK,
-    MIB_TCP_STATE_LISTEN, MIB_TCP_STATE_SYN_SENT, MIB_TCPROW_LH, MIB_TCPROW_LH_0,
-    MIB_TCPTABLE_OWNER_PID, MIB_UDPTABLE_OWNER_PID, SetTcpEntry, TCP_TABLE_OWNER_PID_ALL,
-    UDP_TABLE_OWNER_PID,
+    MIB_TCP_STATE_LISTEN, MIB_TCP_STATE_SYN_SENT, MIB_TCP6TABLE_OWNER_PID, MIB_TCPROW_LH,
+    MIB_TCPROW_LH_0, MIB_TCPTABLE_OWNER_PID, MIB_UDP6TABLE_OWNER_PID, MIB_UDPTABLE_OWNER_PID,
+    SetTcpEntry, TCP_TABLE_OWNER_PID_ALL, UDP_TABLE_OWNER_PID,
 };
-use windows::Win32::Networking::WinSock::AF_INET;
+use windows::Win32::Networking::WinSock::{AF_INET, AF_INET6};
 use windows::Win32::System::Threading::{
     OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
@@ -32,13 +32,13 @@ const STATE_ACTIVE_MAX: u32 = MIB_TCP_STATE_LAST_ACK.0 as u32;
 const QUERY_RETRIES: usize = 3;
 
 /// 连接身份:四元组 + 归属进程;快照间据此识别同一连接。
-/// 地址为网络字节序原始值,端口已转主机序;UDP 无远端以 0 填充。
+/// 地址按 IP 族自识别,端口已转主机序;UDP 无远端以零地址填充。
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct ConnKey {
     pub proto: Protocol,
-    pub local_addr: u32,
+    pub local_addr: IpAddr,
     pub local_port: u16,
-    pub remote_addr: u32,
+    pub remote_addr: IpAddr,
     pub remote_port: u16,
     pub pid: u32,
 }
@@ -50,29 +50,25 @@ impl ConnKey {
         self.hash(&mut h);
         h.finish()
     }
-
-    /// 远端 IPv4 地址(网络字节序原始值转主机序)
-    pub fn remote_ip(&self) -> Ipv4Addr {
-        Ipv4Addr::from(u32::from_be(self.remote_addr))
-    }
-
-    /// 本地 IPv4 地址(网络字节序原始值转主机序)
-    pub fn local_addr_ipv4(&self) -> Ipv4Addr {
-        Ipv4Addr::from(u32::from_be(self.local_addr))
-    }
 }
 
 /// 请求内核删除一条 TCP 连接(状态置 DELETE_TCB,等价强制关闭);
 /// 需要管理员权限,非提权返回拒绝访问。地址/端口按 MIB_TCPROW 的
-/// 网络序约定重建:地址为内存字节序原始值,端口取 htons 值置于低 16 位
+/// 网络序约定重建:地址为内存字节序原始值,端口取 htons 值置于低 16 位。
+/// 仅 IPv4:内核无 SetTcpEntry 的 IPv6 等价入口,调用方(UI 右键菜单)
+/// 对 v6 行禁用,此处防御性返回错误
 pub fn close_tcp_connection(conn: &Connection) -> Result<(), String> {
+    let (local, remote) = match (conn.local_addr, conn.remote_ip) {
+        (IpAddr::V4(l), IpAddr::V4(r)) => (l, r),
+        _ => return Err("IPv6 连接不支持强制关闭".to_owned()),
+    };
     let row = MIB_TCPROW_LH {
         Anonymous: MIB_TCPROW_LH_0 {
             State: MIB_TCP_STATE_DELETE_TCB,
         },
-        dwLocalAddr: u32::from_ne_bytes(conn.local_addr.octets()),
+        dwLocalAddr: u32::from_ne_bytes(local.octets()),
         dwLocalPort: u32::from(conn.local_port.to_be()),
-        dwRemoteAddr: u32::from_ne_bytes(conn.remote_ip.octets()),
+        dwRemoteAddr: u32::from_ne_bytes(remote.octets()),
         dwRemotePort: u32::from(conn.remote_port.to_be()),
     };
     let err = unsafe { SetTcpEntry(&row) };
@@ -102,16 +98,57 @@ pub fn query_tcp_split() -> Result<(Vec<ConnKey>, Vec<ConnKey>), String> {
         // 导致与 ETW 流的合并键永远对不上
         let key = ConnKey {
             proto: Protocol::Tcp,
-            local_addr: row.dwLocalAddr,
+            local_addr: IpAddr::V4(Ipv4Addr::from(u32::from_be(row.dwLocalAddr))),
             local_port: u16::from_be(row.dwLocalPort as u16),
-            remote_addr: row.dwRemoteAddr,
+            remote_addr: IpAddr::V4(Ipv4Addr::from(u32::from_be(row.dwRemoteAddr))),
             remote_port: u16::from_be(row.dwRemotePort as u16),
             pid: row.dwOwningPid,
         };
         if row.dwState == MIB_TCP_STATE_LISTEN.0 as u32 {
             // 监听行无对端(远端字段为零值)
             listens.push(ConnKey {
-                remote_addr: 0,
+                remote_addr: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+                remote_port: 0,
+                ..key
+            });
+        } else if (STATE_ACTIVE_MIN..=STATE_ACTIVE_MAX).contains(&row.dwState) {
+            conns.push(key);
+        }
+    }
+    Ok((conns, listens))
+}
+
+/// TCP 表 IPv6 查询,分流与端口解析同 v4;地址 16 字节网络序直转,
+/// ScopeId 忽略(链接本地地址显示不带 zone 后缀,连接身份不区分同端
+/// 多网卡——快照场景可接受)
+pub fn query_tcp6_split() -> Result<(Vec<ConnKey>, Vec<ConnKey>), String> {
+    let buf = query_table(|p, size| unsafe {
+        GetExtendedTcpTable(
+            p,
+            size,
+            false,
+            AF_INET6.0 as u32,
+            TCP_TABLE_OWNER_PID_ALL,
+            0,
+        )
+    })?;
+    let table = unsafe { &*(buf.as_ptr() as *const MIB_TCP6TABLE_OWNER_PID) };
+    let rows =
+        unsafe { std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize) };
+    let mut conns = Vec::new();
+    let mut listens = Vec::new();
+    for row in rows {
+        let key = ConnKey {
+            proto: Protocol::Tcp,
+            local_addr: IpAddr::V6(Ipv6Addr::from(row.ucLocalAddr)),
+            local_port: u16::from_be(row.dwLocalPort as u16),
+            remote_addr: IpAddr::V6(Ipv6Addr::from(row.ucRemoteAddr)),
+            remote_port: u16::from_be(row.dwRemotePort as u16),
+            pid: row.dwOwningPid,
+        };
+        if row.dwState == MIB_TCP_STATE_LISTEN.0 as u32 {
+            listens.push(ConnKey {
+                remote_addr: IpAddr::V6(Ipv6Addr::UNSPECIFIED),
                 remote_port: 0,
                 ..key
             });
@@ -134,9 +171,31 @@ pub fn query_udp() -> Result<Vec<ConnKey>, String> {
     for row in rows {
         out.push(ConnKey {
             proto: Protocol::Udp,
-            local_addr: row.dwLocalAddr,
+            local_addr: IpAddr::V4(Ipv4Addr::from(u32::from_be(row.dwLocalAddr))),
             local_port: u16::from_be(row.dwLocalPort as u16),
-            remote_addr: 0,
+            remote_addr: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+            remote_port: 0,
+            pid: row.dwOwningPid,
+        });
+    }
+    Ok(out)
+}
+
+/// UDP 表 IPv6 查询,端口解析同 query_udp 的 v4 口径
+pub fn query_udp6() -> Result<Vec<ConnKey>, String> {
+    let buf = query_table(|p, size| unsafe {
+        GetExtendedUdpTable(p, size, false, AF_INET6.0 as u32, UDP_TABLE_OWNER_PID, 0)
+    })?;
+    let table = unsafe { &*(buf.as_ptr() as *const MIB_UDP6TABLE_OWNER_PID) };
+    let rows =
+        unsafe { std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize) };
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(ConnKey {
+            proto: Protocol::Udp,
+            local_addr: IpAddr::V6(Ipv6Addr::from(row.ucLocalAddr)),
+            local_port: u16::from_be(row.dwLocalPort as u16),
+            remote_addr: IpAddr::V6(Ipv6Addr::UNSPECIFIED),
             remote_port: 0,
             pid: row.dwOwningPid,
         });

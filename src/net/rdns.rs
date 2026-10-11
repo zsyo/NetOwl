@@ -6,7 +6,7 @@
 //! 出错)分别按 TTL 缓存,到期后对仍活跃的连接重查。
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
@@ -97,8 +97,11 @@ impl Rdns {
         let now = Instant::now();
         let wanted: HashSet<Ipv4Addr> = conns
             .iter()
-            .map(|c| c.remote_ip)
-            .filter(is_queryable)
+            .filter_map(|c| match c.remote_ip {
+                // 反查覆盖面与 is_queryable 一致,暂为 IPv4(v6 随 v6 适配接入)
+                IpAddr::V4(v4) if is_queryable(&c.remote_ip) => Some(v4),
+                _ => None,
+            })
             .collect();
 
         // 连接已消失的不再派发;不活跃且过期的缓存释放,防止无限积累
@@ -144,9 +147,13 @@ impl Rdns {
         }
     }
 
-    /// 已知域名;未查/无 PTR 返回 None(调用方回退裸 IP 显示)
-    pub fn lookup(&self, ip: Ipv4Addr) -> Option<&str> {
-        self.cache.get(&ip).and_then(|e| e.name.as_deref())
+    /// 已知域名;未查/无 PTR 返回 None(调用方回退裸 IP 显示)。
+    /// 仅覆盖 IPv4,IPv6 随 v6 反查适配一并接入
+    pub fn lookup(&self, ip: IpAddr) -> Option<&str> {
+        let IpAddr::V4(v4) = ip else {
+            return None;
+        };
+        self.cache.get(&v4).and_then(|e| e.name.as_deref())
     }
 }
 
@@ -163,16 +170,21 @@ pub fn display(host: &str, port: u16, max_chars: usize) -> String {
 
 /// 可发起 PTR 查询的地址:排除回环/私网/链路本地等非公网段
 /// (240/4 保留段手工判断,Ipv4Addr::is_reserved 尚未稳定);
-/// 询问弹窗的可询问判定(is_askable)与之同口径共用
-pub(crate) fn is_queryable(ip: &Ipv4Addr) -> bool {
-    !(ip.is_unspecified()
-        || ip.is_loopback()
-        || ip.is_private()
-        || ip.is_link_local()
-        || ip.is_multicast()
-        || ip.is_broadcast()
-        || ip.is_documentation()
-        || ip.octets()[0] >= 240)
+/// 询问弹窗的可询问判定(is_askable)与之同口径共用。
+/// IPv6 一律返回 false:PTR 与 v6 私网判定(ULA/链路本地)随 v6
+/// 适配一并接入,过渡期 v6 连接不反查、不进询问
+pub(crate) fn is_queryable(ip: &IpAddr) -> bool {
+    let IpAddr::V4(v4) = ip else {
+        return false;
+    };
+    !(v4.is_unspecified()
+        || v4.is_loopback()
+        || v4.is_private()
+        || v4.is_link_local()
+        || v4.is_multicast()
+        || v4.is_broadcast()
+        || v4.is_documentation()
+        || v4.octets()[0] >= 240)
 }
 
 /// WinSock 初始化(getnameinfo 前置);进程内仅一次。失败返回 false:

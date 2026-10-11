@@ -4,7 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::time::Instant;
 
 use super::{ETW_POLL_INTERVAL, NetOwlApp};
@@ -47,8 +47,12 @@ impl NetOwlApp {
             for c in &mut self.conns {
                 match c.proto {
                     Protocol::Tcp => {
+                        // ETW 流合并键暂为 IPv4(v6 事件解码随 v6 适配接入)
+                        let IpAddr::V4(rip) = c.remote_ip else {
+                            continue;
+                        };
                         let Some(f) =
-                            by_key.get(&(c.pid, c.proto, c.local_port, c.remote_ip, c.remote_port))
+                            by_key.get(&(c.pid, c.proto, c.local_port, rip, c.remote_port))
                         else {
                             continue;
                         };
@@ -60,10 +64,9 @@ impl NetOwlApp {
                     Protocol::Udp => {
                         match udp_groups.get(&(c.pid, c.local_port)) {
                             Some(g) => {
-                                if c.remote_ip != g.rep.key.remote_ip
-                                    || c.remote_port != g.rep.key.remote_port
-                                {
-                                    c.remote_ip = g.rep.key.remote_ip;
+                                let rep_ip = IpAddr::V4(g.rep.key.remote_ip);
+                                if c.remote_ip != rep_ip || c.remote_port != g.rep.key.remote_port {
+                                    c.remote_ip = rep_ip;
                                     c.remote_port = g.rep.key.remote_port;
                                     c.city = geoip::locate(c.remote_ip).map(Place::Geo);
                                 }

@@ -274,7 +274,7 @@ pub(super) fn targets_section(
                     // "无响应" = 窗口内全失败(常见于禁 ping);"待采样" =
                     // 尚未完成首轮或样本已过期(采样开关关闭后停止刷新)
                     let sample = ip
-                        .parse::<std::net::Ipv4Addr>()
+                        .parse::<std::net::IpAddr>()
                         .ok()
                         .and_then(|ip| quality.and_then(|q| q.lookup(ip)))
                         .filter(|s| s.at.elapsed() < SAMPLE_TTL * 2);

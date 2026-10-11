@@ -99,6 +99,7 @@ conn-action-allow = 允许
 conn-action-block = 阻断
 menu-kill = 结束连接
 menu-kill-need-admin = 需要以管理员身份运行才能结束连接
+menu-kill-v6 = IPv6 连接暂不支持强制关闭
 menu-locate = 定位程序
 menu-copy-remote = 复制远端地址
 menu-copy-path = 复制进程路径

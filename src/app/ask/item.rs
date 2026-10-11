@@ -2,7 +2,7 @@
 //! 过滤器与决策结果转规则;含可询问目标与身份键判定。
 
 use std::hash::{Hash, Hasher};
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::time::Instant;
 
 use crate::model::Protocol;
@@ -135,7 +135,7 @@ pub(super) fn remote_text(ip: &Ipv4Addr, port: u16, domain: Option<&str>) -> Str
 
 /// 连接身份:(进程路径/名, 目标IP)。端口/协议不参与去重,
 /// 同一目标多端口只询问一次
-pub(super) fn identity_key(proc_path: Option<&str>, process: &str, ip: Ipv4Addr) -> u64 {
+pub(super) fn identity_key(proc_path: Option<&str>, process: &str, ip: IpAddr) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     proc_path.unwrap_or(process).hash(&mut h);
     ip.hash(&mut h);

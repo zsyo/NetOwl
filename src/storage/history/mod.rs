@@ -9,7 +9,7 @@
 mod maintenance;
 
 use std::collections::{HashMap, HashSet};
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{self, Receiver};
 use std::thread::JoinHandle;
@@ -73,6 +73,11 @@ impl Tracker {
         let mut current: HashSet<u64> = HashSet::with_capacity(conns.len());
         for c in conns {
             current.insert(c.id);
+            // ClosedConn 仅覆盖 IPv4(v6 落库随历史库 v6 适配一并接入),
+            // v6 行不入历史
+            let IpAddr::V4(rip) = c.remote_ip else {
+                continue;
+            };
             let e = self.index.entry(c.id).or_insert_with(|| ClosedConn {
                 event_id: c.id,
                 first_seen: now,
@@ -82,14 +87,14 @@ impl Tracker {
                 proc_path: c.proc_path.clone(),
                 signed: c.signed,
                 proto: c.proto,
-                remote_ip: c.remote_ip,
+                remote_ip: rip,
                 remote_port: c.remote_port,
                 bytes_in: c.bytes_in,
                 bytes_out: c.bytes_out,
             });
             // 首见登记 first_seen,远端与字节每轮刷新(见函数注释):
             // 字节随 ETW 合并逐轮增长,只登记首见会以 0 落库
-            e.remote_ip = c.remote_ip;
+            e.remote_ip = rip;
             e.remote_port = c.remote_port;
             e.bytes_in = c.bytes_in;
             e.bytes_out = c.bytes_out;

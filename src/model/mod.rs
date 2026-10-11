@@ -1,6 +1,6 @@
 //! 数据模型:collector 产出、UI 绘制的最小完整单元。
 
-use std::net::Ipv4Addr;
+use std::net::IpAddr;
 use std::time::Instant;
 
 /// 传输层协议
@@ -42,7 +42,7 @@ pub struct ListenEntry {
     /// 进程映像完整路径;受保护/系统进程等无法读取时为 None
     pub proc_path: Option<String>,
     pub proto: Protocol,
-    pub local_addr: Ipv4Addr,
+    pub local_addr: IpAddr,
     pub local_port: u16,
 }
 
@@ -59,12 +59,12 @@ pub struct Connection {
     /// 进程映像签名状态(异步查询,回填前为 Unknown)
     pub signed: Signing,
     pub proto: Protocol,
-    /// 本地地址(连接四元组的一部分;"结束连接"重建 MIB_TCPROW 用)
-    pub local_addr: Ipv4Addr,
+    /// 本地地址(连接四元组的一部分;IPv4 时"结束连接"重建 MIB_TCPROW 用)
+    pub local_addr: IpAddr,
     /// 本地端口(连接四元组的一部分;弹窗"仅本次"临时规则用其精确
     /// 锁定单条连接)
     pub local_port: u16,
-    pub remote_ip: Ipv4Addr,
+    pub remote_ip: IpAddr,
     pub remote_port: u16,
     /// 归属地定位键;None 表示归属未知
     pub city: Option<Place>,

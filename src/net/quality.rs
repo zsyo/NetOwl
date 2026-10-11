@@ -9,7 +9,7 @@
 //! 含协议栈开销,数值略高于 ICMP RTT,且会向目标发起一次真实连接。
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::net::{Ipv4Addr, SocketAddr, TcpStream};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
@@ -191,9 +191,13 @@ impl Quality {
         }
     }
 
-    /// 目标的采样快照;从未探测返回 None(有样本即可读,rtt 可能为 None)
-    pub fn lookup(&self, ip: Ipv4Addr) -> Option<Sample> {
-        self.samples.get(&ip).map(|s| Sample {
+    /// 目标的采样快照;从未探测返回 None(有样本即可读,rtt 可能为 None)。
+    /// 仅覆盖 IPv4(ICMP 探测为 v4),IPv6 随 v6 适配一并接入
+    pub fn lookup(&self, ip: IpAddr) -> Option<Sample> {
+        let IpAddr::V4(v4) = ip else {
+            return None;
+        };
+        self.samples.get(&v4).map(|s| Sample {
             rtt: s.rtt,
             loss: s.loss(),
             at: s.at,

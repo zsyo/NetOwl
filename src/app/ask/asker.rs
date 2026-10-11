@@ -2,6 +2,7 @@
 //! 弹窗调度与倒计时、决策完成后的去重标记解除。
 
 use std::collections::{HashSet, VecDeque};
+use std::net::IpAddr;
 use std::time::Instant;
 
 use super::item::{AskItem, SYSTEM_PID, identity_key, remote_text};
@@ -110,18 +111,22 @@ impl Asker {
                 continue;
             }
             self.limit_warned = false;
+            // 可询问目标判定(is_queryable)已排除 IPv6,仅 IPv4 会走到入队
+            let IpAddr::V4(rip) = c.remote_ip else {
+                continue;
+            };
             tracing::info!(
                 "[Ask] 新连接询问入队:{}({}) -> {}",
                 c.process,
                 c.pid,
-                remote_text(&c.remote_ip, c.remote_port, rdns.lookup(c.remote_ip))
+                remote_text(&rip, c.remote_port, rdns.lookup(c.remote_ip))
             );
             self.queue.push_back(AskItem {
                 proc_path: c.proc_path.clone(),
                 process: c.process.clone(),
                 pid: c.pid,
                 local_port: c.local_port,
-                remote_ip: c.remote_ip,
+                remote_ip: rip,
                 remote_port: c.remote_port,
                 proto: c.proto,
                 domain: rdns.lookup(c.remote_ip).map(str::to_owned),
@@ -167,7 +172,7 @@ impl Asker {
         self.asked.remove(&identity_key(
             item.proc_path.as_deref(),
             &item.process,
-            item.remote_ip,
+            std::net::IpAddr::V4(item.remote_ip),
         ));
     }
 }

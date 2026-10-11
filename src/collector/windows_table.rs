@@ -13,7 +13,10 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use super::icon::IconImage;
-use super::query::{ConnKey, query_process_names, query_process_path, query_tcp_split, query_udp};
+use super::query::{
+    ConnKey, query_process_names, query_process_path, query_tcp_split, query_tcp6_split, query_udp,
+    query_udp6,
+};
 use super::{Collector, CollectorKind, IconState};
 use crate::model::{Connection, ListenEntry, Place, Signing};
 /// 表快照间隔:连接增减的可见延迟上限(与任务管理器刷新节奏相当)
@@ -78,7 +81,8 @@ impl TableCollector {
         }
     }
 
-    /// 查询 TCP/UDP 表并重建快照;表查询失败保留上一轮快照并输出错误
+    /// 查询 TCP/UDP 表(v4+v6)并重建快照;v4 表查询失败保留上一轮
+    /// 快照,v6 表失败本轮按无 v6 行继续(v4 监控不受影响,错误留痕)
     fn poll(&mut self) {
         // TCP 表一次查询分流连接/监听(见 query_tcp_split)
         let (tcp, listen) = match query_tcp_split() {
@@ -88,6 +92,13 @@ impl TableCollector {
                 return;
             }
         };
+        let (tcp6, listen6) = match query_tcp6_split() {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!("[Collector] IPv6 TCP 表查询失败: {e}");
+                (Vec::new(), Vec::new())
+            }
+        };
         let udp = match query_udp() {
             Ok(rows) => rows,
             Err(e) => {
@@ -95,6 +106,15 @@ impl TableCollector {
                 return;
             }
         };
+        let udp6 = match query_udp6() {
+            Ok(rows) => rows,
+            Err(e) => {
+                tracing::warn!("[Collector] IPv6 UDP 表查询失败: {e}");
+                Vec::new()
+            }
+        };
+        let tcp_count = tcp.len() + tcp6.len();
+        let udp_count = udp.len() + udp6.len();
 
         self.collect_signatures();
         self.collect_icons();
@@ -102,7 +122,7 @@ impl TableCollector {
         let now = Instant::now();
         let old = std::mem::take(&mut self.live);
         let mut new_live: HashMap<ConnKey, Connection> =
-            HashMap::with_capacity(tcp.len() + udp.len());
+            HashMap::with_capacity(tcp_count + udp_count);
         // 名字兜底枚举按轮懒执行:存在路径反查失败的 PID 才枚举一次,行间复用
         let mut nt_names: Option<HashMap<u32, String>> = None;
 
@@ -110,10 +130,15 @@ impl TableCollector {
         // 系统表按 socket 逐行列出,UDP 多 socket 绑同一地址端口(mDNS 等
         // SO_REUSEADDR 场景,单进程可开数十个)对监听视图是重复信息,按
         // (进程, 协议, 绑定地址, 端口) 折叠为一行;TCP LISTEN 本身无重复
-        let mut listening = Vec::with_capacity(listen.len() + udp.len());
-        let mut seen_listen = HashSet::with_capacity(listen.len() + udp.len());
-        for key in listen.iter().chain(udp.iter()) {
-            if !seen_listen.insert((key.pid, key.proto, key.local_addr_ipv4(), key.local_port)) {
+        let mut listening = Vec::with_capacity(listen.len() + udp_count);
+        let mut seen_listen = HashSet::with_capacity(listen.len() + udp_count);
+        for key in listen
+            .iter()
+            .chain(listen6.iter())
+            .chain(udp.iter())
+            .chain(udp6.iter())
+        {
+            if !seen_listen.insert((key.pid, key.proto, key.local_addr, key.local_port)) {
                 continue;
             }
             let meta = self.proc_meta(key.pid, &mut nt_names);
@@ -122,19 +147,19 @@ impl TableCollector {
                 process: meta.name,
                 proc_path: meta.path,
                 proto: key.proto,
-                local_addr: key.local_addr_ipv4(),
+                local_addr: key.local_addr,
                 local_port: key.local_port,
             });
         }
 
-        for key in tcp.into_iter().chain(udp) {
+        for key in tcp.into_iter().chain(tcp6).chain(udp).chain(udp6) {
             let pid = key.pid;
             let id = key.id();
             let proto = key.proto;
-            let local_addr = key.local_addr_ipv4();
+            let local_addr = key.local_addr;
             let local_port = key.local_port;
             let remote_port = key.remote_port;
-            let remote_ip = key.remote_ip();
+            let remote_ip = key.remote_addr;
             // city 按 ConnKey 从旧快照复用:键含远端四元组,未变才命中,
             // 省去每秒每连接一次二分查找;远端变化(ETW 回填)的行自然重算
             let city = old.get(&key).map_or_else(

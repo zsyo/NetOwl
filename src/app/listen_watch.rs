@@ -4,13 +4,13 @@
 //! 与新设备接入提醒(lan)同一模式。
 
 use std::collections::HashSet;
-use std::net::Ipv4Addr;
+use std::net::IpAddr;
 
 use crate::model::{ListenEntry, Protocol};
 
 /// 监听身份键:(PID, 协议, 绑定地址, 端口)。含 PID:同程序多实例/
 /// 端口复用不相互掩盖
-type ListenKey = (u32, Protocol, Ipv4Addr, u16);
+type ListenKey = (u32, Protocol, IpAddr, u16);
 
 /// 监听观察状态(App 持有)
 pub struct ListenWatch {

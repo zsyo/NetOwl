@@ -235,8 +235,10 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
 }
 
 /// 连接显示过滤:本地/局域网远端噪音(config 持久化;连接列表与
-/// 地图页左右面板共用同一口径)
+/// 地图页左右面板共用同一口径)。局域网判定暂为 IPv4 私网段(v6 ULA/
+/// 链路本地判定随 v6 适配一并接入)
 pub(crate) fn conn_visible(config: &Config, c: &Connection) -> bool {
     !(config.general.hide_local && c.remote_ip.is_loopback())
-        && !(config.general.hide_lan && c.remote_ip.is_private())
+        && !(config.general.hide_lan
+            && matches!(c.remote_ip, std::net::IpAddr::V4(v4) if v4.is_private()))
 }
