@@ -36,6 +36,7 @@ rusqlite = { version = "0.40.2", features = ["bundled"] }
 # 注:tray-icon 0.26 起改用 windows-sys,依赖树中已无第二个 windows crate
 windows = { version = "0.62.2", features = [
     "Win32_Foundation",
+    "Win32_Globalization",
     "Win32_Graphics_Gdi",
     "Win32_Graphics_Dwm",
     "Win32_NetworkManagement_IpHelper",

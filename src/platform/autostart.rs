@@ -5,6 +5,7 @@
 use std::os::windows::process::CommandExt;
 
 use windows::Win32::Foundation::{CloseHandle, ERROR_FILE_NOT_FOUND, ERROR_SUCCESS, HANDLE};
+use windows::Win32::Globalization::{CP_OEMCP, MULTI_BYTE_TO_WIDE_CHAR_FLAGS, MultiByteToWideChar};
 use windows::Win32::Security::{GetTokenInformation, TOKEN_ELEVATION, TOKEN_QUERY, TokenElevation};
 use windows::Win32::System::Registry::{
     HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE, REG_SZ, RegCloseKey, RegDeleteValueW, RegOpenKeyExW,
@@ -118,12 +119,36 @@ fn run_schtasks(args: &[&str]) -> Result<(), String> {
     if output.status.success() {
         return Ok(());
     }
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stderr = console_output(&output.stderr);
     Err(format!(
         "退出码 {:?},stderr: {}",
         output.status.code(),
         stderr.trim().chars().take(200).collect::<String>()
     ))
+}
+
+/// 子进程输出解码:schtasks 是控制台程序,输出为 OEM 代码页文本(中文
+/// 系统 936/GBK),按 UTF-8 解码会得到乱码;经 MultiByteToWideChar 转
+/// UTF-16 再成字符串。解码失败回退 lossy(极端损坏只影响日志可读性)
+fn console_output(bytes: &[u8]) -> String {
+    let len =
+        unsafe { MultiByteToWideChar(CP_OEMCP, MULTI_BYTE_TO_WIDE_CHAR_FLAGS(0), bytes, None) };
+    if len <= 0 {
+        return String::from_utf8_lossy(bytes).into_owned();
+    }
+    let mut utf16 = vec![0u16; len as usize];
+    let converted = unsafe {
+        MultiByteToWideChar(
+            CP_OEMCP,
+            MULTI_BYTE_TO_WIDE_CHAR_FLAGS(0),
+            bytes,
+            Some(&mut utf16),
+        )
+    };
+    if converted <= 0 {
+        return String::from_utf8_lossy(bytes).into_owned();
+    }
+    String::from_utf16_lossy(&utf16[..converted as usize])
 }
 
 fn task_exists() -> bool {
