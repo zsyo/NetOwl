@@ -134,7 +134,7 @@ pub struct GeneralConfig {
 }
 
 /// 一条自定义质量采样目标
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct QualityTarget {
     /// IPv4 原文(设置页手输,解析失败的目标跳过采样并即时提示)
     pub ip: String,
@@ -144,16 +144,6 @@ pub struct QualityTarget {
     /// 备注(告警 toast 显示,空 = 显示 IP)
     #[serde(default)]
     pub label: String,
-}
-
-impl Default for QualityTarget {
-    fn default() -> Self {
-        QualityTarget {
-            ip: String::new(),
-            port: 0,
-            label: String::new(),
-        }
-    }
 }
 
 impl Default for GeneralConfig {

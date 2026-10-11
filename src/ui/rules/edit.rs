@@ -241,14 +241,24 @@ pub(super) fn edit_window(
 
 /// 弹窗用统一宽度下拉
 fn combo(ui: &mut egui::Ui, salt: &str, selected: String, content: impl FnOnce(&mut egui::Ui)) {
-    // ComboBox 按钮外框吃主题 button_padding(y=5),selected 文本顶比
-    // 左列 label(24px 行内居中,顶偏移 ~3.25)低约 2px;压缩本行垂直
-    // padding 让按钮高回 24、文本与 label 同顶
-    ui.style_mut().spacing.button_padding.y = 3.0;
+    // ComboBox 的按钮框架以 button_padding 先 shrink 后 expand,实测在
+    // 任何容器内"正常居中后再整体下移一个 padding.y"(与按钮内容高度
+    // 无关)。这里先以与 label 占位同路径分配的格子取基准 rect,再开一
+    // 个上移 2×pad、加高 2×pad 的绝对子区放 ComboBox:居中偏移与框架
+    // 下移相抵,按钮恰好落回格子;icon_width 抬到行高 - 2×pad,内容区
+    // 高度恒定,按钮总高等于行高,文本与 label 同心
+    let pad_y = 3.0;
+    ui.style_mut().spacing.button_padding.y = pad_y;
+    ui.style_mut().spacing.icon_width = ROW_H - 2.0 * pad_y;
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(FIELD_WIDTH, ROW_H), egui::Sense::hover());
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(egui::Rect::from_min_size(
+        egui::pos2(rect.left(), rect.top() - 2.0 * pad_y),
+        egui::vec2(FIELD_WIDTH, ROW_H + 2.0 * pad_y),
+    )));
     egui::ComboBox::from_id_salt(salt)
         .width(FIELD_WIDTH)
         .selected_text(RichText::new(selected).size(theme::font::BODY))
-        .show_ui(ui, content);
+        .show_ui(&mut child, content);
 }
 
 /// 弹窗表单左列(字段名)宽度:容纳中英字段名

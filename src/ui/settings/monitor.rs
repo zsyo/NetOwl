@@ -247,7 +247,7 @@ pub(super) fn targets_section(
                         .add_sized(
                             [120.0, 24.0],
                             egui::TextEdit::singleline(&mut t.label)
-                                .hint_text(&i18n.t("settings-quality-label-hint"))
+                                .hint_text(i18n.t("settings-quality-label-hint"))
                                 .vertical_align(egui::Align::Center),
                         )
                         .changed();

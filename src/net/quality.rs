@@ -46,7 +46,7 @@ pub struct Sample {
 
 impl Sample {
     /// 健康档位(1 = 良好 <100ms,2 = 较慢 <300ms,3 = 拥塞;丢包率
-    /// >10% 降一档);None = 无有效延迟样本(从未成功,按未知显示,
+    /// 超 10% 降一档);None = 无有效延迟样本(从未成功,按未知显示,
     /// 不参与聚合取最差——禁 ping 目标不应抹掉同端点的正常样本)
     pub fn rank(&self) -> Option<u8> {
         let ms = self.rtt?;
