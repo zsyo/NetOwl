@@ -209,22 +209,26 @@ pub(super) fn targets_section(
                 .halign(egui::Align::Min),
             );
             let mut removed: Option<usize> = None;
+            // 三个控件 add_sized 统一 24px 高(与行尾删除按钮的 24×24
+            // 同源):TextEdit 与 DragValue 默认高度不同,同一行内错位
             for (i, t) in config.general.quality_targets.iter_mut().enumerate() {
                 ui.horizontal(|ui| {
                     *changed |= ui
-                        .add(
-                            egui::TextEdit::singleline(&mut t.ip)
-                                .desired_width(150.0)
-                                .hint_text("1.2.3.4"),
+                        .add_sized(
+                            [150.0, 24.0],
+                            egui::TextEdit::singleline(&mut t.ip).hint_text("1.2.3.4"),
                         )
                         .changed();
                     *changed |= ui
-                        .add(egui::DragValue::new(&mut t.port).range(0..=65535))
+                        .add_sized(
+                            [56.0, 24.0],
+                            egui::DragValue::new(&mut t.port).range(0..=65535),
+                        )
                         .changed();
                     *changed |= ui
-                        .add(
+                        .add_sized(
+                            [120.0, 24.0],
                             egui::TextEdit::singleline(&mut t.label)
-                                .desired_width(120.0)
                                 .hint_text(&i18n.t("settings-quality-label-hint")),
                         )
                         .changed();
