@@ -241,6 +241,10 @@ pub(super) fn edit_window(
 
 /// 弹窗用统一宽度下拉
 fn combo(ui: &mut egui::Ui, salt: &str, selected: String, content: impl FnOnce(&mut egui::Ui)) {
+    // ComboBox 按钮外框吃主题 button_padding(y=5),selected 文本顶比
+    // 左列 label(24px 行内居中,顶偏移 ~3.25)低约 2px;压缩本行垂直
+    // padding 让按钮高回 24、文本与 label 同顶
+    ui.style_mut().spacing.button_padding.y = 3.0;
     egui::ComboBox::from_id_salt(salt)
         .width(FIELD_WIDTH)
         .selected_text(RichText::new(selected).size(theme::font::BODY))
