@@ -1,7 +1,7 @@
-//! GeoIP 归属定位:构建期生成的 assets/geoip.bin(IPv4 区间 -> 位置表,
-//! 另有区间 -> 运营商表),中国(含港澳台)到省级行政区,其余按 ISO 码到
-//! 国家;私网/保留段无归属。数据源与生成见 tools/build_geoip.py;编译期
-//! 内嵌,首次使用时解析一次。
+//! GeoIP 归属定位:构建期生成的 assets/geoip.bin(IPv4/IPv6 区间 ->
+//! 位置表,另有区间 -> 运营商表),中国(含港澳台)到省级行政区,其余
+//! 按 ISO 码到国家;私网/保留段无归属。数据源与生成见
+//! tools/build_geoip.py;编译期内嵌,首次使用时解析一次。
 
 use std::net::IpAddr;
 use std::sync::OnceLock;
@@ -29,6 +29,13 @@ struct GeoIp {
     isp_starts: Vec<u32>,
     isp_ends: Vec<u32>,
     isp_orgs: Vec<u32>,
+    /// IPv6 区间表(布局同 v4,IP 为 u128 数值;places/orgs 共用)
+    v6_starts: Vec<u128>,
+    v6_ends: Vec<u128>,
+    v6_locs: Vec<u32>,
+    isp6_starts: Vec<u128>,
+    isp6_ends: Vec<u128>,
+    isp6_orgs: Vec<u32>,
 }
 
 static GEOIP: OnceLock<GeoIp> = OnceLock::new();
@@ -45,7 +52,7 @@ impl GeoIp {
             panic!("[GeoIp] geoip.bin 格式错误: magic 不符");
         }
         let version = r.u16();
-        if version != 2 {
+        if version != 3 {
             panic!("[GeoIp] geoip.bin 版本不支持: {version}(需以 tools/build_geoip.py 重新生成)");
         }
         let n = r.u32() as usize;
@@ -84,6 +91,22 @@ impl GeoIp {
                 orgs.len()
             );
         }
+        let n6 = r.u32() as usize;
+        let (v6_starts, v6_ends, v6_locs) = Self::parse_ranges128(&mut r, n6);
+        if let Some(&bad) = v6_locs.iter().find(|&&i| i as usize >= places.len()) {
+            panic!(
+                "[GeoIp] geoip.bin 数据损坏: v6 loc 索引 {bad} 超出位置表 {} 条",
+                places.len()
+            );
+        }
+        let n_isp6 = r.u32() as usize;
+        let (isp6_starts, isp6_ends, isp6_orgs) = Self::parse_ranges128(&mut r, n_isp6);
+        if let Some(&bad) = isp6_orgs.iter().find(|&&i| i as usize >= orgs.len()) {
+            panic!(
+                "[GeoIp] geoip.bin 数据损坏: v6 org 索引 {bad} 超出机构表 {} 条",
+                orgs.len()
+            );
+        }
         GeoIp {
             places,
             starts,
@@ -93,6 +116,12 @@ impl GeoIp {
             isp_starts,
             isp_ends,
             isp_orgs,
+            v6_starts,
+            v6_ends,
+            v6_locs,
+            isp6_starts,
+            isp6_ends,
+            isp6_orgs,
         }
     }
 
@@ -118,13 +147,41 @@ impl GeoIp {
         (starts, ends, vals)
     }
 
+    /// IPv6 区间表解析(u128 起止,编码同 v4;start/length 的 delta 可能
+    /// 超出 u64——v6 地址空间内相邻表段可隔着巨大的未分配区)
+    fn parse_ranges128(r: &mut Reader, n: usize) -> (Vec<u128>, Vec<u128>, Vec<u32>) {
+        let (mut starts, mut ends, mut vals) = (
+            Vec::with_capacity(n),
+            Vec::with_capacity(n),
+            Vec::with_capacity(n),
+        );
+        let mut prev_end = 0u128;
+        let mut prev_idx = 0i64;
+        for _ in 0..n {
+            let start = prev_end.wrapping_add(r.varint128());
+            let end = start.wrapping_add(r.varint128().wrapping_sub(1));
+            let idx = (prev_idx + r.zigzag()) as u32;
+            starts.push(start);
+            ends.push(end);
+            vals.push(idx);
+            prev_end = end.wrapping_add(1);
+            prev_idx = idx as i64;
+        }
+        (starts, ends, vals)
+    }
+
     fn locate(&self, ip: u32) -> Option<u32> {
         bisect(&self.starts, &self.ends, &self.locs, ip)
     }
+
+    fn locate6(&self, ip: u128) -> Option<u32> {
+        bisect(&self.v6_starts, &self.v6_ends, &self.v6_locs, ip)
+    }
 }
 
-/// 区间表二分(starts 升序且互不重叠);命中返回值索引
-fn bisect(starts: &[u32], ends: &[u32], vals: &[u32], ip: u32) -> Option<u32> {
+/// 区间表二分(starts 升序且互不重叠);命中返回值索引。
+/// v4 表为 u32、v6 表为 u128,同形比较逻辑泛型复用
+fn bisect<T: PartialOrd>(starts: &[T], ends: &[T], vals: &[u32], ip: T) -> Option<u32> {
     let (mut lo, mut hi) = (0i64, starts.len() as i64 - 1);
     while lo <= hi {
         let mid = (lo + hi) / 2;
@@ -139,24 +196,23 @@ fn bisect(starts: &[u32], ends: &[u32], vals: &[u32], ip: u32) -> Option<u32> {
     None
 }
 
-/// 远端 IP 的归属位置索引;私网/保留段/未收录返回 None。
-/// 仅覆盖 IPv4(区间表为 u32),IPv6 归属随 v6 数据源一并接入
+/// 远端 IP 的归属位置索引;私网/保留段/未收录返回 None
 pub fn locate(ip: IpAddr) -> Option<u32> {
-    let IpAddr::V4(v4) = ip else {
-        return None;
-    };
-    table().locate(v4.to_bits())
+    let t = table();
+    match ip {
+        IpAddr::V4(v4) => t.locate(v4.to_bits()),
+        IpAddr::V6(v6) => t.locate6(u128::from(v6)),
+    }
 }
 
 /// 远端 IP 的运营商/机构名(数据源机构字段原文直显,国内多为"电信/
-/// 联通/移动"等,国外为机构注册名);该段无机构信息时返回 None。
-/// 仅覆盖 IPv4,IPv6 随 v6 数据源一并接入
+/// 联通/移动"等,国外为机构注册名);该段无机构信息时返回 None
 pub fn locate_isp(ip: IpAddr) -> Option<&'static str> {
-    let IpAddr::V4(v4) = ip else {
-        return None;
-    };
     let t = table();
-    let idx = bisect(&t.isp_starts, &t.isp_ends, &t.isp_orgs, v4.to_bits())?;
+    let idx = match ip {
+        IpAddr::V4(v4) => bisect(&t.isp_starts, &t.isp_ends, &t.isp_orgs, v4.to_bits())?,
+        IpAddr::V6(v6) => bisect(&t.isp6_starts, &t.isp6_ends, &t.isp6_orgs, u128::from(v6))?,
+    };
     t.orgs.get(idx as usize).map(String::as_str)
 }
 
@@ -229,6 +285,21 @@ impl Reader<'_> {
             let b = self.data[self.pos];
             self.pos += 1;
             result |= ((b & 0x7F) as u64) << shift;
+            if b & 0x80 == 0 {
+                return result;
+            }
+            shift += 7;
+        }
+    }
+
+    /// u128 版 varint(v6 区间 delta 可超 u64)
+    fn varint128(&mut self) -> u128 {
+        let mut result = 0u128;
+        let mut shift = 0;
+        loop {
+            let b = self.data[self.pos];
+            self.pos += 1;
+            result |= ((b & 0x7F) as u128) << shift;
             if b & 0x80 == 0 {
                 return result;
             }

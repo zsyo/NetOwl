@@ -3,6 +3,7 @@
 #
 # 数据源(均放 tools/cache/,不入库;缺失时脚本自行下载):
 #   ip2region_v4.xdb                  - ip2region v4(IPv4 归属,Apache-2.0),region = 国家|省|市|机构|ISO
+#   ip2region_v6.xdb                  - ip2region v6(IPv6 归属,Apache-2.0),region 同构五段
 #   100000_full.json                  - DataV 中国省级(名称/质心/子级 adcode)
 #   {adcode}_full.json                - DataV 各省 children(地级市名称/质心,34 个,缺失时下载)
 #   ne_50m_admin_0_countries.geojson  - Natural Earth 国家(ISO_A2/中文名/标签点,与底图同源)
@@ -13,7 +14,7 @@
 # 否则回退国家级;私网/保留段无归属。显示名双语内嵌:中国城市 zh=市名,
 # en=GeoNames 最近邻英文名(未命中则同中文);外国城市 zh/en 均为 GeoNames 英文名。
 #
-# 输出格式(NWGI v2):
+# 输出格式(NWGI v3 = v2 布局尾部追加 IPv6 两段):
 #   magic "NWGI" | u16 version | u32 loc_count
 #   locs[]: u8 zh_len + zh | u8 en_len + en | f32 lon | f32 lat
 #   u32 range_count
@@ -22,6 +23,10 @@
 #   orgs[]: u8 len + utf-8(运营商/机构名,单语言直显)
 #   u32 isp_range_count
 #   isp_ranges[](按 start_ip 升序):LEB128 同款(delta | 长度 | zigzag(org_idx delta))
+#   u32 range6_count
+#   range6[](u128 版同款编码:start/length 为 u128 LEB128,loc delta 同款)
+#   u32 isp_range6_count
+#   isp_range6[](同 range6,值指向 orgs)
 #
 # ISP 与城市边界独立:org 变化打断合并,同一城市不同运营商各成区间;
 # 机构字段为 "0"/空串的段(多为国外)不进 ISP 区间表,查询返回空。
@@ -38,7 +43,7 @@ CACHE = Path(__file__).parent / "cache"
 OUT = Path(__file__).parent.parent / "assets" / "geoip.bin"
 
 MAGIC = b"NWGI"
-VERSION = 2
+VERSION = 3
 
 DATAV_BASE = "https://geo.datav.aliyun.com/areas_v3/bound/{}_full.json"
 GEONAMES_URL = "http://download.geonames.org/export/dump/cities15000.zip"
@@ -186,6 +191,28 @@ def parse_xdb():
     return out
 
 
+def parse_xdb6():
+    """遍历 IPv6 xdb 索引区全部记录 -> [(start_ip, end_ip, region)](u128)。
+    xdb 3.0 结构(官方 maker/rust header.rs 与 searcher.rs 定案):头部
+    16 字节(start_index_ptr@8 / end_index_ptr@12,半开区间)+ 512KB
+    向量索引;索引项 38 字节 = sip(16) + eip(16) + dlen(u16 LE) +
+    dptr(u32 LE),IP 为网络序大端字节,直接按数值比较"""
+    data = (CACHE / "ip2region_v6.xdb").read_bytes()
+    ver, _policy, _ctime, istart, iend = struct.unpack_from("<HHIII", data, 0)
+    ipver = struct.unpack_from("<H", data, 16)[0]
+    if ver != 3 or ipver != 6:
+        raise SystemExit(f"不支持的 IPv6 xdb: ver={ver} ipver={ipver}")
+    out = []
+    p = istart
+    while p + 38 <= iend:
+        sip = int.from_bytes(data[p : p + 16], "big")
+        eip = int.from_bytes(data[p + 16 : p + 32], "big")
+        dlen, dptr = struct.unpack_from("<HI", data, p + 32)
+        out.append((sip, eip, data[dptr : dptr + dlen].decode("utf-8")))
+        p += 38
+    return out
+
+
 def foreign_city_key(iso, city, geonames):
     """外国城市匹配:原名 -> 逗号前段 -> 剥离行政区修饰"""
     n = city.strip().lower()
@@ -221,15 +248,11 @@ def main():
     cn_cities = load_cn_cities(provinces)
     geonames = load_geonames()
     countries = load_countries()
-    records = parse_xdb()
 
     places = []          # [(zh, en, lon, lat)]
-    place_index = {}     # 键 -> 位置索引(去重)
-    ranges = []          # [(start, end, loc_idx)]
+    place_index = {}     # 键 -> 位置索引(去重,v4/v6 共用)
     orgs = []            # 运营商/机构名表(去重)
     org_index = {}       # 名 -> org 索引
-    isp_ranges = []      # [(start, end, org_idx)]
-    stats = Counter()    # 归属粒度统计
 
     def place(key, zh, en, lon, lat):
         if key not in place_index:
@@ -243,63 +266,73 @@ def main():
             raise SystemExit("NE 数据缺少中国")
         return place(("nat", "CN"), nat[0], nat[1], nat[2], nat[3])
 
-    for sip, eip, region in records:
-        country, province, city, org, iso = (region.split("|") + ["0"] * 5)[:5]
-        if country == "中国":
-            prov_key = norm_region(province) if province != "0" else None
-            city_key = norm_region(city) if city != "0" else None
-            if prov_key and city_key and (prov_key, city_key) in cn_cities:
-                zh, en, lon, lat = cn_cities[(prov_key, city_key)]
-                loc = place(("cn-city", prov_key, city_key), zh, en, lon, lat)
-                stats["中国-城市"] += 1
-            elif prov_key and prov_key in provinces:
-                _, zh, en, lon, lat = provinces[prov_key]
-                loc = place(("cn-prov", prov_key), zh, en, lon, lat)
-                stats["中国-省级回退"] += 1
+    def classify(records):
+        """region 五段 -> 位置区间与 ISP 区间;v4/v6 共用同一套
+        位置表与机构表(xdb v6 的 region 与 v4 同构)"""
+        ranges = []          # [(start, end, loc_idx)]
+        isp_ranges = []      # [(start, end, org_idx)]
+        stats = Counter()    # 归属粒度统计
+        for sip, eip, region in records:
+            country, province, city, org, iso = (region.split("|") + ["0"] * 5)[:5]
+            if country == "中国":
+                prov_key = norm_region(province) if province != "0" else None
+                city_key = norm_region(city) if city != "0" else None
+                if prov_key and city_key and (prov_key, city_key) in cn_cities:
+                    zh, en, lon, lat = cn_cities[(prov_key, city_key)]
+                    loc = place(("cn-city", prov_key, city_key), zh, en, lon, lat)
+                    stats["中国-城市"] += 1
+                elif prov_key and prov_key in provinces:
+                    _, zh, en, lon, lat = provinces[prov_key]
+                    loc = place(("cn-prov", prov_key), zh, en, lon, lat)
+                    stats["中国-省级回退"] += 1
+                else:
+                    loc = cn_national()
+                    stats["中国-国家级回退"] += 1
+            elif iso != "0":
+                city_hit = foreign_city_key(iso, city, geonames) if city != "0" else None
+                if city_hit is not None:
+                    en, lat, lon, _pop = geonames[city_hit]
+                    loc = place(("intl-city",) + city_hit, en, en, lon, lat)
+                    stats["外国-城市"] += 1
+                elif iso in countries:
+                    zh, en, lon, lat = countries[iso]
+                    loc = place(("nat", iso), zh, en, lon, lat)
+                    stats["外国-国家级回退"] += 1
+                else:
+                    stats[f"跳过|{country}|{iso}"] += 1
+                    continue
             else:
-                loc = cn_national()
-                stats["中国-国家级回退"] += 1
-        elif iso != "0":
-            city_hit = foreign_city_key(iso, city, geonames) if city != "0" else None
-            if city_hit is not None:
-                en, lat, lon, _pop = geonames[city_hit]
-                loc = place(("intl-city",) + city_hit, en, en, lon, lat)
-                stats["外国-城市"] += 1
-            elif iso in countries:
-                zh, en, lon, lat = countries[iso]
-                loc = place(("nat", iso), zh, en, lon, lat)
-                stats["外国-国家级回退"] += 1
-            else:
-                stats[f"跳过|{country}|{iso}"] += 1
+                stats["跳过|保留段"] += 1
                 continue
-        else:
-            stats["跳过|保留段"] += 1
-            continue
-        ranges.append((sip, eip, loc))
-        # 运营商/机构:占位 "0"/空串表示数据源无此信息,不进 ISP 区间表
-        org = org.strip()
-        if org and org != "0":
-            if org not in org_index:
-                org_index[org] = len(orgs)
-                orgs.append(org[:255])
-            isp_ranges.append((sip, eip, org_index[org]))
+            ranges.append((sip, eip, loc))
+            # 运营商/机构:占位 "0"/空串表示数据源无此信息,不进 ISP 区间表
+            org = org.strip()
+            if org and org != "0":
+                if org not in org_index:
+                    org_index[org] = len(orgs)
+                    orgs.append(org[:255])
+                isp_ranges.append((sip, eip, org_index[org]))
+        return ranges, isp_ranges, stats
 
-    ranges.sort()
-    # 合并相邻且归属相同的区间(xdb 索引段之间不重叠)
-    merged = []
-    for s, e, loc in ranges:
-        if merged and merged[-1][1] + 1 == s and merged[-1][2] == loc:
-            merged[-1] = (merged[-1][0], e, loc)
-        else:
-            merged.append((s, e, loc))
+    def merge(ranges):
+        """合并相邻且归属相同的区间(xdb 索引段之间不重叠)"""
+        out = []
+        for s, e, v in ranges:
+            if out and out[-1][1] + 1 == s and out[-1][2] == v:
+                out[-1] = (out[-1][0], e, v)
+            else:
+                out.append((s, e, v))
+        return out
 
-    isp_ranges.sort()
-    isp_merged = []
-    for s, e, o in isp_ranges:
-        if isp_merged and isp_merged[-1][1] + 1 == s and isp_merged[-1][2] == o:
-            isp_merged[-1] = (isp_merged[-1][0], e, o)
-        else:
-            isp_merged.append((s, e, o))
+    records = parse_xdb()
+    ranges, isp_ranges, stats = classify(records)
+    records6 = parse_xdb6()
+    ranges6, isp_ranges6, stats6 = classify(records6)
+
+    merged = merge(sorted(ranges))
+    isp_merged = merge(sorted(isp_ranges))
+    merged6 = merge(sorted(ranges6))
+    isp_merged6 = merge(sorted(isp_ranges6))
 
     # 序列化
     buf = bytearray()
@@ -339,19 +372,44 @@ def main():
         prev_end = (e + 1) & 0xFFFFFFFF
         prev_idx = o
 
+    # IPv6 区间表(u128 编码;loc/org delta 仍是位置表索引,复用 i32 zigzag)
+    buf += struct.pack("<I", len(merged6))
+    prev_end = 0
+    prev_idx = 0
+    for s, e, loc in merged6:
+        write_varint(buf, s - prev_end)
+        write_varint(buf, e - s + 1)
+        write_varint(buf, zigzag(loc - prev_idx))
+        prev_end = e + 1
+        prev_idx = loc
+    buf += struct.pack("<I", len(isp_merged6))
+    prev_end = 0
+    prev_idx = 0
+    for s, e, o in isp_merged6:
+        write_varint(buf, s - prev_end)
+        write_varint(buf, e - s + 1)
+        write_varint(buf, zigzag(o - prev_idx))
+        prev_end = e + 1
+        prev_idx = o
+
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_bytes(buf)
 
     print(f"places: {len(places)}")
-    print(f"ranges: {len(records)} -> 合并 {len(merged)}")
-    print(f"isp: orgs {len(orgs)},ranges {len(isp_ranges)} -> 合并 {len(isp_merged)}")
+    print(f"v4 ranges: {len(records)} -> 合并 {len(merged)}")
+    print(f"v4 isp: ranges {len(isp_ranges)} -> 合并 {len(isp_merged)}")
+    print(f"v6 ranges: {len(records6)} -> 合并 {len(merged6)}")
+    print(f"v6 isp: ranges {len(isp_ranges6)} -> 合并 {len(isp_merged6)}")
     print(f"output: {OUT} {len(buf)} bytes")
-    print("运营商分布:")
+    print("运营商分布(v4):")
     org_counter = Counter(o for _, _, o in isp_ranges)
     for name, cnt in sorted(((orgs[i], c) for i, c in org_counter.items()), key=lambda kv: -kv[1])[:10]:
         print(f"  {name}: {cnt} 段")
-    print("归属粒度:")
+    print("归属粒度 v4:")
     for key, cnt in stats.most_common(20):
+        print(f"  {key}: {cnt}")
+    print("归属粒度 v6:")
+    for key, cnt in stats6.most_common(20):
         print(f"  {key}: {cnt}")
 
 
