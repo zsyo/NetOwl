@@ -131,6 +131,7 @@ impl RuleSet {
             active_profile: profile_id,
             fallback: None,
             sticky_paths: HashMap::new(),
+            domain_ips: HashMap::new(),
             hit_counted: HashMap::new(),
             hit_dirty: false,
             next_temp_id: -1,
@@ -142,6 +143,7 @@ impl RuleSet {
     pub fn switch_profile(&mut self, db: &Db, id: i64) {
         self.active_profile = id;
         self.sticky_paths.clear();
+        self.domain_ips.clear();
         // 命中计数不清:它随规则落库,切档后加载的是目标档各规则自己的
         // 累计值;去重表按新档重建(旧档连接的"已计数"状态无意义)
         self.hit_counted.clear();

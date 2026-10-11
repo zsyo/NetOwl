@@ -282,6 +282,10 @@ pub struct RuleSet {
     /// 连接被阻断后快照可能抓不到进程行,已展开路径保持,避免
     /// 拦截窗口抖动;规则删除/改进程条件时清理
     sticky_paths: HashMap<i64, std::collections::BTreeSet<String>>,
+    /// 域名规则的解析 IP 粘滞缓存(规则 id -> 已解析 A 记录,主机序):
+    /// WFP 展开数据源(域名条件无法静态翻译,见 specs);规则删除/
+    /// 改远端条件/切档时清理,解析结果由 App 层周期回填
+    domain_ips: HashMap<i64, std::collections::BTreeSet<u32>>,
     /// 连接 id -> 已计数过的规则 id(命中去重:长连接每秒命中不重复
     /// 计;每轮按快照重建,断连自然淘汰,内存有界)
     hit_counted: HashMap<u64, i64>,

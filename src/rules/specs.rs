@@ -1,6 +1,6 @@
 //! 启用规则 -> WFP 过滤器目标集合翻译:weight 布局、进程规则按映像名
-//! 展开为命中过的完整路径集合(粘滞缓存),方向 Any 拆 Out/In 两层。
-//! 拦截执行引擎见 super::wfp。
+//! 展开为命中过的完整路径集合(粘滞缓存)、域名规则按解析 IP 集展开
+//! (一 IP 一过滤器),方向 Any 拆 Out/In 两层。拦截执行引擎见 super::wfp。
 
 use super::{Action, Direction, RemoteKind, Rule, RuleSet};
 use crate::model::{Connection, Protocol};
@@ -10,6 +10,9 @@ const PROTO_TCP: u8 = 6;
 const PROTO_UDP: u8 = 17;
 /// 过滤器 weight 上限(FWP_UINT8 有效范围 0..=15)
 const MAX_WEIGHT: usize = 15;
+/// 单条域名规则展开的 IP 数上限:CDN 域名可解析到数十个地址,超限时
+/// 取数值最小的若干个(BTreeSet 序),防过滤器数量与 reconcile 开销失控
+const DOMAIN_IP_LIMIT: usize = 64;
 
 /// 预留最高 weight:询问 pending 阻断与静默自身放行(二者互斥,静默拒绝
 /// 模式下询问关闭,pending 不存在)
@@ -18,15 +21,13 @@ pub const WEIGHT_RESERVED_HIGH: u8 = MAX_WEIGHT as u8;
 pub const WEIGHT_FALLBACK: u8 = 0;
 
 impl RuleSet {
-    /// 把启用规则翻译为 WFP 过滤器目标集合(语义见 wfp::Spec;域名规则
-    /// 不参与翻译)。与求值引擎一致:优先级高者 weight 大。进程规则按
-    /// 映像名展开为命中过的完整路径集合(粘滞缓存,见字段注释)
+    /// 把启用规则翻译为 WFP 过滤器目标集合(语义见 wfp::Spec)。与求值
+    /// 引擎一致:优先级高者 weight 大。进程规则按映像名展开为命中过的
+    /// 完整路径集合(粘滞缓存,见字段注释);域名规则按解析 IP 集展开
+    /// 为单 IP 过滤器(尚未解析/无 A 记录时本轮不产 spec,解析完成后
+    /// 自动纳入)
     pub fn wfp_specs(&mut self, conns: &[Connection]) -> Vec<super::wfp::Spec> {
-        let mut applicable: Vec<&Rule> = self
-            .rules
-            .iter()
-            .filter(|r| r.enabled && r.remote_kind != RemoteKind::Domain)
-            .collect();
+        let mut applicable: Vec<&Rule> = self.rules.iter().filter(|r| r.enabled).collect();
         applicable.sort_by_key(|r| (r.priority, r.id));
         // WFP 对同 weight 的冲突过滤器选择未定义:用户规则 weight 布局
         // 1..=14(0 = 静默兜底,15 = 询问 pending/自身放行),启用规则超过
@@ -53,15 +54,27 @@ impl RuleSet {
             // 同级);用户规则超过 14 条后钳制到 1,恒高于兜底,避免同 weight
             // 时 WFP 动作未定义
             let weight = (MAX_WEIGHT - 1 - rank.min(MAX_WEIGHT - 2)) as u8;
-            let remote = match r.remote_kind {
-                RemoteKind::Any => None,
+            // 远端条件展开为区间列表:网段 -> 单区间,域名 -> 解析 IP 集
+            //(一 IP 一区间),None = 不限远端;列表为空 = 无可用条件,跳过
+            let remotes: Vec<Option<(u32, u32)>> = match r.remote_kind {
+                RemoteKind::Any => vec![None],
                 // 网段区间取预计算缓存;None = 非法值,与求值一致跳过
                 RemoteKind::Ip => match self.eval_cache.get(&r.id).and_then(|m| m.remote_range) {
-                    Some(v) => Some(v),
+                    Some(v) => vec![Some(v)],
                     None => continue,
                 },
-                RemoteKind::Domain => unreachable!("filtered above"),
+                RemoteKind::Domain => match self.domain_ips.get(&r.id) {
+                    Some(ips) => ips
+                        .iter()
+                        .take(DOMAIN_IP_LIMIT)
+                        .map(|ip| Some((*ip, *ip)))
+                        .collect(),
+                    None => continue,
+                },
             };
+            if remotes.is_empty() {
+                continue;
+            }
             let paths: Vec<Option<String>> = if r.process.is_empty() {
                 self.sticky_paths.remove(&r.id);
                 vec![None]
@@ -91,20 +104,40 @@ impl RuleSet {
                 Direction::Out => &[super::wfp::Layer::Out],
                 Direction::In => &[super::wfp::Layer::In],
             };
-            for path in &paths {
-                for &layer in layers {
-                    specs.push(super::wfp::Spec {
-                        layer,
-                        weight,
-                        block: r.action == Action::Block,
-                        app_path: path.clone(),
-                        remote,
-                        proto,
-                        port,
-                    });
+            for remote in &remotes {
+                for path in &paths {
+                    for &layer in layers {
+                        specs.push(super::wfp::Spec {
+                            layer,
+                            weight,
+                            block: r.action == Action::Block,
+                            app_path: path.clone(),
+                            remote: *remote,
+                            proto,
+                            port,
+                        });
+                    }
                 }
             }
         }
         specs
+    }
+
+    /// 域名解析 IP 回填(采集频率调用):对启用中的域名规则,把 Resolver
+    /// 已解析的 A 记录写入 domain_ips,下一轮 wfp_specs 自然纳入展开。
+    /// 键小写化,与 Resolver 缓存键一致;规则停用期间旧值保留(重新启用
+    /// 后立即生效,重解析完成后自动刷新)
+    pub fn sync_domain_ips(&mut self, resolve: &crate::net::resolve::Resolver) {
+        for r in &self.rules {
+            if !r.enabled || r.remote_kind != RemoteKind::Domain {
+                continue;
+            }
+            let Some(ips) = resolve.lookup(r.remote_value.trim()) else {
+                continue;
+            };
+            let set: std::collections::BTreeSet<u32> =
+                ips.iter().map(|ip| u32::from(*ip)).collect();
+            self.domain_ips.insert(r.id, set);
+        }
     }
 }

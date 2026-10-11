@@ -11,8 +11,9 @@
 //! weight 大),同一连接命中的最高 weight 过滤器决定动作——与求值引擎的
 //! "按优先级首个命中"一致。子层权重置 0(低于系统防火墙),permit 不
 //! 越过系统防火墙的阻断策略。域名规则的 WFP 静态条件无法表达(域名到 IP
-//! 是动态映射),此类规则不参与过滤器翻译,仅由连接列表求值标注;真实
-//! 拦截覆盖 进程/网段/端口/协议/方向 维度。FWPM_FILTER0 构造见 filter。
+//! 是动态映射),由后台解析 A 记录 + 粘滞缓存按采集频率同步为单 IP
+//! 过滤器(见 specs::wfp_specs);真实拦截覆盖
+//! 进程/网段/域名/端口/协议/方向 维度。FWPM_FILTER0 构造见 filter。
 
 mod filter;
 
@@ -54,7 +55,7 @@ pub struct Spec {
     pub block: bool,
     /// 进程映像完整路径(Win32 形式,引擎线程转 app id blob)
     pub app_path: Option<String>,
-    /// 远端网段区间 [lo, hi](主机序)
+    /// 远端网段区间 [lo, hi](主机序);域名展开的单 IP 为 (ip, ip)
     pub remote: Option<(u32, u32)>,
     pub proto: Option<u8>,
     pub port: Option<u16>,

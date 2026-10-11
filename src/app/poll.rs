@@ -198,14 +198,22 @@ impl NetOwlApp {
             return;
         }
         self.wfp_sync_at = Instant::now();
-        // 域名规则解析服务:收割结果并全量入队启用中的域名(幂等,缓存
-        // 未过期跳过,TTL 到期自然重解析)
+        // 域名规则解析服务:收割结果、全量入队启用中的域名(幂等,缓存
+        // 未过期跳过,TTL 到期自然重解析),并清理已删除/停用规则的域名;
+        // 解析 IP 回填规则集后,本轮 wfp_specs 即可展开
         self.resolve.update();
-        for r in &self.rules.rules {
-            if r.enabled && r.remote_kind == rules::RemoteKind::Domain {
-                self.resolve.enqueue(&r.remote_value);
-            }
+        let wanted: HashSet<String> = self
+            .rules
+            .rules
+            .iter()
+            .filter(|r| r.enabled && r.remote_kind == rules::RemoteKind::Domain)
+            .map(|r| r.remote_value.trim().to_lowercase())
+            .collect();
+        for d in &wanted {
+            self.resolve.enqueue(d);
         }
+        self.resolve.prune(&wanted);
+        self.rules.sync_domain_ips(&self.resolve);
         let mut specs = if self.collector.kind() == CollectorKind::Real {
             self.rules.wfp_specs(&self.conns)
         } else {

@@ -80,13 +80,15 @@ impl RuleSet {
                 rule.id,
             ],
         )?;
-        let old_process = self
-            .rules
-            .iter()
-            .find(|r| r.id == rule.id)
-            .map(|r| r.process.clone());
-        if old_process.as_deref() != Some(rule.process.as_str()) {
+        let old = self.rules.iter().find(|r| r.id == rule.id);
+        if old.map(|r| r.process.as_str()) != Some(rule.process.as_str()) {
             self.sticky_paths.remove(&rule.id);
+        }
+        // 远端条件(类型/值)变化:旧域名的解析 IP 集作废
+        if old.map(|r| (r.remote_kind, r.remote_value.as_str()))
+            != Some((rule.remote_kind, rule.remote_value.as_str()))
+        {
+            self.domain_ips.remove(&rule.id);
         }
         self.eval_cache.insert(rule.id, RuleMatch::of(rule));
         if let Some(slot) = self.rules.iter_mut().find(|r| r.id == rule.id) {
@@ -101,6 +103,7 @@ impl RuleSet {
         self.rules.retain(|r| r.id != id);
         self.eval_cache.remove(&id);
         self.sticky_paths.remove(&id);
+        self.domain_ips.remove(&id);
         Ok(())
     }
 
