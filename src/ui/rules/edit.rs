@@ -45,161 +45,141 @@ pub(super) fn edit_window(
     .resizable(false)
     .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
     .show(ui, |ui| {
-        egui::Grid::new("rule_edit_grid")
-            .num_columns(2)
-            .spacing([12.0, 8.0])
-            .show(ui, |ui| {
-                field_label(ui, i18n.t("rules-col-name"));
+        // 名称
+        form_row(ui, i18n.t("rules-col-name"), |ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut draft.name)
+                    .desired_width(FIELD_WIDTH)
+                    .font(egui::FontId::proportional(theme::font::BODY)),
+            );
+        });
+        // 动作
+        form_row(ui, i18n.t("rules-col-action"), |ui| {
+            combo(
+                ui,
+                "rule-action",
+                labels::action_text(i18n, draft.action),
+                |ui| {
+                    for a in [Action::Allow, Action::Block] {
+                        if ui
+                            .selectable_label(draft.action == a, labels::action_text(i18n, a))
+                            .clicked()
+                        {
+                            draft.action = a;
+                        }
+                    }
+                },
+            );
+        });
+        // 方向
+        form_row(ui, i18n.t("rules-col-direction"), |ui| {
+            combo(
+                ui,
+                "rule-direction",
+                labels::direction_name(i18n, draft.direction),
+                |ui| {
+                    for d in [Direction::Any, Direction::Out, Direction::In] {
+                        if ui
+                            .selectable_label(draft.direction == d, labels::direction_name(i18n, d))
+                            .clicked()
+                        {
+                            draft.direction = d;
+                        }
+                    }
+                },
+            );
+        });
+        form_hint(ui, &i18n.t("rules-direction-hint"));
+        // 协议
+        form_row(ui, i18n.t("col-proto"), |ui| {
+            combo(
+                ui,
+                "rule-proto",
+                labels::proto_name(i18n, draft.proto),
+                |ui| {
+                    for p in [None, Some(Protocol::Tcp), Some(Protocol::Udp)] {
+                        if ui
+                            .selectable_label(draft.proto == p, labels::proto_name(i18n, p))
+                            .clicked()
+                        {
+                            draft.proto = p;
+                        }
+                    }
+                },
+            );
+        });
+        // 进程
+        form_row(ui, i18n.t("col-process"), |ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut draft.process)
+                    .desired_width(FIELD_WIDTH)
+                    .font(egui::FontId::proportional(theme::font::BODY)),
+            );
+        });
+        form_hint(ui, &i18n.t("rules-process-hint"));
+        // 远端
+        form_row(ui, i18n.t("rules-col-remote"), |ui| {
+            combo(
+                ui,
+                "rule-remote-kind",
+                labels::remote_kind_name(i18n, draft.remote_kind),
+                |ui| {
+                    for k in [RemoteKind::Any, RemoteKind::Ip, RemoteKind::Domain] {
+                        if ui
+                            .selectable_label(
+                                draft.remote_kind == k,
+                                labels::remote_kind_name(i18n, k),
+                            )
+                            .clicked()
+                        {
+                            draft.remote_kind = k;
+                        }
+                    }
+                },
+            );
+        });
+        if draft.remote_kind != RemoteKind::Any {
+            let hint = if draft.remote_kind == RemoteKind::Ip {
+                i18n.t("rules-remote-ip-hint")
+            } else {
+                i18n.t("rules-remote-domain-hint")
+            };
+            form_row_no_label(ui, |ui| {
                 ui.add(
-                    egui::TextEdit::singleline(&mut draft.name)
+                    egui::TextEdit::singleline(&mut draft.remote_value)
+                        .hint_text(hint)
                         .desired_width(FIELD_WIDTH)
                         .font(egui::FontId::proportional(theme::font::BODY)),
                 );
-                ui.end_row();
-
-                field_label(ui, i18n.t("rules-col-action"));
-                combo(
-                    ui,
-                    "rule-action",
-                    labels::action_text(i18n, draft.action),
-                    |ui| {
-                        for a in [Action::Allow, Action::Block] {
-                            if ui
-                                .selectable_label(draft.action == a, labels::action_text(i18n, a))
-                                .clicked()
-                            {
-                                draft.action = a;
-                            }
-                        }
-                    },
-                );
-                ui.end_row();
-
-                field_label(ui, i18n.t("rules-col-direction"));
-                ui.vertical(|ui| {
-                    combo(
-                        ui,
-                        "rule-direction",
-                        labels::direction_name(i18n, draft.direction),
-                        |ui| {
-                            for d in [Direction::Any, Direction::Out, Direction::In] {
-                                if ui
-                                    .selectable_label(
-                                        draft.direction == d,
-                                        labels::direction_name(i18n, d),
-                                    )
-                                    .clicked()
-                                {
-                                    draft.direction = d;
-                                }
-                            }
-                        },
-                    );
-                    ui.label(theme::dim_text(
-                        &i18n.t("rules-direction-hint"),
-                        theme::font::XS,
-                    ));
-                });
-                ui.end_row();
-
-                field_label(ui, i18n.t("col-proto"));
-                combo(
-                    ui,
-                    "rule-proto",
-                    labels::proto_name(i18n, draft.proto),
-                    |ui| {
-                        for p in [None, Some(Protocol::Tcp), Some(Protocol::Udp)] {
-                            if ui
-                                .selectable_label(draft.proto == p, labels::proto_name(i18n, p))
-                                .clicked()
-                            {
-                                draft.proto = p;
-                            }
-                        }
-                    },
-                );
-                ui.end_row();
-
-                field_label(ui, i18n.t("col-process"));
-                ui.vertical(|ui| {
-                    ui.add(
-                        egui::TextEdit::singleline(&mut draft.process)
-                            .desired_width(FIELD_WIDTH)
-                            .font(egui::FontId::proportional(theme::font::BODY)),
-                    );
-                    ui.label(theme::dim_text(
-                        &i18n.t("rules-process-hint"),
-                        theme::font::XS,
-                    ));
-                });
-                ui.end_row();
-
-                field_label(ui, i18n.t("rules-col-remote"));
-                ui.vertical(|ui| {
-                    combo(
-                        ui,
-                        "rule-remote-kind",
-                        labels::remote_kind_name(i18n, draft.remote_kind),
-                        |ui| {
-                            for k in [RemoteKind::Any, RemoteKind::Ip, RemoteKind::Domain] {
-                                if ui
-                                    .selectable_label(
-                                        draft.remote_kind == k,
-                                        labels::remote_kind_name(i18n, k),
-                                    )
-                                    .clicked()
-                                {
-                                    draft.remote_kind = k;
-                                }
-                            }
-                        },
-                    );
-                    if draft.remote_kind != RemoteKind::Any {
-                        let hint = if draft.remote_kind == RemoteKind::Ip {
-                            i18n.t("rules-remote-ip-hint")
-                        } else {
-                            i18n.t("rules-remote-domain-hint")
-                        };
-                        ui.add(
-                            egui::TextEdit::singleline(&mut draft.remote_value)
-                                .hint_text(hint)
-                                .desired_width(FIELD_WIDTH)
-                                .font(egui::FontId::proportional(theme::font::BODY)),
-                        );
-                        if draft.remote_kind == RemoteKind::Domain {
-                            ui.label(theme::dim_text(
-                                &i18n.t("rules-remote-domain-desc"),
-                                theme::font::XS,
-                            ));
-                        }
-                    }
-                });
-                ui.end_row();
-
-                field_label(ui, i18n.t("col-port"));
-                ui.horizontal(|ui| {
-                    // DragValue 默认无边框按钮样式,包一层与输入框同源的
-                    // 底色描边(取当前主题 Visuals)
-                    let vis = &ui.style().visuals;
-                    egui::Frame::new()
-                        .fill(vis.text_edit_bg_color())
-                        .stroke(vis.widgets.inactive.bg_stroke)
-                        .corner_radius(vis.widgets.inactive.corner_radius)
-                        .show(ui, |ui| {
-                            ui.add_sized(
-                                [64.0, 24.0],
-                                egui::DragValue::new(&mut draft.port)
-                                    .range(0..=65535)
-                                    .custom_formatter(|v, _| labels::port_display(v as u16)),
-                            )
-                        });
-                    ui.label(theme::dim_text(
-                        &i18n.t("rules-port-any-hint"),
-                        theme::font::XS,
-                    ));
-                });
-                ui.end_row();
             });
+            if draft.remote_kind == RemoteKind::Domain {
+                form_hint(ui, &i18n.t("rules-remote-domain-desc"));
+            }
+        }
+        // 端口
+        form_row(ui, i18n.t("col-port"), |ui| {
+            // DragValue 默认无边框按钮样式,包一层与输入框同源的
+            // 底色描边(取当前主题 Visuals)
+            let vis = &ui.style().visuals;
+            egui::Frame::new()
+                .fill(vis.text_edit_bg_color())
+                .stroke(vis.widgets.inactive.bg_stroke)
+                .corner_radius(vis.widgets.inactive.corner_radius)
+                .show(ui, |ui| {
+                    ui.add_sized(
+                        [64.0, 24.0],
+                        egui::DragValue::new(&mut draft.port)
+                            .range(0..=65535)
+                            .custom_formatter(|v, _| labels::port_display(v as u16)),
+                    )
+                });
+            ui.add_space(theme::sp::SM);
+            ui.label(theme::dim_text(
+                &i18n.t("rules-port-any-hint"),
+                theme::font::XS,
+            ));
+        });
+
         ui.add_space(6.0);
         if let Some(err) = &draft.error {
             ui.label(
@@ -209,19 +189,22 @@ pub(super) fn edit_window(
             );
         }
         ui.add_space(4.0);
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if primary_btn(ui, i18n.t("rules-save"), true).clicked() {
-                match validate(draft) {
-                    Ok(()) => save = true,
-                    Err(key) => draft.error = Some(key),
+        // 取消/保存整体居中
+        ui.vertical_centered(|ui| {
+            ui.horizontal(|ui| {
+                if ui
+                    .button(RichText::new(i18n.t("rules-cancel")).size(theme::font::BODY))
+                    .clicked()
+                {
+                    close = true;
                 }
-            }
-            if ui
-                .button(RichText::new(i18n.t("rules-cancel")).size(theme::font::BODY))
-                .clicked()
-            {
-                close = true;
-            }
+                if primary_btn(ui, i18n.t("rules-save"), true).clicked() {
+                    match validate(draft) {
+                        Ok(()) => save = true,
+                        Err(key) => draft.error = Some(key),
+                    }
+                }
+            });
         });
     });
     if !open {
@@ -247,6 +230,36 @@ fn combo(ui: &mut egui::Ui, salt: &str, selected: String, content: impl FnOnce(&
         .width(FIELD_WIDTH)
         .selected_text(RichText::new(selected).size(theme::font::BODY))
         .show_ui(ui, content);
+}
+
+/// 弹窗表单左列(字段名)宽度:容纳中英字段名
+const LABEL_W: f32 = 64.0;
+
+/// 表单行:左列字段名(定宽)+ 右控件;两者同为水平布局子件,
+/// 垂直居中对齐
+fn form_row(ui: &mut egui::Ui, label: String, add: impl FnOnce(&mut egui::Ui)) {
+    ui.horizontal(|ui| {
+        ui.allocate_ui(egui::vec2(LABEL_W, 0.0), |ui| {
+            field_label(ui, label);
+        });
+        add(ui);
+    });
+}
+
+/// 控件列延续行(无字段名,左列留空保持控件列对齐)
+fn form_row_no_label(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
+    ui.horizontal(|ui| {
+        ui.allocate_ui(egui::vec2(LABEL_W, 0.0), |ui| {});
+        add(ui);
+    });
+}
+
+/// 控件列下方说明(缩进至控件列)
+fn form_hint(ui: &mut egui::Ui, text: &str) {
+    ui.horizontal(|ui| {
+        ui.add_space(LABEL_W);
+        ui.label(theme::dim_text(text, theme::font::XS));
+    });
 }
 
 fn field_label(ui: &mut egui::Ui, text: String) {
