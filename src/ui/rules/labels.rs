@@ -51,7 +51,8 @@ pub(super) fn remote_display(rule: &Rule) -> String {
     }
 }
 
-pub(super) fn port_display(port: u16) -> String {
+/// 端口展示:0 = 未指定(任意端口/不补测)显示为减号
+pub(crate) fn port_display(port: u16) -> String {
     if port == 0 {
         "-".to_owned()
     } else {

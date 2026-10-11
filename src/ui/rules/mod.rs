@@ -4,7 +4,7 @@
 mod draft;
 mod edit;
 mod import_export;
-mod labels;
+pub(crate) mod labels;
 mod row;
 mod table;
 

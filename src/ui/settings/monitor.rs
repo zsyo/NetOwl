@@ -213,26 +213,42 @@ pub(super) fn targets_section(
             });
             let mut removed: Option<usize> = None;
             // 三个控件 add_sized 统一 24px 高(与行尾删除按钮的 24×24
-            // 同源):TextEdit 与 DragValue 默认高度不同,同一行内错位
+            // 同源);TextEdit 单行文本默认贴顶(align LEFT_TOP),拉伸后
+            // 需显式垂直居中;DragValue 默认无边框按钮样式,包一层与
+            // TextEdit 同源的底色描边(取当前主题 Visuals)
             for (i, t) in config.general.quality_targets.iter_mut().enumerate() {
                 ui.horizontal(|ui| {
                     *changed |= ui
                         .add_sized(
                             [150.0, 24.0],
-                            egui::TextEdit::singleline(&mut t.ip).hint_text("1.2.3.4"),
+                            egui::TextEdit::singleline(&mut t.ip)
+                                .hint_text("1.2.3.4")
+                                .vertical_align(egui::Align::Center),
                         )
                         .changed();
-                    *changed |= ui
-                        .add_sized(
-                            [56.0, 24.0],
-                            egui::DragValue::new(&mut t.port).range(0..=65535),
-                        )
-                        .changed();
+                    let v = &ui.style().visuals;
+                    *changed |= egui::Frame::new()
+                        .fill(v.text_edit_bg_color())
+                        .stroke(v.widgets.inactive.bg_stroke)
+                        .corner_radius(v.widgets.inactive.corner_radius)
+                        .show(ui, |ui| {
+                            ui.add_sized(
+                                [54.0, 24.0],
+                                egui::DragValue::new(&mut t.port)
+                                    .range(0..=65535)
+                                    .custom_formatter(|v, _| {
+                                        crate::ui::rules::labels::port_display(v as u16)
+                                    }),
+                            )
+                            .changed()
+                        })
+                        .inner;
                     *changed |= ui
                         .add_sized(
                             [120.0, 24.0],
                             egui::TextEdit::singleline(&mut t.label)
-                                .hint_text(&i18n.t("settings-quality-label-hint")),
+                                .hint_text(&i18n.t("settings-quality-label-hint"))
+                                .vertical_align(egui::Align::Center),
                         )
                         .changed();
                     if widgets::button::icon_btn(
