@@ -13,6 +13,7 @@ use std::net::{Ipv4Addr, SocketAddr, TcpStream};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
+use windows::Win32::Foundation::GetLastError;
 use windows::Win32::NetworkManagement::IpHelper::{
     ICMP_ECHO_REPLY, IcmpCloseHandle, IcmpCreateFile, IcmpSendEcho,
 };
@@ -166,17 +167,22 @@ impl Quality {
             dispatched += 1;
             let tx = self.tx.clone();
             std::thread::spawn(move || {
-                let (rtt, via) = match icmp_probe(ip) {
-                    Some(ms) => (Some(ms), "icmp"),
-                    None => match tcp_port.and_then(|port| tcp_probe(ip, port)) {
-                        Some(ms) => (Some(ms), "tcp"),
-                        None => (None, "icmp"),
+                let rtt = match icmp_probe(ip) {
+                    Ok(ms) => {
+                        tracing::debug!("[Quality] {ip} icmp {ms}ms");
+                        Some(ms)
+                    }
+                    Err(status) => match tcp_port.and_then(|port| tcp_probe(ip, port)) {
+                        Some(ms) => {
+                            tracing::debug!("[Quality] {ip} tcp {ms}ms");
+                            Some(ms)
+                        }
+                        None => {
+                            tracing::debug!("[Quality] {ip} 无响应(status {status})");
+                            None
+                        }
                     },
                 };
-                match rtt {
-                    Some(ms) => tracing::debug!("[Quality] {ip} {via} {ms}ms"),
-                    None => tracing::debug!("[Quality] {ip} 无响应"),
-                }
                 let _ = tx.send((ip, rtt));
             });
         }
@@ -215,12 +221,16 @@ impl Quality {
     }
 }
 
-/// ICMP echo 探测(同步,单轮);RTT 毫秒,超时/失败/禁 ping 返回 None
-fn icmp_probe(ip: Ipv4Addr) -> Option<u32> {
+/// ICMP echo 探测(同步,单轮);Ok = RTT 毫秒,Err = 内核 Status 码
+/// (n=0 时取 GetLastError;常见 11010 = IP_REQ_TIMED_OUT 超时,
+/// 11003/11013 = 目标不可达,0 = IP_SUCCESS 之外的通用失败)
+fn icmp_probe(ip: Ipv4Addr) -> Result<u32, u32> {
     // 每轮独立创建/关闭句柄:频率受派发限流(约 8 次/秒),开销可忽略
-    let handle = unsafe { IcmpCreateFile() }.ok()?;
-    // IPAddr 为网络序内存表示:按 BE 字节组装
-    let dest = u32::from_be_bytes(ip.octets());
+    let handle = unsafe { IcmpCreateFile() }.map_err(|e| e.code().0 as u32)?;
+    // IPAddr 为网络字节序:内存字节即地址原文。x86 为 LE,按 le_bytes
+    // 组装出的 u32 写入内存才是地址原序——from_be_bytes 会把
+    // 119.29.29.29 发到 29.29.29.119(8.8.8.8 之类回文地址凑巧无恙)
+    let dest = u32::from_le_bytes(ip.octets());
     /// ICMP 请求负载(8 字节,与 ping 默认一致)
     const REQUEST_LEN: usize = 8;
     let request = [0u8; REQUEST_LEN];
@@ -237,13 +247,20 @@ fn icmp_probe(ip: Ipv4Addr) -> Option<u32> {
             PROBE_TIMEOUT.as_millis() as u32,
         )
     };
-    // Status 0 = IP_SUCCESS;RoundTripTime 为内核记录的毫秒数
-    let rtt = (n > 0)
-        .then(|| unsafe { &*(reply.as_ptr() as *const ICMP_ECHO_REPLY) })
-        .filter(|r| r.Status == 0)
-        .map(|r| r.RoundTripTime);
+    // 回复数 > 0 且 Status 0 = IP_SUCCESS,RoundTripTime 为内核记录的
+    // 毫秒数;n = 0 时 GetLastError 携带失败原因(超时/不可达等)
+    let result = if n > 0 {
+        let r = unsafe { &*(reply.as_ptr() as *const ICMP_ECHO_REPLY) };
+        if r.Status == 0 {
+            Ok(r.RoundTripTime)
+        } else {
+            Err(r.Status)
+        }
+    } else {
+        Err(unsafe { GetLastError() }.0)
+    };
     let _ = unsafe { IcmpCloseHandle(handle) };
-    rtt
+    result
 }
 
 /// TCP 握手计时(connect 全程;会与目标建立并立即关闭一次真实连接)

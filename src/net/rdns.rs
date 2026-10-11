@@ -46,9 +46,9 @@ impl Entry {
 
 /// 异步 PTR 解析器:update() 喂入当前活跃连接并收割结果,lookup() 查缓存
 pub struct Rdns {
-    /// 查询线程回报通道(发送端克隆给每个查询线程)
-    tx: mpsc::Sender<(Ipv4Addr, Option<String>)>,
-    rx: Receiver<(Ipv4Addr, Option<String>)>,
+    /// 查询线程回报通道(发送端克隆给每个查询线程;Err = getnameinfo 错误码)
+    tx: mpsc::Sender<(Ipv4Addr, Result<String, i32>)>,
+    rx: Receiver<(Ipv4Addr, Result<String, i32>)>,
     /// 已派发未返回的 IP(getnameinfo 可能阻塞数秒,防重复派发)
     pending: HashSet<Ipv4Addr>,
     /// 待派发队列(活跃且缓存过期的 IP)
@@ -75,12 +75,16 @@ impl Rdns {
 
     /// 每帧调用:收割完成结果,为仍活跃但缓存过期的 IP 重新派发查询
     pub fn update(&mut self, conns: &[Connection]) {
-        while let Ok((ip, name)) = self.rx.try_recv() {
+        while let Ok((ip, result)) = self.rx.try_recv() {
             self.pending.remove(&ip);
             // 负缓存(失败 2min)天然节流:同一 IP 在 TTL 内不重复查询
-            if name.is_none() {
-                tracing::debug!("[Rdns] PTR 解析失败:{ip}");
-            }
+            let name = match result {
+                Ok(name) => Some(name),
+                Err(e) => {
+                    tracing::debug!("[Rdns] PTR 解析失败({e}):{ip}");
+                    None
+                }
+            };
             self.cache.insert(
                 ip,
                 Entry {
@@ -188,14 +192,16 @@ fn ensure_winsock() -> bool {
     OK.load(std::sync::atomic::Ordering::Acquire)
 }
 
-/// PTR 查询:无 PTR/查询失败返回 None(经系统 DNS 客户端,自带缓存)
-fn ptr_query(ip: Ipv4Addr) -> Option<String> {
+/// PTR 查询:经系统 DNS 客户端(自带缓存);Err = getnameinfo 错误码
+fn ptr_query(ip: Ipv4Addr) -> Result<String, i32> {
     let addr = SOCKADDR_IN {
         sin_family: AF_INET,
         sin_port: 0,
+        // 网络字节序:内存字节即地址原文,x86 为 LE,按 le_bytes 组装;
+        // from_be_bytes 会查到字节反转的地址
         sin_addr: IN_ADDR {
             S_un: IN_ADDR_0 {
-                S_addr: u32::from_be_bytes(ip.octets()),
+                S_addr: u32::from_le_bytes(ip.octets()),
             },
         },
         sin_zero: [0; 8],
@@ -212,9 +218,9 @@ fn ptr_query(ip: Ipv4Addr) -> Option<String> {
         )
     };
     if rc != 0 {
-        return None;
+        return Err(rc);
     }
     let len = host.iter().position(|&b| b == 0).unwrap_or(host.len());
     let name = String::from_utf8_lossy(&host[..len]).into_owned();
-    if name.is_empty() { None } else { Some(name) }
+    if name.is_empty() { Err(0) } else { Ok(name) }
 }
