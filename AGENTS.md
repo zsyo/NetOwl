@@ -71,8 +71,10 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   retain 排除:列表/地图不显示,Tracker 不落库)
 - src/collector/ - 连接采集(mod.rs:Collector trait 与 real/mock 工厂 +
   CollectorKind,icon_image 默认返回 Pending;mock.rs:模拟数据供演示/测试;
-  query.rs:Win32 查询原语,GetExtendedTcpTable/GetExtendedUdpTable owner-PID
-  快照(TCP 仅活动状态,两段式缓冲重试)与 OpenProcess+QueryFullProcessImageNameW
+  query.rs:Win32 查询原语,GetExtendedTcpTable/GetExtendedUdpTable
+  owner-PID 快照(v4 + IPv6 双族,MIB_TCP6/UDP6TABLE_OWNER_PID,ConnKey
+  地址为 IpAddr;TCP 仅活动状态,两段式缓冲重试)与
+  OpenProcess+QueryFullProcessImageNameW
   全路径反查;反查被目标 DACL 拒绝(非提权/受保护服务)时以
   NtQuerySystemInformation 全量进程名快照兜底(任务管理器同源,无需句柄,
   拿名字无路径,签名/图标维持未知);windows_table.rs:真实采集器,1s 节流,
@@ -87,7 +89,7 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   字节由 app 层从 ETW 流合并填充;均为只读 API,无需管理员权限)
 - src/rules/ - 规则与拦截(结构体 RuleSet 单点定义于 mod.rs:规则模型
   (动作/方向/协议/进程/远端[网段或域名]/端口/优先级)、MatchReq 求值输入、
-  conn_direction 方向判定(ETW initiated_out 真实方向优先,未知时 >=49152 入站近似兜底)、parse_net、
+  conn_direction 方向判定(ETW initiated_out 真实方向优先,未知时 >=49152 入站近似兜底)、parse_net[v4 区间 + v6 CIDR,NetRange 双族]、
   SILENT_FALLBACK_ID/WEIGHT_RESERVED_HIGH/WEIGHT_FALLBACK;profile.rs:
   RuleSet impl 配置档管理——db v7 profiles 表 + rules.profile_id,规则按
   配置档隔离,load/insert 作用于当前档,switch_profile 重载并保留会话
@@ -101,18 +103,24 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   App 层 30s 批量 + 退出补写;store.rs:RuleSet impl CRUD 与会话
   临时规则(负数 id 不落库);specs.rs:RuleSet impl wfp_specs 翻译启用规则
   为 WFP 过滤器目标集——进程条件按映像名展开为完整路径集合(粘滞缓存防
-  拦截窗口抖动),网段 RANGE、端口/协议等值,Any 方向拆 CONNECT/
-  RECV_ACCEPT 两层;weight 布局:15=询问 pending/静默自身放行(互斥),
+  拦截窗口抖动),远端条件按地址族分派(v4 网段 RANGE,v6 CIDR 前缀;
+  不限远端的进程/端口/协议规则在 v4/v6 四层同时生效),端口/协议等值,
+  方向拆对应族的 CONNECT/RECV_ACCEPT 层[Layer 四值 Out/In/Out6/In6];
+  weight 布局:15=询问 pending/静默自身放行(互斥),
   14..1=用户规则(超 14 条钳制到 1),0=静默兜底/子层基线;域名规则
   不参与翻译,仅求值标注;wfp/:WFP 拦截引擎(mod.rs:管理线程持动态会话
   [进程退出/崩溃内核对象自毁],单子层 weight 0 低于系统防火墙,非提权
   回落 NoAdmin 只读;静默拒绝下 app 层追加自身放行(当前 exe,weight 15)
-  与通配阻断(weight 0);filter.rs:Spec→FWPM_FILTER0 的 FFI 构造
+  与通配阻断(weight 0,v4/v6 四层);filter.rs:Spec→FWPM_FILTER0 的 FFI 构造
+  [v4 网段 FWP_UINT32 RANGE,v6 前缀 FWP_V6_ADDR_AND_MASK 等值,
+  层 GUID 按族取 CONNECT/RECV_ACCEPT 的 V4/V6 版]
   [app id blob/网段 RANGE/协议端口等值]))
 - src/storage/ - 持久化(config.rs:应用配置(config.toml,serde TOML + 防抖
   写盘);db.rs:SQLite 连接与结构迁移(v5 = conn_events 补 bytes_in/out 列;
   v6 = lan_devices 局域网设备表;v7 = profiles 配置档表 + rules.profile_id;
-  v8 = rules.hit_count 规则命中计数列);
+  v8 = rules.hit_count 规则命中计数列;v9 = conn_events.remote_ip6
+  IPv6 远端列[16 字节大端 BLOB,等长 memcmp 字典序即数值序,v6 行的
+  remote_ip 列零值占位、族判定以 remote_ip6 IS NULL 为准]);
   history/:历史落盘(mod.rs:ClosedConn、Tracker 对比前后快照生成事件
   [mock 不入库]、Writer 写线程句柄与 run 主循环、write_batch 批量事务
   [conn_events 事件表,每条已完结连接一行整行 INSERT,含收发字节——
@@ -131,29 +139,37 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   ViewMode/Range/Rows/PageState[视图/筛选/排序/结果/清空,筛选防抖
   300ms,汇总活跃合并缓存]))
 - src/net/ - 网络信息(geoip.rs:GeoIP 归属定位(assets/geoip.bin 编译期内嵌,
-  首用解析一次;IPv4 区间表 LEB128 delta 编码二分查询;城市级粒度:中国含港澳台
-  到地级市、外国按城市名匹配 GeoNames,未命中回退省/国家级;place_pos/place_label
-  为地图与列表的统一归属坐标/显示名入口,显示名双语内嵌不走词条);
-  local_ip.rs:本机公网 IP 探测(6 个知名公共回显接口并发,手写 HTTP/1.1 GET
-  不走系统代理、不引 TLS 依赖,最先返回的合法 IPv4 胜出;app 层每 10 分钟重探,
-  经 geoip 得到本机地图点位,失败回退 map::world::LOCAL;NETOWL_IP 环境变量
-  可指定固定本机 IP 隐藏真实位置[截图场景],生效时不发起任何真实探测);rdns.rs:rDNS 域名
+  首用解析一次;v4/v6 双族区间表 LEB128 delta 编码二分查询[v6 为 u128,
+  NWGI v3];城市级粒度:中国含港澳台到地级市、外国按城市名匹配 GeoNames,
+  未命中回退省/国家级;place_pos/place_label 为地图与列表的统一归属坐标/
+  显示名入口,显示名双语内嵌不走词条);
+  local_ip.rs:本机公网 IP 探测(9 个知名公共回显接口并发[v4 六个 +
+  v6 三个],手写 HTTP/1.1 GET 不走系统代理、不引 TLS 依赖,首个 IPv4
+  结果胜出、接口线程全部收尾仍无 v4 才回退 v6[本机地图点位以 v4 为准];
+  app 层每 10 分钟重探,经 geoip 得到本机地图点位,失败回退
+  map::world::LOCAL;NETOWL_IP 环境变量可指定固定本机 IP[v4/v6] 隐藏
+  真实位置[截图场景],生效时不发起任何真实探测);rdns.rs:rDNS 域名
   解析(异步 PTR:getnameinfo NI_NAMEREQD 于独立线程执行,app 每帧 update 收割;
   并发上限 8 + 每 250ms 派发 2 个限流,成功/失败分别 10min/2min TTL 缓存,失效
-  仅对仍活跃连接重查;回环/私网/保留段不查;lookup 供列表与地图信息卡域名优先
-  显示,rdns::display 超长截断);traffic.rs:总上传/下载速率(GetIfTable2 各接口
+  仅对仍活跃连接重查;回环/私网/保留段不查[v6 另排除 ULA/链路本地/组播];
+  lookup 供列表与地图信息卡域名优先显示,rdns::display 超长截断);traffic.rs:总上传/下载速率(GetIfTable2 各接口
   In/OutOctets 采样差值;排除回环/隧道;**必须排除
   InterfaceAndOperStatusFlags.FilterInterface(bit1) 接口——WFP 轻量过滤/QoS
   过滤接口会镜像底层物理网卡计数,不过滤速率成倍虚高**;可见/隐藏均 1s 采样
   (托盘悬停提示跟随秒级刷新),表查询失败沿用旧速率);etw/:ETW 流量事件
   采集(mod.rs:Microsoft-Windows-Kernel-Network 实时会话,命名实例启动清理
   残留/退出停止,需管理员权限,未提权不启动;手写 windows crate 消费者
-  StartTraceW→EnableTraceEx2→OpenTraceW 回调→ProcessTrace;FlowKey/FlowAgg/
-  Etw 句柄[snapshot 空闲流收割/流表 4096 上限/take_finished];decode.rs:
-  payload 前 20 字节同构硬编码解析:PID/size/daddr/saddr/dport/sport,
-  端口网络序、IPv4 BE;事件视角归一本地/远端:发送/发起/接受/关闭
-  saddr 为本机侧、接收 daddr 为本机侧;消费 10/11 TCP 收发、42/43 UDP 收发、
-  12/15/13 连接建立/接受/关闭,18 与 11 双计、IPv6 系列忽略;TCP close 完结,
+  StartTraceW→EnableTraceEx2→OpenTraceW 回调→ProcessTrace;FlowKey/
+  FlowAgg[地址为 IpAddr]/Etw 句柄[snapshot 空闲流收割/流表 4096 上限/
+  take_finished];decode.rs:按 EventID 归一 v4/v6 双族分派(v6 = v4 +
+  16 偏移:26/27/28/29/31、58/59,provider 消息模板确认与 v4 同构),
+  v4 头 20 字节、v6 头 44 字节同构硬编码解析:PID/size/daddr/saddr/
+  dport/sport,端口网络序、v4 地址 BE、v6 地址段 16 字节网络序
+  (daddr@8..24/saddr@24..40);事件视角归一本地/远端:发送/发起/接受/
+  关闭 saddr 为本机侧、接收 daddr 为本机侧;消费 v4 10/11 TCP 收发、
+  42/43 UDP 收发、12/15/13 连接建立/接受/关闭与对应 v6 系列,
+  18/34 用户态拷贝与收发双计、retransmit 忽略(首个 v6 事件留 debug
+  hex 对拍日志);TCP close 完结,
   UDP 10s/TCP 60s 空闲兜底;app 层按 PID+协议+本地端口+远端
   合并填充连接字节,完结流未被表快照覆盖即短命连接落盘历史,回环不入库;
   lan.rs:局域网设备发现(GetIpNetTable IPv4 ARP 缓存只读查询,两段式
@@ -284,11 +300,15 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
 - tools/build_mapdata.py - 底图数据生成脚本(混合数据源 ->
     assets/mapdata.bin;原始 GeoJSON 放 tools/cache/,该目录不入库)
 - tools/build_geoip.py - GeoIP 归属数据生成脚本(tools/cache/ip2region_v4.xdb
-  [Apache-2.0,持续更新] + DataV 100000_full.json 与各省 {adcode}_full.json
-  [市级政府驻地坐标] + NE 50m admin_0 + GeoNames cities15000[公有领域,外国
-  城市坐标与英文名] -> assets/geoip.bin,NWGI v1 格式;城市级:中国含港澳台
-  到地级市[台湾 DataV 无 full 数据回退省级]、外国 (ISO,城市名) 匹配 GeoNames
-  同名取人口最多者,未命中回退省/国家级;55 万条 -> 合并 49.6 万条/约 2.7MB;
+  与 ip2region_v6.xdb[均 Apache-2.0,v6 xdb 3.0 索引项 38 字节 = sip16 +
+  eip16 + dlen2 + dptr4,IP 网络序大端] + DataV 100000_full.json 与各省
+  {adcode}_full.json[市级政府驻地坐标] + NE 50m admin_0 + GeoNames
+  cities15000[公有领域,外国城市坐标与英文名] -> assets/geoip.bin,
+  NWGI v3 格式 = v2 布局[locs + v4 区间表 + orgs + ISP 区间表]尾部追加
+  v6 归属/ISP 两个 u128 LEB128 区间段;位置表与机构表 v4/v6 共用;
+  城市级:中国含港澳台到地级市[台湾 DataV 无 full 数据回退省级]、外国
+  (ISO,城市名) 匹配 GeoNames 同名取人口最多者,未命中回退省/国家级;
+  v4 55 万条 + v6 73 万条 -> 约 14MB;
   重生成需将数据源文件放入 tools/cache/,缺失的会自动下载)
 
 ## 架构规范(egui 即时模式)
