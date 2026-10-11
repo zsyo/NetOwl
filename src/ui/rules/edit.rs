@@ -166,6 +166,12 @@ pub(super) fn edit_window(
                                 .desired_width(FIELD_WIDTH)
                                 .font(egui::FontId::proportional(theme::font::BODY)),
                         );
+                        if draft.remote_kind == RemoteKind::Domain {
+                            ui.label(theme::dim_text(
+                                &i18n.t("rules-remote-domain-desc"),
+                                theme::font::XS,
+                            ));
+                        }
                     }
                 });
                 ui.end_row();
@@ -257,13 +263,33 @@ fn validate(draft: &Draft) -> Result<(), &'static str> {
             }
         }
         RemoteKind::Domain => {
-            if draft.remote_value.trim().is_empty() {
-                Err("rules-err-remote-empty")
-            } else {
+            if valid_domain(&draft.remote_value) {
                 Ok(())
+            } else {
+                Err("rules-err-remote-domain")
             }
         }
     }
+}
+
+/// 域名条件格式校验:ASCII 字母/数字/连字符/点、每段 1..=63 且连字符不
+/// 居首尾、总长 <=253、至少两段(FQDN,单标签永不命中 rDNS 结果)。
+/// DNS 大小写不敏感;IDN 域名需 punycode(xn-- 前缀)形式,rDNS 返回的
+/// 也是 ASCII 记录
+fn valid_domain(input: &str) -> bool {
+    let s = input.trim().to_lowercase();
+    if s.is_empty() || s.len() > 253 || !s.contains('.') {
+        return false;
+    }
+    s.split('.').all(|label| {
+        !label.is_empty()
+            && label.len() <= 63
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+            && label
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    })
 }
 
 /// 校验通过后落库;id < 0 新建,否则覆盖更新;落库失败在草稿上显示错误

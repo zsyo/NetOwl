@@ -334,10 +334,11 @@ rules-process-hint = Image name or path suffix, e.g. chrome.exe; empty matches a
 rules-direction-hint = Approximated by remote port for now; >=49152 counts as inbound
 rules-remote-ip-hint = e.g. 10.0.0.0/8, 142.250. or 1.2.3.4
 rules-remote-domain-hint = Domain suffix, e.g. example.com
+rules-remote-domain-desc = Enforced in-kernel via resolved IPs after save; resolution refreshes about every 10 minutes
 rules-port-any-hint = 0 = any port
 rules-err-name = Name must not be empty
 rules-err-remote = Cannot parse the IP range
-rules-err-remote-empty = Domain must not be empty
+rules-err-remote-domain = Invalid domain format: letters, digits, hyphens and dots only, e.g. example.com
 rules-err-save = Save failed; check the log
 
 settings-title = Settings
