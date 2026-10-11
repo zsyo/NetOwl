@@ -12,7 +12,7 @@ use super::{CONNS_REFRESH_INTERVAL, MAP_LOCATE_WINDOW, NetOwlApp, RATE_HIST_LEN}
 use crate::collector::{self, CollectorKind};
 use crate::i18n::I18n;
 use crate::map::basemap;
-use crate::net::{etw, local_ip, rdns, traffic};
+use crate::net::{etw, local_ip, rdns, resolve, traffic};
 use crate::platform::resize::DragResize;
 use crate::platform::{single_instance, tray};
 use crate::rules;
@@ -119,6 +119,7 @@ impl NetOwlApp {
             map_view: basemap::View::global(),
             collector: collector::build(CollectorKind::from_config(&config.general.collector)),
             rdns: rdns::Rdns::new(),
+            resolve: resolve::Resolver::new(),
             traffic: traffic::Sampler::new(),
             rates: (0, 0),
             rate_hist: Vec::with_capacity(RATE_HIST_LEN + 1),

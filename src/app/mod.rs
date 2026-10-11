@@ -38,6 +38,7 @@ use crate::model::{Connection, Place};
 use crate::net::etw;
 use crate::net::local_ip;
 use crate::net::rdns;
+use crate::net::resolve;
 use crate::net::traffic;
 use crate::platform::resize::DragResize;
 use crate::platform::tray::Tray;
@@ -111,6 +112,8 @@ pub struct NetOwlApp {
     collector: Box<dyn crate::collector::Collector>,
     /// rDNS 解析(异步 PTR 查询,连接列表/地图信息卡域名优先显示)
     rdns: rdns::Rdns,
+    /// 域名正向解析(启用中域名规则的 A 记录查询,WFP 展开数据源)
+    resolve: resolve::Resolver,
     /// 总上传/下载速率采样(GetIfTable2 接口字节差值)
     traffic: traffic::Sampler,
     /// 最近总速率(字节/秒):(下行, 上行),导航栏展示

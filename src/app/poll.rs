@@ -198,6 +198,14 @@ impl NetOwlApp {
             return;
         }
         self.wfp_sync_at = Instant::now();
+        // 域名规则解析服务:收割结果并全量入队启用中的域名(幂等,缓存
+        // 未过期跳过,TTL 到期自然重解析)
+        self.resolve.update();
+        for r in &self.rules.rules {
+            if r.enabled && r.remote_kind == rules::RemoteKind::Domain {
+                self.resolve.enqueue(&r.remote_value);
+            }
+        }
         let mut specs = if self.collector.kind() == CollectorKind::Real {
             self.rules.wfp_specs(&self.conns)
         } else {
