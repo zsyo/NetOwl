@@ -100,6 +100,8 @@ const TRAY_TIP_INTERVAL: Duration = Duration::from_secs(1);
 /// 当日用量(本地时区)查库间隔:浮窗"今日总量"= 落库值 + 活跃连接
 /// 实时字节,秒级 SUM 全表开销不值当,分钟级即可
 const TODAY_BYTES_INTERVAL: Duration = Duration::from_secs(60);
+/// 自定义质量目标连续无响应的告警阈值(轮 = 采样周期)
+const QUALITY_ALERT_FAILS: usize = 5;
 
 /// 待恢复的窗口几何(物理像素)
 pub(super) type WindowRect = (i32, i32, i32, i32, bool);
@@ -152,6 +154,8 @@ pub struct NetOwlApp {
     conns_refresh_at: Instant,
     /// 网络质量采样上次轮询时刻(1s 节流,与采集同频)
     quality_poll_at: Instant,
+    /// 自定义质量目标已告警集合(连续无响应 toast 一次,恢复响应后重置)
+    quality_alerted: HashSet<Ipv4Addr>,
     /// 自身可执行文件路径(启动时缓存一次;静默拒绝模式的自身放行规则用)
     self_path: Option<String>,
     /// 右下角 toast 通知队列(新设备接入/用量配额告警)

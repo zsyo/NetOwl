@@ -127,6 +127,33 @@ pub struct GeneralConfig {
     /// IcmpSendEcho 为系统代发,无额外权限要求)
     #[serde(default = "default_true")]
     pub quality_monitor: bool,
+    /// 自定义质量采样目标(设置页管理,与自动采样叠加;IP 直连不解析
+    /// 域名,port 非 0 = 禁 ping 时回退 TCP 握手补测)
+    #[serde(default)]
+    pub quality_targets: Vec<QualityTarget>,
+}
+
+/// 一条自定义质量采样目标
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct QualityTarget {
+    /// IPv4 原文(设置页手输,解析失败的目标跳过采样并即时提示)
+    pub ip: String,
+    /// TCP 补测端口;0 = 仅 ICMP
+    #[serde(default)]
+    pub port: u16,
+    /// 备注(告警 toast 显示,空 = 显示 IP)
+    #[serde(default)]
+    pub label: String,
+}
+
+impl Default for QualityTarget {
+    fn default() -> Self {
+        QualityTarget {
+            ip: String::new(),
+            port: 0,
+            label: String::new(),
+        }
+    }
 }
 
 impl Default for GeneralConfig {
@@ -153,6 +180,7 @@ impl Default for GeneralConfig {
             hotkey: default_hotkey(),
             count_format: default_count_format(),
             quality_monitor: true,
+            quality_targets: Vec::new(),
         }
     }
 }

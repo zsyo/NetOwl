@@ -11,7 +11,7 @@ use std::time::Instant;
 use eframe::egui;
 
 use super::{
-    CONNS_REFRESH_INTERVAL, LOCAL_IP_PROBE_INTERVAL, NetOwlApp, RATE_HIST_LEN,
+    CONNS_REFRESH_INTERVAL, LOCAL_IP_PROBE_INTERVAL, NetOwlApp, QUALITY_ALERT_FAILS, RATE_HIST_LEN,
     TRAFFIC_INTERVAL_ACTIVE, TRAFFIC_INTERVAL_HIDDEN, WFP_SYNC_INTERVAL,
 };
 use crate::collector::{self, CollectorKind};
@@ -192,9 +192,9 @@ impl NetOwlApp {
         self.writer.send(events);
     }
 
-    /// 网络质量采样:目标 = 活跃连接的公网远端(rDNS 同口径),60s TTL
-    /// 内复用结果。与采集同频节流;开关关闭时不派发、不清理(既有样本
-    /// 自然过期,重开后从零重建),自定义目标由设置侧叠加入队
+    /// 网络质量采样:自动目标 = 活跃连接的公网远端(rDNS 同口径),自定义
+    /// 目标(设置页)叠加;60s TTL 内复用结果。与采集同频节流;开关关闭时
+    /// 不派发、不清理(既有样本自然过期,重开后从零重建)
     pub(super) fn poll_quality(&mut self) {
         if self.quality_poll_at.elapsed() < CONNS_REFRESH_INTERVAL {
             return;
@@ -204,7 +204,7 @@ impl NetOwlApp {
         if !self.config.general.quality_monitor {
             return;
         }
-        let wanted: HashSet<Ipv4Addr> = self
+        let mut wanted: HashSet<Ipv4Addr> = self
             .conns
             .iter()
             .map(|c| c.remote_ip)
@@ -213,7 +213,49 @@ impl NetOwlApp {
         for ip in &wanted {
             self.quality.enqueue(*ip, None);
         }
+        // 自定义目标:同 IP 时 TCP 补测端口覆盖自动目标(自定义优先);
+        // IP 解析失败(手输未完成)跳过,设置页有即时校验提示
+        let mut custom: Vec<(Ipv4Addr, String)> = Vec::new();
+        for t in &self.config.general.quality_targets {
+            let Ok(ip) = t.ip.trim().parse::<Ipv4Addr>() else {
+                continue;
+            };
+            self.quality.enqueue(ip, (t.port != 0).then_some(t.port));
+            custom.push((ip, t.label.clone()));
+        }
+        let custom_ips: HashSet<Ipv4Addr> = custom.iter().map(|(ip, _)| *ip).collect();
+        wanted.extend(custom_ips.iter().copied());
         self.quality.prune(&wanted);
+        self.poll_quality_alert(&custom);
+    }
+
+    /// 自定义目标连续多轮无响应:toast 告警一次(集合去重),恢复响应后
+    /// 重新武装;目标删除后样本经 prune 回收,告警态随之失效
+    fn poll_quality_alert(&mut self, custom: &[(Ipv4Addr, String)]) {
+        for (ip, label) in custom {
+            let fails = self.quality.consec_fails(*ip);
+            if fails >= QUALITY_ALERT_FAILS {
+                if self.quality_alerted.insert(*ip) {
+                    let name = if label.is_empty() {
+                        ip.to_string()
+                    } else {
+                        label.clone()
+                    };
+                    let text = self.i18n.t_with_args(
+                        "quality-alert-toast",
+                        &[("name", name), ("n", QUALITY_ALERT_FAILS.to_string())],
+                    );
+                    crate::ui::toast::push(
+                        &mut self.toasts,
+                        crate::ui::toast::ToastKind::Warn,
+                        text,
+                    );
+                    tracing::warn!("[Quality] 自定义目标 {ip} 连续 {fails} 轮无响应");
+                }
+            } else if fails == 0 {
+                self.quality_alerted.remove(ip);
+            }
+        }
     }
 
     /// WFP 过滤器同步:与采集同频重建目标集合(进程路径粘滞展开,

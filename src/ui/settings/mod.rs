@@ -47,8 +47,10 @@ pub(super) fn settings_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
             general::section(ui, config, i18n, hotkey_capture, &mut changed);
             ui.add_space(theme::sp::MD);
 
-            // ---- 监控:数据源 / 保留期 / 询问 / 静默 ----
+            // ---- 监控:数据源 / 质量采样 / 保留期 / 询问 / 静默 ----
             monitor::section(ui, config, i18n, &mut changed);
+            ui.add_space(theme::sp::MD);
+            monitor::targets_section(ui, config, i18n, &mut changed);
             ui.add_space(theme::sp::MD);
 
             // ---- 日志:文件开关 / 级别 / 查看入口,每行语义单一 ----

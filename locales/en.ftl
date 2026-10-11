@@ -374,6 +374,8 @@ settings-lan-notify-hint = Show a toast when a new device joins the LAN
 listen-notify-toast = New listening port: {$process} ({$endpoint})
 settings-listen-notify = New listening port alert
 settings-listen-notify-hint = Show a toast when a program opens a new listening port
+settings-quality = Network quality probing
+settings-quality-hint = ICMP-probe public remotes of active connections; map nodes are colored by latency
 
 # Listening ports view
 conns-view-conns = Connections
@@ -389,6 +391,13 @@ conns-group-count = {$count} conns
 # Usage quota alerts
 quota-warn-toast = Monthly usage reached 80% ({$used})
 quota-exceed-toast = Monthly usage exceeded the quota ({$used})
+settings-quality-targets = Custom probe targets
+settings-quality-targets-hint = Extra targets to watch on top of automatic sampling; port 0 = no TCP fallback when ping is blocked; label shows in alerts
+settings-quality-label-hint = Label
+settings-quality-add = Add target
+settings-quality-remove = Remove
+settings-quality-invalid-ip = Invalid IP format
+quality-alert-toast = Custom target "{$name}" unresponsive for {$n} rounds
 settings-quota = Monthly data quota
 settings-quota-hint = Alert at 80% and 100% of the quota; 0 = disabled
 settings-quota-unit = GB

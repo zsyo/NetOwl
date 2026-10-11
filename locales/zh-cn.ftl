@@ -375,6 +375,8 @@ settings-lan-notify-hint = 局域网出现新设备时右下角通知
 listen-notify-toast = 新监听端口:{$process} ({$endpoint})
 settings-listen-notify = 新监听端口提醒
 settings-listen-notify-hint = 程序打开新的监听端口时右下角通知
+settings-quality = 网络质量采样
+settings-quality-hint = 对活跃连接的公网远端做 ICMP 探测,地图节点按延迟着色
 
 # 端口监听视图
 conns-view-conns = 连接
@@ -390,6 +392,13 @@ conns-group-count = {$count} 条
 # 用量配额告警
 quota-warn-toast = 本月流量已达 80%({$used})
 quota-exceed-toast = 本月流量已超配额({$used})
+settings-quality-targets = 自定义采样目标
+settings-quality-targets-hint = 重点关注的目标,与自动采样叠加;端口 0 = 禁 ping 时不做 TCP 补测;备注用于告警提示
+settings-quality-label-hint = 备注
+settings-quality-add = 添加目标
+settings-quality-remove = 删除
+settings-quality-invalid-ip = IP 格式无效
+quality-alert-toast = 自定义目标「{$name}」连续 {$n} 轮无响应
 settings-quota = 月度流量配额
 settings-quota-hint = 当月用量达到配额 80% 与 100% 时提醒,0 = 不启用
 settings-quota-unit = GB

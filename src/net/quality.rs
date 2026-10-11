@@ -193,6 +193,15 @@ impl Quality {
         })
     }
 
+    /// 窗口尾部连续失败轮数(自定义目标告警判定:达到阈值触发一次,
+    /// 尾部重新出现成功即归零)
+    pub fn consec_fails(&self, ip: Ipv4Addr) -> usize {
+        self.samples
+            .get(&ip)
+            .map(|s| s.window.iter().rev().take_while(|&&ok| !ok).count())
+            .unwrap_or(0)
+    }
+
     /// 清理不再需要的目标(队列/在途/采样同步收缩);wanted 须包含全部
     /// 应持续采样的目标(活跃连接远端 + 自定义目标)。在途探测无法取消,
     /// 结果回收后下一轮 prune 一并清除

@@ -1,5 +1,6 @@
-//! 设置页监控分组:数据源、历史保留期、新连接询问、静默模式三态、
-//! 托盘常驻与开机自启动(注册表项由 App 层失败重试写入)。
+//! 设置页监控分组:数据源、网络质量采样(含自定义目标管理)、历史保留期、
+//! 新连接询问、静默模式三态、托盘常驻与开机自启动(注册表项由 App 层失败
+//! 重试写入)。
 
 use eframe::egui;
 use egui::RichText;
@@ -7,7 +8,7 @@ use egui::RichText;
 use super::{section_card, setting_row};
 use crate::collector::CollectorKind;
 use crate::i18n::I18n;
-use crate::storage::config::Config;
+use crate::storage::config::{Config, QualityTarget};
 use crate::ui::{icons, theme, widgets};
 
 pub(super) fn section(ui: &mut egui::Ui, config: &mut Config, i18n: &I18n, changed: &mut bool) {
@@ -71,6 +72,20 @@ pub(super) fn section(ui: &mut egui::Ui, config: &mut Config, i18n: &I18n, chang
                         ui,
                         &mut config.general.listen_notify,
                         egui::Id::new("settings-listen-notify-toggle"),
+                    )
+                    .changed();
+                },
+            );
+            ui.add_space(theme::sp::SM);
+            setting_row(
+                ui,
+                &i18n.t("settings-quality"),
+                &i18n.t("settings-quality-hint"),
+                |ui| {
+                    *changed |= widgets::toggle::toggle_switch(
+                        ui,
+                        &mut config.general.quality_monitor,
+                        egui::Id::new("settings-quality-toggle"),
                     )
                     .changed();
                 },
@@ -161,6 +176,86 @@ pub(super) fn section(ui: &mut egui::Ui, config: &mut Config, i18n: &I18n, chang
                     }
                 },
             );
+        },
+    );
+}
+
+/// 自定义质量采样目标列表:逐行 IP/端口/备注即时编辑,行尾删除;
+/// IP 手输未完成时即时校验提示,解析失败的目标由采样侧跳过
+pub(super) fn targets_section(
+    ui: &mut egui::Ui,
+    config: &mut Config,
+    i18n: &I18n,
+    changed: &mut bool,
+) {
+    section_card(
+        ui,
+        icons::GLOBE,
+        &i18n.t("settings-quality-targets"),
+        |ui| {
+            ui.label(theme::dim_text(
+                &i18n.t("settings-quality-targets-hint"),
+                theme::font::XS,
+            ));
+            let mut removed: Option<usize> = None;
+            for (i, t) in config.general.quality_targets.iter_mut().enumerate() {
+                ui.horizontal(|ui| {
+                    *changed |= ui
+                        .add(
+                            egui::TextEdit::singleline(&mut t.ip)
+                                .desired_width(150.0)
+                                .hint_text("1.2.3.4"),
+                        )
+                        .changed();
+                    *changed |= ui
+                        .add(egui::DragValue::new(&mut t.port).range(0..=65535))
+                        .changed();
+                    *changed |= ui
+                        .add(
+                            egui::TextEdit::singleline(&mut t.label)
+                                .desired_width(120.0)
+                                .hint_text(&i18n.t("settings-quality-label-hint")),
+                        )
+                        .changed();
+                    if widgets::button::icon_btn(
+                        ui,
+                        icons::TRASH,
+                        Some(i18n.t("settings-quality-remove")),
+                        true,
+                        true,
+                    )
+                    .clicked()
+                    {
+                        removed = Some(i);
+                    }
+                    let ip = t.ip.trim();
+                    if !ip.is_empty() && ip.parse::<std::net::Ipv4Addr>().is_err() {
+                        ui.label(
+                            RichText::new(i18n.t("settings-quality-invalid-ip"))
+                                .size(theme::font::XS)
+                                .color(theme::c().danger),
+                        );
+                    }
+                });
+            }
+            if let Some(i) = removed {
+                config.general.quality_targets.remove(i);
+                *changed = true;
+            }
+            if ui
+                .add(egui::Button::new(RichText::new(format!(
+                    "{} {}",
+                    icons::PLUS,
+                    i18n.t("settings-quality-add")
+                ))))
+                .clicked()
+            {
+                config
+                    .general
+                    .quality_targets
+                    .push(QualityTarget::default());
+                *changed = true;
+            }
         },
     );
 }

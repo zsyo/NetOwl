@@ -141,6 +141,7 @@ impl NetOwlApp {
             // 首帧立即拉取快照:把起点回拨一个周期
             conns_refresh_at: Instant::now() - CONNS_REFRESH_INTERVAL,
             quality_poll_at: Instant::now(),
+            quality_alerted: HashSet::new(),
             self_path: std::env::current_exe()
                 .ok()
                 .map(|p| p.to_string_lossy().into_owned()),
