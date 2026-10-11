@@ -21,6 +21,9 @@ nav-session-total = Session
 
 map-title = Traffic Map
 map-subtitle = Live network connections visualization
+map-legend-help = Node color guide
+map-legend-dir = Flow direction
+map-legend-latency = Node latency
 map-legend-out = Outbound
 map-legend-in = Inbound
 map-legend-good = Good <100ms

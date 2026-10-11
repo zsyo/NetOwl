@@ -21,6 +21,9 @@ nav-session-total = 本次会话
 
 map-title = 流量地图
 map-subtitle = 实时网络连接可视化
+map-legend-help = 节点颜色说明
+map-legend-dir = 连线方向
+map-legend-latency = 节点延迟
 map-legend-out = 出站
 map-legend-in = 入站
 map-legend-good = 流畅 <100ms

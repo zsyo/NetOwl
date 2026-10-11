@@ -2,7 +2,7 @@
 //! 仅地图页使用;面板与 Inspector 本体在 map_panel/map_inspector。
 
 use eframe::egui;
-use egui::{Color32, Sense};
+use egui::{Align2, Color32, FontId, RichText, Sense};
 
 use super::{UiCtx, icons, theme, widgets};
 
@@ -28,18 +28,10 @@ pub(super) fn map_header(ui: &mut egui::Ui, ctx: &mut UiCtx) {
                 &ctx.i18n.t("map-panel-toggle-list"),
             );
             ui.add_space(theme::sp::MD);
-            legend(ui, theme::c().outbound, &ctx.i18n.t("map-legend-out"));
-            ui.add_space(theme::sp::SM);
-            legend(ui, theme::c().inbound, &ctx.i18n.t("map-legend-in"));
-            // 健康度图例仅采样开启时有意义(关闭时节点不着色)
-            if ctx.config.general.quality_monitor {
-                ui.add_space(theme::sp::MD);
-                legend(ui, theme::c().status_ok, &ctx.i18n.t("map-legend-good"));
-                ui.add_space(theme::sp::SM);
-                legend(ui, theme::c().status_warn, &ctx.i18n.t("map-legend-warn"));
-                ui.add_space(theme::sp::SM);
-                legend(ui, theme::c().danger, &ctx.i18n.t("map-legend-bad"));
-            }
+            // 图例收纳为一行提示 + 帮助气泡:窄窗口(左右面板全开)下
+            // 不与标题块叠印,行高由标题块决定不被撑大;气泡内用正常
+            // 字号与彩色圆点展开
+            legend_help(ui, ctx);
         },
     );
 }
@@ -77,9 +69,74 @@ pub(super) fn panel_toggle(ui: &mut egui::Ui, on: &mut bool, glyph: &str, tip: &
     }
 }
 
-/// 图例:语义色圆点 + 文字
-pub(super) fn legend(ui: &mut egui::Ui, color: Color32, label: &str) {
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), Sense::hover());
-    ui.painter().circle_filled(rect.center(), 4.0, color);
-    ui.label(theme::dim_text(label, theme::font::SM));
+/// 图例入口:一行提示文字 + 帮助图标,悬停弹出气泡分节展开全部图例项
+/// (连线方向 / 节点延迟)。延迟节仅采样开启时展示(关闭时节点不着色)。
+/// 与 panel_toggle 同构的显式占位自绘:horizontal 容器在 RTL 行内会占满
+/// 剩余宽,response 与右侧开关重叠导致 hit-test 失效
+fn legend_help(ui: &mut egui::Ui, ctx: &mut UiCtx) {
+    let i18n = &*ctx.i18n;
+    let quality_on = ctx.config.general.quality_monitor;
+    let text = i18n.t("map-legend-help");
+    let font = FontId::proportional(theme::font::SM);
+    let text_w = ui
+        .painter()
+        .layout_no_wrap(text.clone(), font.clone(), Color32::WHITE)
+        .rect
+        .width();
+    const ICON_W: f32 = 14.0;
+    const GAP: f32 = 5.0;
+    let size = egui::vec2(text_w + GAP + ICON_W + 2.0, 20.0);
+    let (rect, resp) = ui.allocate_exact_size(size, Sense::hover());
+    let p = theme::c();
+    let color = if resp.hovered() { p.text } else { p.text_dim };
+    let painter = ui.painter();
+    painter.text(
+        egui::pos2(rect.left(), rect.center().y),
+        Align2::LEFT_CENTER,
+        &text,
+        font.clone(),
+        color,
+    );
+    painter.text(
+        egui::pos2(rect.right() - ICON_W * 0.5 - 1.0, rect.center().y),
+        Align2::CENTER_CENTER,
+        icons::QUESTION_CIRCLE,
+        font,
+        color,
+    );
+    resp.on_hover_ui(move |ui| {
+        ui.set_max_width(210.0);
+        ui.spacing_mut().item_spacing.y = 4.0;
+        section_title(ui, &i18n.t("map-legend-dir"));
+        ui.horizontal(|ui| {
+            legend_row(ui, p.outbound, &i18n.t("map-legend-out"));
+            ui.add_space(theme::sp::MD);
+            legend_row(ui, p.inbound, &i18n.t("map-legend-in"));
+        });
+        if quality_on {
+            section_title(ui, &i18n.t("map-legend-latency"));
+            legend_row(ui, p.status_ok, &i18n.t("map-legend-good"));
+            legend_row(ui, p.status_warn, &i18n.t("map-legend-warn"));
+            legend_row(ui, p.danger, &i18n.t("map-legend-bad"));
+        }
+    });
+}
+
+/// 气泡内小节标题
+fn section_title(ui: &mut egui::Ui, text: &str) {
+    ui.label(
+        RichText::new(text)
+            .size(theme::font::XS)
+            .strong()
+            .color(theme::c().text_dim),
+    );
+}
+
+/// 气泡内单行图例:语义色圆点 + 文字(正常字号)
+fn legend_row(ui: &mut egui::Ui, color: Color32, text: &str) {
+    ui.horizontal(|ui| {
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), Sense::hover());
+        ui.painter().circle_filled(rect.center(), 4.0, color);
+        ui.label(theme::dim_text(text, theme::font::BODY));
+    });
 }
