@@ -193,10 +193,17 @@ pub(super) fn targets_section(
         icons::GLOBE,
         &i18n.t("settings-quality-targets"),
         |ui| {
-            ui.label(theme::dim_text(
-                &i18n.t("settings-quality-targets-hint"),
-                theme::font::XS,
-            ));
+            // add_sized 占满可用宽:卡片内无 setting_row 类占满控件,不撑则
+            // 卡片按内容收缩,与其它分组宽度不一致(Label::extend 仅表示
+            // "不换行不截断、扩展父容器",不会占满)
+            ui.add_sized(
+                [ui.available_width(), 16.0],
+                egui::Label::new(theme::dim_text(
+                    &i18n.t("settings-quality-targets-hint"),
+                    theme::font::XS,
+                ))
+                .wrap_mode(egui::TextWrapMode::Truncate),
+            );
             let mut removed: Option<usize> = None;
             for (i, t) in config.general.quality_targets.iter_mut().enumerate() {
                 ui.horizontal(|ui| {

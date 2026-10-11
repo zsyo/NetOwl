@@ -395,7 +395,7 @@ conns-group-count = {$count} conns
 quota-warn-toast = Monthly usage reached 80% ({$used})
 quota-exceed-toast = Monthly usage exceeded the quota ({$used})
 settings-quality-targets = Custom probe targets
-settings-quality-targets-hint = Extra targets to watch on top of automatic sampling; port 0 = no TCP fallback when ping is blocked; label shows in alerts
+settings-quality-targets-hint = Add addresses to monitor continuously (e.g. game servers), probed even without active connections; active-connection remotes are covered automatically. Port 0 = no TCP fallback when ping is blocked; label shows in alerts
 settings-quality-label-hint = Label
 settings-quality-add = Add target
 settings-quality-remove = Remove

@@ -396,7 +396,7 @@ conns-group-count = {$count} 条
 quota-warn-toast = 本月流量已达 80%({$used})
 quota-exceed-toast = 本月流量已超配额({$used})
 settings-quality-targets = 自定义采样目标
-settings-quality-targets-hint = 重点关注的目标,与自动采样叠加;端口 0 = 禁 ping 时不做 TCP 补测;备注用于告警提示
+settings-quality-targets-hint = 添加需持续监测的地址(如游戏服务器),无连接时也探测延迟与丢包;活跃连接的远端已自动覆盖。端口 0 = 禁 ping 时不做 TCP 补测,备注用于告警提示
 settings-quality-label-hint = 备注
 settings-quality-add = 添加目标
 settings-quality-remove = 删除
