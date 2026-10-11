@@ -36,7 +36,7 @@ impl NetOwlApp {
 
         let flows = etw.snapshot();
         let finished = etw.take_finished();
-        let by_key: HashMap<(u32, Protocol, u16, Ipv4Addr, u16), &etw::FlowAgg> = flows
+        let by_key: HashMap<(u32, Protocol, u16, IpAddr, u16), &etw::FlowAgg> = flows
             .iter()
             .filter(|f| f.key.proto == Protocol::Tcp)
             .map(|f| (flow_merge_key(&f.key), f))
@@ -47,12 +47,8 @@ impl NetOwlApp {
             for c in &mut self.conns {
                 match c.proto {
                     Protocol::Tcp => {
-                        // ETW 流合并键暂为 IPv4(v6 事件解码随 v6 适配接入)
-                        let IpAddr::V4(rip) = c.remote_ip else {
-                            continue;
-                        };
                         let Some(f) =
-                            by_key.get(&(c.pid, c.proto, c.local_port, rip, c.remote_port))
+                            by_key.get(&(c.pid, c.proto, c.local_port, c.remote_ip, c.remote_port))
                         else {
                             continue;
                         };
@@ -64,9 +60,10 @@ impl NetOwlApp {
                     Protocol::Udp => {
                         match udp_groups.get(&(c.pid, c.local_port)) {
                             Some(g) => {
-                                let rep_ip = IpAddr::V4(g.rep.key.remote_ip);
-                                if c.remote_ip != rep_ip || c.remote_port != g.rep.key.remote_port {
-                                    c.remote_ip = rep_ip;
+                                if c.remote_ip != g.rep.key.remote_ip
+                                    || c.remote_port != g.rep.key.remote_port
+                                {
+                                    c.remote_ip = g.rep.key.remote_ip;
                                     c.remote_port = g.rep.key.remote_port;
                                     c.city = geoip::locate(c.remote_ip).map(Place::Geo);
                                 }
@@ -121,7 +118,11 @@ impl NetOwlApp {
             if f.key.local_ip.is_loopback() || f.key.remote_ip.is_loopback() {
                 continue;
             }
-            events.push(short_lived_event(&f));
+            // ClosedConn 暂为 IPv4,v6 短命连接落库随历史库 v6 适配接入
+            let IpAddr::V4(rip) = f.key.remote_ip else {
+                continue;
+            };
+            events.push(short_lived_event(&f, rip));
         }
         if !events.is_empty() {
             tracing::debug!("[ETW] 短命连接落库 {} 条", events.len());
@@ -152,7 +153,7 @@ impl NetOwlApp {
 }
 
 /// 表快照连接与 ETW 流的合并键(不含本地 IP)
-fn flow_merge_key(k: &etw::FlowKey) -> (u32, Protocol, u16, Ipv4Addr, u16) {
+fn flow_merge_key(k: &etw::FlowKey) -> (u32, Protocol, u16, IpAddr, u16) {
     (k.pid, k.proto, k.local_port, k.remote_ip, k.remote_port)
 }
 
@@ -192,8 +193,9 @@ fn merge_udp_groups<'a>(flows: &'a [etw::FlowAgg]) -> HashMap<(u32, u16), UdpGro
 }
 
 /// 短命连接完结事件:进程反查失败(已退出)时进程名留空;
-/// 起止时间由流的首末事件时刻换算 unix 秒
-fn short_lived_event(f: &etw::FlowAgg) -> history::ClosedConn {
+/// 起止时间由流的首末事件时刻换算 unix 秒。远端 IP 由调用方解出
+/// IPv4(v6 落库随历史库 v6 适配接入)
+fn short_lived_event(f: &etw::FlowAgg, rip: Ipv4Addr) -> history::ClosedConn {
     let (proc_path, process) = match collector::query_process_path(f.key.pid) {
         Some(path) => {
             let name = crate::model::image_name(&path).to_owned();
@@ -213,7 +215,7 @@ fn short_lived_event(f: &etw::FlowAgg) -> history::ClosedConn {
         proc_path,
         signed: Signing::Unknown,
         proto: f.key.proto,
-        remote_ip: f.key.remote_ip,
+        remote_ip: rip,
         remote_port: f.key.remote_port,
         bytes_in: f.down_bytes,
         bytes_out: f.up_bytes,

@@ -1,22 +1,25 @@
 //! ETW 流量事件采集(Microsoft-Windows-Kernel-Network):表快照无字节
 //! 语义且会漏掉采样间隙的短命连接,本模块消费内核网络事件补齐——
-//! TCP 收发字节(EventID 10/11)、UDP 收发字节(42/43)、连接建立与
-//! 关闭(12/15/13,发起方向与短命连接捕获)。需管理员权限;会话为
-//! 全局命名实例,启动时先清理同名残留,退出时停止。
+//! TCP 收发字节(v4 10/11、v6 26/27)、UDP 收发字节(v4 42/43、
+//! v6 58/59)、连接建立与关闭(v4 12/15/13、v6 28/31/29,发起方向与
+//! 短命连接捕获)。需管理员权限;会话为全局命名实例,启动时先清理
+//! 同名残留,退出时停止。
 //!
-//! 字节序与字段布局经探针实测(对拍 tracerpt):payload 前 20 字节
-//! 全部关注事件同构 —— PID@0/size@4(u32 主机序)、daddr@8/saddr@12
-//! (IPv4 网络序字节)、dport@16/sport@18(u16 网络序)。事件视角:
-//! 发送/发起/接受/关闭事件的 saddr 为本机侧,接收事件的 daddr 为
-//! 本机侧,按此归一本地/远端。EventID 18(用户态拷贝)与 11 对同一
-//! 批字节双计,IPv6 事件(26+ 系列)暂不消费,均显式忽略。
+//! 事件布局经探针实测(v4 对拍 tracerpt hex;v6 由 provider 消息模板
+//! 确认参数序 %3=daddr/%4=saddr/%5=dport/%6=sport 与 v4 同构)——
+//! v4 头 20 字节:PID@0/size@4(u32 主机序)、daddr@8/saddr@12(IPv4
+//! 网络序)、dport@16/sport@18(u16 网络序);v6 头 44 字节:地址段
+//! 16 字节(daddr@8..24、saddr@24..40),端口在 40..44,其余同构。
+//! 事件视角:发送/发起/接受/关闭事件的 saddr 为本机侧,接收事件的
+//! daddr 为本机侧,按此归一本地/远端。EventID 18/34(用户态拷贝)与
+//! 11/27 对同一批字节双计,retransmit(14/30)非用户数据,均显式忽略。
 //! 事件解析与流聚合在 decode,会话生命周期在 session。
 
 mod decode;
 mod session;
 
 use std::collections::HashMap;
-use std::net::Ipv4Addr;
+use std::net::IpAddr;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -24,8 +27,10 @@ use std::time::{Duration, Instant};
 
 use crate::model::Protocol;
 
-/// 关注事件 payload 头部长度(PID/size/daddr/saddr/dport/sport)
-const PAYLOAD_HEAD: usize = 20;
+/// IPv4 事件 payload 头部长度(PID/size/daddr/saddr/dport/sport)
+const PAYLOAD_HEAD_V4: usize = 20;
+/// IPv6 事件 payload 头部长度:同 v4 布局,地址段 16 字节
+const PAYLOAD_HEAD_V6: usize = 44;
 /// UDP 流空闲判定:超时无事件视为完结(UDP 无关闭事件)
 const UDP_IDLE: Duration = Duration::from_secs(10);
 /// TCP 流空闲兜底:close 事件可能因多处理器缓冲乱序晚于末尾字节事件
@@ -40,9 +45,9 @@ const MAX_FLOWS: usize = 4096;
 pub struct FlowKey {
     pub pid: u32,
     pub proto: Protocol,
-    pub local_ip: Ipv4Addr,
+    pub local_ip: IpAddr,
     pub local_port: u16,
-    pub remote_ip: Ipv4Addr,
+    pub remote_ip: IpAddr,
     pub remote_port: u16,
 }
 

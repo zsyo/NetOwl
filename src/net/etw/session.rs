@@ -12,7 +12,7 @@ use windows::Win32::System::Diagnostics::Etw::{
 };
 use windows::core::{GUID, PCWSTR, PWSTR};
 
-use super::{Agg, PAYLOAD_HEAD};
+use super::{Agg, PAYLOAD_HEAD_V4};
 
 /// Microsoft-Windows-Kernel-Network 提供程序
 const PROVIDER: GUID = GUID::from_u128(0x7dd42a49_5329_4832_8dfd_43d979153a88);
@@ -137,7 +137,8 @@ unsafe extern "system" fn on_event(record: *mut EVENT_RECORD) {
         if r.EventHeader.ProviderId != PROVIDER {
             return;
         }
-        if usize::from(r.UserDataLength) < PAYLOAD_HEAD || r.UserData.is_null() {
+        // 长度门槛取 v4 头(v6 44 > 20),family 内的完整长度由 decode 校验
+        if usize::from(r.UserDataLength) < PAYLOAD_HEAD_V4 || r.UserData.is_null() {
             return;
         }
         let agg = &*(r.UserContext as *const Mutex<Agg>);
