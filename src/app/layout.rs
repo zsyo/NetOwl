@@ -77,12 +77,15 @@ impl NetOwlApp {
             .local_place
             .map(geoip::place_pos)
             .unwrap_or((world::LOCAL.lon, world::LOCAL.lat));
+        // 质量采样开关先读出(config 在字面量内以 &mut 借出,不能同处再读)
+        let quality_on = self.config.general.quality_monitor;
         let mut ctx = UiCtx {
             conns: &self.conns,
             i18n: &mut self.i18n,
             map_view: &mut self.map_view,
             config: &mut self.config,
             rdns: &self.rdns,
+            quality: quality_on.then_some(&self.quality),
             rates: self.rates,
             rate_hist: &self.rate_hist,
             conn_rates: &self.conn_rates,

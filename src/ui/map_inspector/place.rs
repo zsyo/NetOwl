@@ -1,4 +1,5 @@
-//! Inspector 端点详情视图:位置名、连接数、双向流量与相关进程排行。
+//! Inspector 端点详情视图:位置名、连接数、双向流量、运营商/延迟与相关
+//! 进程排行。
 
 use std::collections::HashMap;
 
@@ -8,19 +9,21 @@ use super::title_row;
 use crate::i18n::I18n;
 use crate::model::{Connection, Place};
 use crate::net::geoip;
+use crate::net::quality;
 use crate::net::rdns;
 use crate::storage::config::Config;
 use crate::ui::map_panel::{MapPanelState, collect_groups};
 use crate::ui::map_widgets::{proc_rank_row, section_title, traffic_cards};
 use crate::ui::theme;
 
-/// 端点详情:位置名、连接数、双向流量与相关进程排行
+/// 端点详情:位置名、连接数、双向流量、运营商/延迟与相关进程排行
 #[allow(clippy::too_many_arguments)]
 pub(super) fn view(
     ui: &mut egui::Ui,
     panels: &mut MapPanelState,
     i18n: &I18n,
     rdns: &rdns::Rdns,
+    quality: Option<&quality::Quality>,
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
     default_icon_tex: Option<&egui::TextureHandle>,
     config: &Config,
@@ -53,6 +56,24 @@ pub(super) fn view(
     if let Some(isp) = rows.iter().find_map(|c| geoip::locate_isp(c.remote_ip)) {
         ui.label(theme::dim_text(
             &i18n.t_with_args("map-inspector-isp", &[("isp", isp.to_owned())]),
+            theme::font::SM,
+        ));
+    }
+    // 延迟:端点各连接远端样本的最差档(与地图节点着色同口径)
+    if let Some(worst) = quality.and_then(|q| {
+        rows.iter()
+            .filter_map(|c| q.lookup(c.remote_ip))
+            .filter(|s| s.rtt.is_some())
+            .max_by_key(|s| s.rank().unwrap_or(0))
+    }) {
+        ui.label(theme::dim_text(
+            &i18n.t_with_args(
+                "map-inspector-latency",
+                &[
+                    ("rtt", worst.rtt.unwrap_or(0).to_string()),
+                    ("loss", worst.loss.to_string()),
+                ],
+            ),
             theme::font::SM,
         ));
     }

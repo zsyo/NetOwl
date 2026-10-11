@@ -12,6 +12,7 @@ use egui::{
 use crate::i18n::I18n;
 use crate::model::{Connection, Place, fmt_bytes};
 use crate::net::geoip;
+use crate::net::quality;
 use crate::net::rdns;
 use crate::ui::theme;
 
@@ -39,7 +40,7 @@ fn fit_text(painter: &egui::Painter, text: &str, font: &FontId, max_w: f32) -> S
     "…".to_owned()
 }
 
-/// 悬停归属节点的信息卡:节点名、总流量、最多 6 条连接明细
+/// 悬停归属节点的信息卡:节点名、运营商、总流量、最多 6 条连接明细
 #[allow(clippy::too_many_arguments)]
 pub(super) fn info_card(
     painter: &egui::Painter,
@@ -48,6 +49,7 @@ pub(super) fn info_card(
     conns: &[Connection],
     i18n: &I18n,
     rdns: &rdns::Rdns,
+    quality: Option<&quality::Quality>,
     icon_tex: &HashMap<String, Option<TextureHandle>>,
     default_icon_tex: Option<&TextureHandle>,
 ) {
@@ -160,11 +162,18 @@ pub(super) fn info_card(
             icon_w = 18.0;
         }
         let process = format!("{} ({})", conn.process, conn.pid);
-        // 域名优先、无 PTR 回退地址:端口;超长交给像素省略,不做字符预截
-        let remote = match rdns.lookup(conn.remote_ip) {
+        // 域名优先、无 PTR 回退地址:端口;有延迟样本时尾缀 RTT;
+        // 超长交给像素省略,不做字符预截
+        let mut remote = match rdns.lookup(conn.remote_ip) {
             Some(host) => format!("{host}:{}", conn.remote_port),
             None => conn.remote_display(),
         };
+        if let Some(rtt) = quality
+            .and_then(|q| q.lookup(conn.remote_ip))
+            .and_then(|s| s.rtt)
+        {
+            remote.push_str(&format!(" · {rtt}ms"));
+        }
         let left_need = icon_w + text_width(painter, &process, &process_font);
         let right_need = text_width(painter, &remote, &remote_font);
         let (left_max, right_max) = if left_need + right_need <= inner {

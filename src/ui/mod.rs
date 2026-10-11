@@ -33,6 +33,7 @@ use crate::i18n::I18n;
 use crate::map;
 use crate::map::basemap;
 use crate::model::Connection;
+use crate::net::quality;
 use crate::net::rdns;
 use crate::rules::wfp;
 use crate::storage::config::Config;
@@ -106,6 +107,9 @@ pub struct UiCtx<'a> {
     pub map_view: &'a mut basemap::View,
     pub config: &'a mut Config,
     pub rdns: &'a rdns::Rdns,
+    /// 网络质量采样快照(活跃公网远端 ICMP 探测;地图健康度着色与
+    /// 端点详情延迟展示;None = 功能关闭)
+    pub quality: Option<&'a quality::Quality>,
     /// 总速率(字节/秒):(下行, 上行)
     pub rates: (u64, u64),
     /// 总速率历史(时间正序,(下行, 上行),约 1 分钟窗口;迷你走势图用)
@@ -183,6 +187,7 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
                 ctx.i18n,
                 ctx.map_view,
                 ctx.rdns,
+                ctx.quality,
                 ctx.icon_tex,
                 ctx.default_icon_tex,
                 ctx.local_pos,

@@ -36,6 +36,7 @@ pub fn inspector_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
     let conns: &[Connection] = ctx.conns;
     let db = ctx.history_db;
     let rdns = ctx.rdns;
+    let quality = ctx.quality;
     let icon_tex = ctx.icon_tex;
     let default_icon_tex = ctx.default_icon_tex;
     let config: &Config = ctx.config;
@@ -67,6 +68,7 @@ pub fn inspector_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
                 panels,
                 i18n,
                 rdns,
+                quality,
                 icon_tex,
                 default_icon_tex,
                 config,

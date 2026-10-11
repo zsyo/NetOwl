@@ -42,6 +42,23 @@ pub struct Sample {
     pub at: Instant,
 }
 
+impl Sample {
+    /// 健康档位(1 = 良好 <100ms,2 = 较慢 <300ms,3 = 拥塞;丢包率
+    /// >10% 降一档);None = 无有效延迟样本(从未成功,按未知显示,
+    /// 不参与聚合取最差——禁 ping 目标不应抹掉同端点的正常样本)
+    pub fn rank(&self) -> Option<u8> {
+        let ms = self.rtt?;
+        let base = if ms < 100 {
+            1
+        } else if ms < 300 {
+            2
+        } else {
+            3
+        };
+        Some((base + u8::from(self.loss > 10)).min(3))
+    }
+}
+
 /// 单目标采样状态(内部)
 struct Inner {
     rtt: Option<u32>,

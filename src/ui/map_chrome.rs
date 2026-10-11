@@ -31,6 +31,15 @@ pub(super) fn map_header(ui: &mut egui::Ui, ctx: &mut UiCtx) {
             legend(ui, theme::c().outbound, &ctx.i18n.t("map-legend-out"));
             ui.add_space(theme::sp::SM);
             legend(ui, theme::c().inbound, &ctx.i18n.t("map-legend-in"));
+            // 健康度图例仅采样开启时有意义(关闭时节点不着色)
+            if ctx.config.general.quality_monitor {
+                ui.add_space(theme::sp::MD);
+                legend(ui, theme::c().status_ok, &ctx.i18n.t("map-legend-good"));
+                ui.add_space(theme::sp::SM);
+                legend(ui, theme::c().status_warn, &ctx.i18n.t("map-legend-warn"));
+                ui.add_space(theme::sp::SM);
+                legend(ui, theme::c().danger, &ctx.i18n.t("map-legend-bad"));
+            }
         },
     );
 }

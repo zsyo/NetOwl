@@ -18,6 +18,7 @@ use self::basemap::{FIT_MAX_LAT, FIT_MIN_LAT, Projection, View};
 use crate::i18n::I18n;
 use crate::model::{Connection, Place};
 use crate::net::geoip;
+use crate::net::quality;
 use crate::net::rdns;
 use crate::ui::theme;
 
@@ -57,8 +58,8 @@ pub enum MapClick {
     Background,
 }
 
-/// 画布绘制入口,数据面(连接/域名/图标)与视图状态全部参数化传入,
-/// 不引入 App 层上下文类型以保持 map 与 ui 的边界
+/// 画布绘制入口,数据面(连接/域名/图标/质量采样)与视图状态全部参数化
+/// 传入,不引入 App 层上下文类型以保持 map 与 ui 的边界
 #[allow(clippy::too_many_arguments)]
 pub fn draw(
     ui: &mut egui::Ui,
@@ -66,6 +67,7 @@ pub fn draw(
     i18n: &I18n,
     view: &mut View,
     rdns: &rdns::Rdns,
+    quality: Option<&quality::Quality>,
     icon_tex: &HashMap<String, Option<TextureHandle>>,
     default_icon_tex: Option<&TextureHandle>,
     local_pos: (f32, f32),
@@ -88,6 +90,22 @@ pub fn draw(
     let local = proj.project(local_pos.0, local_pos.1);
     let agg = aggregate(conns);
     let cycle_px = proj.cycle_px();
+
+    // 端点健康度:端点各连接远端样本的最差档(一个目标异常即反映;
+    // 从未成功的样本不参与,全无样本 = 无数据维持原色)
+    let mut health: HashMap<Place, u8> = HashMap::new();
+    if let Some(q) = quality {
+        for c in conns {
+            let Some(place) = c.city else { continue };
+            let Some(rank) = q.lookup(c.remote_ip).and_then(|s| s.rank()) else {
+                continue;
+            };
+            health
+                .entry(place)
+                .and_modify(|e| *e = (*e).max(rank))
+                .or_insert(rank);
+        }
+    }
 
     flights::draw_flights(
         &painter, rect, &proj, conns, local, local_pos, cycle_px, hover_pos, selected, t,
@@ -141,7 +159,12 @@ pub fn draw(
                 if hovered || is_sel {
                     theme::c().accent
                 } else {
-                    fade(theme::c().map_node)
+                    match health.get(place).copied() {
+                        Some(1) => fade(theme::c().status_ok),
+                        Some(2) => fade(theme::c().status_warn),
+                        Some(3) => fade(theme::c().danger),
+                        _ => fade(theme::c().map_node),
+                    }
                 },
             );
             painter.circle_stroke(pos, r, Stroke::new(1.0, fade(theme::c().text)));
@@ -196,6 +219,7 @@ pub fn draw(
             conns,
             i18n,
             rdns,
+            quality,
             icon_tex,
             default_icon_tex,
         );
