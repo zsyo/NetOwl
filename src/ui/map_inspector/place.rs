@@ -49,6 +49,13 @@ pub(super) fn view(
         rows.iter().map(|c| c.bytes_out).sum(),
         i18n,
     );
+    // 运营商:端点各连接中首个可查到的 ISP(数据源无机构信息则不显示)
+    if let Some(isp) = rows.iter().find_map(|c| geoip::locate_isp(c.remote_ip)) {
+        ui.label(theme::dim_text(
+            &i18n.t_with_args("map-inspector-isp", &[("isp", isp.to_owned())]),
+            theme::font::SM,
+        ));
+    }
 
     section_title(ui, &i18n.t("map-inspector-procs"));
     let groups = collect_groups(conns, config, Some(place), "", rdns);

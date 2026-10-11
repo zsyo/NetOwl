@@ -103,12 +103,17 @@ pub(super) fn proc_cell(
     });
 }
 
-/// 位置单元格:归属地实时反查(geoip 数据重建不影响历史行),未知占位
+/// 位置单元格:归属地实时反查(geoip 数据重建不影响历史行)+ 运营商
+/// 后缀(数据源无机构信息的段不拼),未知占位
 pub(super) fn location_cell(ui: &mut egui::Ui, i18n: &I18n, ip: std::net::Ipv4Addr) {
-    let text = match geoip::locate(ip).map(Place::Geo) {
+    let mut text = match geoip::locate(ip).map(Place::Geo) {
         Some(p) => geoip::place_label(p, i18n),
         None => i18n.t("conn-loc-unknown"),
     };
+    if let Some(isp) = geoip::locate_isp(ip) {
+        text.push_str(" · ");
+        text.push_str(isp);
+    }
     ui.add(
         Label::new(theme::dim_text(&text, theme::font::BODY))
             .wrap_mode(egui::TextWrapMode::Truncate),

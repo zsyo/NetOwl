@@ -68,7 +68,14 @@ pub(super) fn info_card(
     let shown = rows.len().min(MAX_ROWS);
     let extra = rows.len() - shown;
     let total: u64 = rows.iter().map(|conn| conn.total_bytes()).sum();
-    let height = HEAD_H + shown as f32 * LINE_H + if extra > 0 { LINE_H } else { 0.0 } + 8.0;
+    // 运营商副行:端点各连接中首个可查到的 ISP(同地多连接通常同源,
+    // 聚合口径;无任何 ISP 数据时不占行)
+    let isp_text = rows
+        .iter()
+        .find_map(|conn| geoip::locate_isp(conn.remote_ip));
+    let head_extra = if isp_text.is_some() { 14.0 } else { 0.0 };
+    let height =
+        HEAD_H + head_extra + shown as f32 * LINE_H + if extra > 0 { LINE_H } else { 0.0 } + 8.0;
     let card = Rect::from_min_size(
         Pos2::new(canvas.left() + PAD, canvas.top() + PAD),
         Vec2::new(WIDTH, height),
@@ -114,11 +121,20 @@ pub(super) fn info_card(
         bytes_font,
         theme::c().text_dim,
     );
+    if let Some(isp) = isp_text {
+        painter.text(
+            Pos2::new(card.left() + PAD, card.top() + 31.0),
+            Align2::LEFT_TOP,
+            isp,
+            FontId::proportional(11.0),
+            theme::c().text_dim,
+        );
+    }
 
     let inner = WIDTH - PAD * 2.0 - GAP;
     let process_font = FontId::proportional(12.0);
     let remote_font = FontId::monospace(11.0);
-    let mut y = card.top() + HEAD_H - 4.0;
+    let mut y = card.top() + HEAD_H - 4.0 + head_extra;
     for conn in rows.iter().take(MAX_ROWS) {
         // 进程图标(14px);无图标时文本左缘保持一致,信息卡行不留空位
         let mut text_x = card.left() + PAD;

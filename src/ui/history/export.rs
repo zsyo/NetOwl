@@ -18,12 +18,18 @@ fn csv_field(s: &str) -> String {
     }
 }
 
-/// 位置列文本(与页面 location_cell 同口径):GeoIP 反查,未知占位
+/// 位置列文本(与页面 location_cell 同口径):GeoIP 反查 + 运营商后缀,
+/// 未知占位
 fn location_text(i18n: &I18n, ip: std::net::Ipv4Addr) -> String {
-    match geoip::locate(ip).map(Place::Geo) {
+    let mut text = match geoip::locate(ip).map(Place::Geo) {
         Some(place) => geoip::place_label(place, i18n),
         None => i18n.t("conn-loc-unknown"),
+    };
+    if let Some(isp) = geoip::locate_isp(ip) {
+        text.push_str(" · ");
+        text.push_str(isp);
     }
+    text
 }
 
 /// 导出当前视图的查询结果为 CSV(UTF-8 BOM,Excel 直开中文不乱码);
