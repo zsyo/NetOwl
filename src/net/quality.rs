@@ -22,8 +22,9 @@ const MAX_INFLIGHT: usize = 4;
 /// 派发节奏:每个间隔最多派发 DISPATCH_BATCH 个
 const DISPATCH_INTERVAL: Duration = Duration::from_millis(250);
 const DISPATCH_BATCH: usize = 2;
-/// 结果复用时长(到期后由调用方下一轮 enqueue 触发重探)
-const SAMPLE_TTL: Duration = Duration::from_secs(60);
+/// 结果复用时长(到期后由调用方下一轮 enqueue 触发重探);展示侧以
+/// 两倍时长判定样本是否过期
+pub(crate) const SAMPLE_TTL: Duration = Duration::from_secs(60);
 /// 丢包统计窗口(最近 N 轮探测)
 const LOSS_WINDOW: usize = 20;
 /// 单轮探测超时;超时计入丢包

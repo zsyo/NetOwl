@@ -25,6 +25,7 @@ pub(super) fn settings_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         update_checking,
         update_result,
         hotkey_capture,
+        quality,
         ..
     } = ctx;
     // &mut UiCtx 解构出的引用字段带两层 &mut,借类型注解 coerce 回单层
@@ -33,6 +34,7 @@ pub(super) fn settings_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     let log_window: &mut log_window::PageState = log_window;
     let update_check_request: &mut bool = update_check_request;
     let update_result: &mut Option<Result<Option<ReleaseInfo>, String>> = update_result;
+    let quality = *quality;
     let update_checking = *update_checking;
     widgets::header::page_header(ui, &i18n.t("settings-title"), "");
     ui.add_space(theme::sp::MD);
@@ -50,7 +52,7 @@ pub(super) fn settings_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
             // ---- 监控:数据源 / 质量采样 / 保留期 / 询问 / 静默 ----
             monitor::section(ui, config, i18n, &mut changed);
             ui.add_space(theme::sp::MD);
-            monitor::targets_section(ui, config, i18n, &mut changed);
+            monitor::targets_section(ui, config, i18n, quality, &mut changed);
             ui.add_space(theme::sp::MD);
 
             // ---- 日志:文件开关 / 级别 / 查看入口,每行语义单一 ----

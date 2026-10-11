@@ -8,6 +8,7 @@ use egui::RichText;
 use super::{section_card, setting_row};
 use crate::collector::CollectorKind;
 use crate::i18n::I18n;
+use crate::net::quality::SAMPLE_TTL;
 use crate::storage::config::{Config, QualityTarget};
 use crate::ui::{icons, theme, widgets};
 
@@ -186,6 +187,7 @@ pub(super) fn targets_section(
     ui: &mut egui::Ui,
     config: &mut Config,
     i18n: &I18n,
+    quality: Option<&crate::net::quality::Quality>,
     changed: &mut bool,
 ) {
     section_card(
@@ -242,6 +244,46 @@ pub(super) fn targets_section(
                                 .size(theme::font::XS)
                                 .color(theme::c().danger),
                         );
+                    }
+                    // 监测状态(行尾):RTT 为 EMA 平滑、丢包取最近窗口;
+                    // "无响应" = 窗口内全失败(常见于禁 ping);"待采样" =
+                    // 尚未完成首轮或样本已过期(采样开关关闭后停止刷新)
+                    let sample = ip
+                        .parse::<std::net::Ipv4Addr>()
+                        .ok()
+                        .and_then(|ip| quality.and_then(|q| q.lookup(ip)))
+                        .filter(|s| s.at.elapsed() < SAMPLE_TTL * 2);
+                    match sample {
+                        Some(s) if s.rtt.is_some() => {
+                            let text = i18n.t_with_args(
+                                "settings-quality-sample",
+                                &[
+                                    ("rtt", s.rtt.unwrap_or(0).to_string()),
+                                    ("loss", s.loss.to_string()),
+                                ],
+                            );
+                            let color = if s.loss > 10 {
+                                theme::c().status_warn
+                            } else {
+                                theme::c().text_dim
+                            };
+                            ui.label(RichText::new(text).size(theme::font::XS).color(color));
+                        }
+                        Some(_) => {
+                            ui.label(
+                                RichText::new(i18n.t("settings-quality-noreply"))
+                                    .size(theme::font::XS)
+                                    .color(theme::c().danger),
+                            );
+                        }
+                        None if !ip.is_empty() => {
+                            ui.label(
+                                RichText::new(i18n.t("settings-quality-wait"))
+                                    .size(theme::font::XS)
+                                    .color(theme::c().text_dim),
+                            );
+                        }
+                        None => {}
                     }
                 });
             }
