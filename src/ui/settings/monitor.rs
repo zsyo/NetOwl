@@ -197,14 +197,16 @@ pub(super) fn targets_section(
         |ui| {
             // add_sized 占满可用宽:卡片内无 setting_row 类占满控件,不撑则
             // 卡片按内容收缩,与其它分组宽度不一致(Label::extend 仅表示
-            // "不换行不截断、扩展父容器",不会占满)
+            // "不换行不截断、扩展父容器",不会占满);halign 居左,与
+            // add_sized 默认的居中对齐区分
             ui.add_sized(
                 [ui.available_width(), 16.0],
                 egui::Label::new(theme::dim_text(
                     &i18n.t("settings-quality-targets-hint"),
                     theme::font::XS,
                 ))
-                .wrap_mode(egui::TextWrapMode::Truncate),
+                .wrap_mode(egui::TextWrapMode::Truncate)
+                .halign(egui::Align::Min),
             );
             let mut removed: Option<usize> = None;
             for (i, t) in config.general.quality_targets.iter_mut().enumerate() {
@@ -262,10 +264,12 @@ pub(super) fn targets_section(
                                     ("loss", s.loss.to_string()),
                                 ],
                             );
+                            // 与地图节点健康度同档:正常绿,丢包 >10% 降为
+                            // 警告黄;无响应红 / 待采样灰见下方分支
                             let color = if s.loss > 10 {
                                 theme::c().status_warn
                             } else {
-                                theme::c().text_dim
+                                theme::c().status_ok
                             };
                             ui.label(RichText::new(text).size(theme::font::XS).color(color));
                         }
