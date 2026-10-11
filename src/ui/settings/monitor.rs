@@ -195,19 +195,22 @@ pub(super) fn targets_section(
         icons::GLOBE,
         &i18n.t("settings-quality-targets"),
         |ui| {
-            // add_sized 占满可用宽:卡片内无 setting_row 类占满控件,不撑则
-            // 卡片按内容收缩,与其它分组宽度不一致(Label::extend 仅表示
-            // "不换行不截断、扩展父容器",不会占满);halign 居左,与
-            // add_sized 默认的居中对齐区分
-            ui.add_sized(
-                [ui.available_width(), 16.0],
-                egui::Label::new(theme::dim_text(
-                    &i18n.t("settings-quality-targets-hint"),
-                    theme::font::XS,
-                ))
-                .wrap_mode(egui::TextWrapMode::Truncate)
-                .halign(egui::Align::Min),
-            );
+            // 说明行:文本靠左 + 右缘 0 尺寸锚点把行撑到卡片全宽
+            // (horizontal 的 min_rect 覆盖右缘控件)。卡片内无 setting_row
+            // 类占满控件,不撑则 Frame 按内容收缩;不用 add_sized——其
+            // centered_and_justified 布局会把文本居中,halign 压不过
+            ui.horizontal(|ui| {
+                ui.add(
+                    egui::Label::new(theme::dim_text(
+                        &i18n.t("settings-quality-targets-hint"),
+                        theme::font::XS,
+                    ))
+                    .wrap_mode(egui::TextWrapMode::Truncate),
+                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.allocate_exact_size(egui::Vec2::ZERO, egui::Sense::hover());
+                });
+            });
             let mut removed: Option<usize> = None;
             // 三个控件 add_sized 统一 24px 高(与行尾删除按钮的 24×24
             // 同源):TextEdit 与 DragValue 默认高度不同,同一行内错位
