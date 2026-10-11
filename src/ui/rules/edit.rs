@@ -5,13 +5,14 @@ use eframe::egui;
 use egui::RichText;
 use rusqlite::Connection as Db;
 
+use super::PageState;
 use super::draft::Draft;
 use super::labels;
-use super::{PageState, primary_btn};
 use crate::i18n::I18n;
 use crate::model::Protocol;
 use crate::rules::{self, Action, Direction, RemoteKind, RuleSet};
 use crate::ui::theme;
+use crate::ui::widgets::button::primary_btn_sized;
 
 /// 编辑弹窗控件列宽度
 const FIELD_WIDTH: f32 = 220.0;
@@ -43,6 +44,7 @@ pub(super) fn edit_window(
     .open(&mut open)
     .collapsible(false)
     .resizable(false)
+    .default_width(360.0)
     .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
     .show(ui, |ui| {
         // 名称
@@ -189,22 +191,35 @@ pub(super) fn edit_window(
             );
         }
         ui.add_space(4.0);
-        // 取消/保存整体居中
-        ui.vertical_centered(|ui| {
-            ui.horizontal(|ui| {
-                if ui
-                    .button(RichText::new(i18n.t("rules-cancel")).size(theme::font::BODY))
-                    .clicked()
-                {
-                    close = true;
+        // 取消/保存按钮组水平居中:两按钮定宽,左右各放对称占位。
+        // 占位必须把行内全部 item_spacing(三个子件间共 3 个)算进
+        // 总宽,否则行宽每帧超出窗口——egui Window 宽度只增不减,
+        // 弹窗会持续涨到全屏宽(实测)
+        ui.horizontal(|ui| {
+            let sp = ui.spacing().item_spacing.x;
+            let group = CANCEL_W + sp + SAVE_W;
+            let side = ((ui.available_width() - group - 2.0 * sp) / 2.0).max(0.0);
+            ui.allocate_exact_size(egui::vec2(side, ROW_H), egui::Sense::hover());
+            if ui
+                .add_sized(
+                    [CANCEL_W, ROW_H],
+                    egui::Button::new(
+                        RichText::new(i18n.t("rules-cancel")).size(theme::font::BODY),
+                    ),
+                )
+                .clicked()
+            {
+                close = true;
+            }
+            if primary_btn_sized(ui, i18n.t("rules-save"), true, egui::vec2(SAVE_W, ROW_H))
+                .clicked()
+            {
+                match validate(draft) {
+                    Ok(()) => save = true,
+                    Err(key) => draft.error = Some(key),
                 }
-                if primary_btn(ui, i18n.t("rules-save"), true).clicked() {
-                    match validate(draft) {
-                        Ok(()) => save = true,
-                        Err(key) => draft.error = Some(key),
-                    }
-                }
-            });
+            }
+            ui.allocate_exact_size(egui::vec2(side, ROW_H), egui::Sense::hover());
         });
     });
     if !open {
@@ -234,22 +249,33 @@ fn combo(ui: &mut egui::Ui, salt: &str, selected: String, content: impl FnOnce(&
 
 /// 弹窗表单左列(字段名)宽度:容纳中英字段名
 const LABEL_W: f32 = 64.0;
+/// 表单控件行高(与删除按钮 24px 同源)
+const ROW_H: f32 = 24.0;
+/// 底部按钮定宽(组宽 = 两宽 + 行间距,居中占位按此计算)
+const CANCEL_W: f32 = 64.0;
+const SAVE_W: f32 = 68.0;
 
-/// 表单行:左列字段名(定宽)+ 右控件;两者同为水平布局子件,
-/// 垂直居中对齐
+/// 表单行:左列字段名为定宽占位 + painter 绝对绘制(垂直居中)+
+/// 右控件。不用 Label 子件——horizontal 的 cross 对齐会把不同高的
+/// 子件按各自内容错位放置,占位等高后定位完全确定
 fn form_row(ui: &mut egui::Ui, label: String, add: impl FnOnce(&mut egui::Ui)) {
     ui.horizontal(|ui| {
-        ui.allocate_ui(egui::vec2(LABEL_W, 0.0), |ui| {
-            field_label(ui, label);
-        });
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(LABEL_W, ROW_H), egui::Sense::hover());
+        ui.painter().text(
+            rect.left_center(),
+            egui::Align2::LEFT_CENTER,
+            label,
+            egui::FontId::proportional(theme::font::BODY),
+            theme::c().text_dim,
+        );
         add(ui);
     });
 }
 
-/// 控件列延续行(无字段名,左列留空保持控件列对齐)
+/// 控件列延续行(无字段名,左列占位保持控件列对齐)
 fn form_row_no_label(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
     ui.horizontal(|ui| {
-        ui.allocate_ui(egui::vec2(LABEL_W, 0.0), |ui| {});
+        ui.allocate_exact_size(egui::vec2(LABEL_W, ROW_H), egui::Sense::hover());
         add(ui);
     });
 }
@@ -260,15 +286,6 @@ fn form_hint(ui: &mut egui::Ui, text: &str) {
         ui.add_space(LABEL_W);
         ui.label(theme::dim_text(text, theme::font::XS));
     });
-}
-
-fn field_label(ui: &mut egui::Ui, text: String) {
-    ui.label(
-        RichText::new(text)
-            .size(theme::font::BODY)
-            .strong()
-            .color(theme::c().text_dim),
-    );
 }
 
 /// 保存前校验;失败返回错误词条键

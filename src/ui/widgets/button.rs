@@ -10,23 +10,37 @@ use super::super::theme;
 /// 主按钮:强调色填充 + 反色文字(页内首要动作);`enabled=false`
 /// 置灰禁用(规则页保存/检查更新等在途防重复触发)
 pub fn primary_btn(ui: &mut egui::Ui, text: String, enabled: bool) -> egui::Response {
+    primary_btn_sized(ui, text, enabled, egui::Vec2::ZERO)
+}
+
+/// 主按钮定宽变体:样式同 [`primary_btn`],尺寸由调用方指定
+/// (弹窗按钮行需要定宽对齐/居中计算的场景);ZERO = 自然宽
+pub fn primary_btn_sized(
+    ui: &mut egui::Ui,
+    text: String,
+    enabled: bool,
+    size: egui::Vec2,
+) -> egui::Response {
     let p = theme::c();
     let (fill, text_color, cursor) = if enabled {
         (p.accent, p.on_accent, egui::CursorIcon::PointingHand)
     } else {
         (p.faint, p.text_dim, egui::CursorIcon::NotAllowed)
     };
-    ui.add(
-        egui::Button::new(
-            RichText::new(text)
-                .size(theme::font::BODY)
-                .strong()
-                .color(text_color),
-        )
-        .fill(fill)
-        .corner_radius(CornerRadius::same(theme::RADIUS_MD)),
+    let button = egui::Button::new(
+        RichText::new(text)
+            .size(theme::font::BODY)
+            .strong()
+            .color(text_color),
     )
-    .on_hover_cursor(cursor)
+    .fill(fill)
+    .corner_radius(CornerRadius::same(theme::RADIUS_MD));
+    let resp = if size != egui::Vec2::ZERO {
+        ui.add_sized(size, button)
+    } else {
+        ui.add(button)
+    };
+    resp.on_hover_cursor(cursor)
 }
 
 /// 图标操作钮;`tip` 为悬停提示(None 不挂 tooltip),`danger` 悬停
