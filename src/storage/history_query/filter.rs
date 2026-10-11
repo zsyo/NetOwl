@@ -1,46 +1,118 @@
 //! 历史筛选条件与查询结果行/排序类型。
 
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use crate::model::Protocol;
+
+/// 远端网段筛选:v4 为主机序 u32 闭区间;v6 为 u128 闭区间(经 16 字节
+/// 大端 BLOB 绑定,等长 BLOB 的 memcmp 字典序即数值序,BETWEEN 语义一致)
+#[derive(Clone, Copy)]
+pub enum RemoteFilter {
+    V4(u32, u32),
+    V6(u128, u128),
+}
+
+/// 远端筛选输入解析:v4 点分前缀("142.250.")/CIDR/单 IP 与 v6
+/// CIDR/单 IP(含 ':' 判族)
+pub fn parse_remote_filter(input: &str) -> Option<RemoteFilter> {
+    let s = input.trim();
+    if let Some((addr, mask)) = s.split_once('/') {
+        let prefix: u32 = mask.trim().parse().ok()?;
+        if let Ok(ip) = addr.trim().parse::<Ipv6Addr>() {
+            if prefix > 128 {
+                return None;
+            }
+            let v = u128::from(ip);
+            let m = if prefix == 0 {
+                0
+            } else {
+                u128::MAX << (128 - prefix)
+            };
+            return Some(RemoteFilter::V6(v & m, v | !m));
+        }
+        let ip: Ipv4Addr = addr.trim().parse().ok()?;
+        if prefix > 32 {
+            return None;
+        }
+        let v = u32::from(ip);
+        let lo = if prefix == 0 {
+            0
+        } else {
+            v & (u32::MAX << (32 - prefix))
+        };
+        let hi = if prefix == 0 {
+            u32::MAX
+        } else {
+            v | u32::MAX.checked_shr(prefix).unwrap_or(0)
+        };
+        return Some(RemoteFilter::V4(lo, hi));
+    }
+    if let Ok(ip) = s.parse::<Ipv6Addr>() {
+        let v = u128::from(ip);
+        return Some(RemoteFilter::V6(v, v));
+    }
+    if let Ok(ip) = s.parse::<Ipv4Addr>() {
+        return Some(RemoteFilter::V4(u32::from(ip), u32::from(ip)));
+    }
+    super::fmt::parse_ip_prefix(s).map(|(lo, hi)| RemoteFilter::V4(lo, hi))
+}
 
 /// 历史筛选条件;时间窗为 [start, +inf):连接存活期与窗口相交即命中
 pub struct Filter {
     pub start: u64,
     /// 进程名模糊匹配(空 = 不过滤)
     pub process: String,
-    /// 远端 IP 网段范围 [min, max](None = 不过滤)
-    pub remote: Option<(u32, u32)>,
+    /// 远端 IP 网段范围(None = 不过滤)
+    pub remote: Option<RemoteFilter>,
     pub proto: Option<Protocol>,
-    /// 隐藏回环远端(127.0.0.0/8)
+    /// 隐藏回环远端(127.0.0.0/8、::1)
     pub hide_local: bool,
-    /// 隐藏私网远端(RFC1918:10/8、172.16/12、192.168/16)
+    /// 隐藏私网远端(RFC1918 + IPv6 ULA fc00::/7 与链路本地 fe80::/10)
     pub hide_lan: bool,
 }
 
 impl Filter {
     /// WHERE 条件公共段(时间窗 + 筛选项,参数绑定)。
-    /// 私网判定用位运算:10/8 = 前 8 位 10;172.16/12 = 前 12 位 0xAC1;
-    /// 192.168/16 = 前 16 位 0xC0A8
+    /// v4 私网判定用位运算:10/8 = 前 8 位 10;172.16/12 = 前 12 位 0xAC1;
+    /// 192.168/16 = 前 16 位 0xC0A8。v6 为等长 BLOB 的 memcmp 比较:
+    /// ULA 首 2 字节在 [fc00, fdff],链路本地首 2 字节在 [fe80, febf]
     pub(super) fn where_clause() -> &'static str {
         "WHERE last_seen >= ?1
              AND (?2 = '' OR process LIKE '%' || ?2 || '%')
-             AND (?3 IS NULL OR (remote_ip >= ?3 AND remote_ip <= ?4))
+             AND (?3 IS NULL OR (remote_ip6 IS NULL AND remote_ip >= ?3 AND remote_ip <= ?4))
              AND (?5 = '' OR proto = ?5)
-             AND (?6 = 0 OR NOT ((remote_ip >> 24) = 127))
+             AND (?6 = 0 OR NOT ((remote_ip >> 24) = 127
+                      OR remote_ip6 = X'00000000000000000000000000000001'))
              AND (?7 = 0 OR NOT ((remote_ip >> 24) = 10
                       OR (remote_ip >> 20) = 2753
-                      OR (remote_ip >> 16) = 49320))"
+                      OR (remote_ip >> 16) = 49320
+                      OR (remote_ip6 IS NOT NULL
+                          AND ((substr(remote_ip6, 1, 2) >= X'fc00'
+                                AND substr(remote_ip6, 1, 2) <= X'fdff')
+                           OR (substr(remote_ip6, 1, 2) >= X'fe80'
+                                AND substr(remote_ip6, 1, 2) <= X'febf')))))
+             AND (?8 IS NULL OR (remote_ip6 IS NOT NULL
+                      AND remote_ip6 >= ?8 AND remote_ip6 <= ?9))"
     }
 
     /// 与 where_clause 参数位一一对应(全部 owned);
     /// proto 为 None 时绑空串(SQL 侧以 ?5 = '' 判定不过滤,NULL 比较恒假)
-    pub(super) fn bind(&self) -> [Box<dyn rusqlite::ToSql>; 7] {
+    pub(super) fn bind(&self) -> [Box<dyn rusqlite::ToSql>; 9] {
+        let (r4lo, r4hi, r6lo, r6hi) = match self.remote {
+            Some(RemoteFilter::V4(lo, hi)) => (Some(lo as i64), Some(hi as i64), None, None),
+            Some(RemoteFilter::V6(lo, hi)) => (
+                None,
+                None,
+                Some(lo.to_be_bytes().to_vec()),
+                Some(hi.to_be_bytes().to_vec()),
+            ),
+            None => (None, None, None, None),
+        };
         [
             Box::new(self.start as i64),
             Box::new(self.process.clone()),
-            Box::new(self.remote.map(|(lo, _)| lo as i64)),
-            Box::new(self.remote.map(|(_, hi)| hi as i64)),
+            Box::new(r4lo),
+            Box::new(r4hi),
             Box::new(
                 self.proto
                     .map(|p| p.as_str().to_owned())
@@ -48,6 +120,8 @@ impl Filter {
             ),
             Box::new(self.hide_local as i64),
             Box::new(self.hide_lan as i64),
+            Box::new(r6lo),
+            Box::new(r6hi),
         ]
     }
 }
@@ -61,22 +135,46 @@ pub struct DetailRow {
     pub process: String,
     pub proc_path: Option<String>,
     pub proto: Protocol,
+    /// IPv4 远端地址(v6 行为零值占位,族判定见 remote_ip6)
     pub remote_ip: Ipv4Addr,
+    /// IPv6 远端地址(v4 行为 None)
+    pub remote_ip6: Option<Ipv6Addr>,
     pub remote_port: u16,
     pub bytes_in: u64,
     pub bytes_out: u64,
+}
+
+impl DetailRow {
+    /// 远端地址(按族取有效列)
+    pub fn remote_addr(&self) -> IpAddr {
+        self.remote_ip6
+            .map(IpAddr::V6)
+            .unwrap_or(IpAddr::V4(self.remote_ip))
+    }
 }
 
 /// 聚合行(进程 x 协议 x 远端)
 pub struct AggregateRow {
     pub process: String,
     pub proto: Protocol,
+    /// IPv4 远端地址(v6 行为零值占位,族判定见 remote_ip6)
     pub remote_ip: Ipv4Addr,
+    /// IPv6 远端地址(v4 行为 None)
+    pub remote_ip6: Option<Ipv6Addr>,
     pub count: u64,
     pub total_secs: u64,
     pub last_active: u64,
     pub bytes_out: u64,
     pub bytes_in: u64,
+}
+
+impl AggregateRow {
+    /// 远端地址(按族取有效列)
+    pub fn remote_addr(&self) -> IpAddr {
+        self.remote_ip6
+            .map(IpAddr::V6)
+            .unwrap_or(IpAddr::V4(self.remote_ip))
+    }
 }
 
 /// 聚合视图排序键

@@ -118,7 +118,7 @@ pub(super) fn table(
                         widgets::table::fixed_cell(ui, flex_w, 22.0, |ui| {
                             ui.add(
                                 Label::new(
-                                    RichText::new(format!("{}:{}", r.remote_ip, r.remote_port))
+                                    RichText::new(format!("{}:{}", r.remote_addr(), r.remote_port))
                                         .size(theme::font::BODY)
                                         .color(theme::c().text),
                                 )
@@ -126,7 +126,7 @@ pub(super) fn table(
                             );
                         });
                         widgets::table::fixed_cell(ui, D_LOC_W, 22.0, |ui| {
-                            cells::location_cell(ui, i18n, r.remote_ip);
+                            cells::location_cell(ui, i18n, r.remote_addr());
                         });
                         widgets::table::fixed_cell(ui, D_SEEN_W, 22.0, |ui| {
                             ui.label(theme::dim_text(

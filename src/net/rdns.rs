@@ -6,13 +6,13 @@
 //! 出错)分别按 TTL 缓存,到期后对仍活跃的连接重查。
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::IpAddr;
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
 use windows::Win32::Networking::WinSock::{
-    AF_INET, IN_ADDR, IN_ADDR_0, NI_NAMEREQD, SOCKADDR, SOCKADDR_IN, WSADATA, WSAStartup,
-    getnameinfo, socklen_t,
+    AF_INET, AF_INET6, IN_ADDR, IN_ADDR_0, IN6_ADDR, IN6_ADDR_0, NI_NAMEREQD, SOCKADDR,
+    SOCKADDR_IN, SOCKADDR_IN6, SOCKADDR_IN6_0, WSADATA, WSAStartup, getnameinfo, socklen_t,
 };
 
 use crate::model::Connection;
@@ -47,15 +47,15 @@ impl Entry {
 /// 异步 PTR 解析器:update() 喂入当前活跃连接并收割结果,lookup() 查缓存
 pub struct Rdns {
     /// 查询线程回报通道(发送端克隆给每个查询线程;Err = getnameinfo 错误码)
-    tx: mpsc::Sender<(Ipv4Addr, Result<String, i32>)>,
-    rx: Receiver<(Ipv4Addr, Result<String, i32>)>,
+    tx: mpsc::Sender<(IpAddr, Result<String, i32>)>,
+    rx: Receiver<(IpAddr, Result<String, i32>)>,
     /// 已派发未返回的 IP(getnameinfo 可能阻塞数秒,防重复派发)
-    pending: HashSet<Ipv4Addr>,
+    pending: HashSet<IpAddr>,
     /// 待派发队列(活跃且缓存过期的 IP)
-    queue: VecDeque<Ipv4Addr>,
+    queue: VecDeque<IpAddr>,
     /// 队列成员集合(与 queue 同步维护,查重免线性扫描)
-    queued: HashSet<Ipv4Addr>,
-    cache: HashMap<Ipv4Addr, Entry>,
+    queued: HashSet<IpAddr>,
+    cache: HashMap<IpAddr, Entry>,
     last_dispatch: Instant,
 }
 
@@ -95,13 +95,11 @@ impl Rdns {
         }
 
         let now = Instant::now();
-        let wanted: HashSet<Ipv4Addr> = conns
+        // 反查覆盖面 = is_queryable 全量口径(v4 公网 + v6 非私网段)
+        let wanted: HashSet<IpAddr> = conns
             .iter()
-            .filter_map(|c| match c.remote_ip {
-                // 反查覆盖面与 is_queryable 一致,暂为 IPv4(v6 随 v6 适配接入)
-                IpAddr::V4(v4) if is_queryable(&c.remote_ip) => Some(v4),
-                _ => None,
-            })
+            .map(|c| c.remote_ip)
+            .filter(is_queryable)
             .collect();
 
         // 连接已消失的不再派发;不活跃且过期的缓存释放,防止无限积累
@@ -147,13 +145,9 @@ impl Rdns {
         }
     }
 
-    /// 已知域名;未查/无 PTR 返回 None(调用方回退裸 IP 显示)。
-    /// 仅覆盖 IPv4,IPv6 随 v6 反查适配一并接入
+    /// 已知域名;未查/无 PTR 返回 None(调用方回退裸 IP 显示)
     pub fn lookup(&self, ip: IpAddr) -> Option<&str> {
-        let IpAddr::V4(v4) = ip else {
-            return None;
-        };
-        self.cache.get(&v4).and_then(|e| e.name.as_deref())
+        self.cache.get(&ip).and_then(|e| e.name.as_deref())
     }
 }
 
@@ -212,26 +206,50 @@ fn ensure_winsock() -> bool {
     OK.load(std::sync::atomic::Ordering::Acquire)
 }
 
-/// PTR 查询:经系统 DNS 客户端(自带缓存);Err = getnameinfo 错误码
-fn ptr_query(ip: Ipv4Addr) -> Result<String, i32> {
-    let addr = SOCKADDR_IN {
-        sin_family: AF_INET,
-        sin_port: 0,
-        // 网络字节序:内存字节即地址原文,x86 为 LE,按 le_bytes 组装;
-        // from_be_bytes 会查到字节反转的地址
-        sin_addr: IN_ADDR {
-            S_un: IN_ADDR_0 {
-                S_addr: u32::from_le_bytes(ip.octets()),
-            },
-        },
-        sin_zero: [0; 8],
-    };
+/// PTR 查询:经系统 DNS 客户端(自带缓存),按地址族构造 sockaddr;
+/// Err = getnameinfo 错误码
+fn ptr_query(ip: IpAddr) -> Result<String, i32> {
+    // v4 网络字节序:内存字节即地址原文,x86 为 LE,按 le_bytes 组装;
+    // from_be_bytes 会查到字节反转的地址
+    let ptr: *const core::ffi::c_void;
+    let len: i32;
+    let v4;
+    let v6;
+    match ip {
+        IpAddr::V4(a) => {
+            v4 = SOCKADDR_IN {
+                sin_family: AF_INET,
+                sin_port: 0,
+                sin_addr: IN_ADDR {
+                    S_un: IN_ADDR_0 {
+                        S_addr: u32::from_le_bytes(a.octets()),
+                    },
+                },
+                sin_zero: [0; 8],
+            };
+            ptr = &v4 as *const SOCKADDR_IN as *const core::ffi::c_void;
+            len = std::mem::size_of::<SOCKADDR_IN>() as i32;
+        }
+        IpAddr::V6(a) => {
+            v6 = SOCKADDR_IN6 {
+                sin6_family: AF_INET6,
+                sin6_port: 0,
+                sin6_flowinfo: 0,
+                sin6_addr: IN6_ADDR {
+                    u: IN6_ADDR_0 { Byte: a.octets() },
+                },
+                Anonymous: SOCKADDR_IN6_0 { sin6_scope_id: 0 },
+            };
+            ptr = &v6 as *const SOCKADDR_IN6 as *const core::ffi::c_void;
+            len = std::mem::size_of::<SOCKADDR_IN6>() as i32;
+        }
+    }
     // NI_NAMEREQD:解析失败不回退返回点分 IP,由调用方统一回退显示
     let mut host = [0u8; 1025];
     let rc = unsafe {
         getnameinfo(
-            &addr as *const SOCKADDR_IN as *const SOCKADDR,
-            socklen_t(std::mem::size_of::<SOCKADDR_IN>() as i32),
+            ptr as *const SOCKADDR,
+            socklen_t(len),
             Some(&mut host),
             None,
             NI_NAMEREQD as i32,

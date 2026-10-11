@@ -211,4 +211,14 @@ fn migrate(conn: &mut Connection) {
             Ok(())
         });
     }
+    if current < 9 {
+        // 版本 9:conn_events 补 IPv6 远端地址列(16 字节大端 BLOB,v4 行
+        // 为 NULL)。等长 BLOB 的 memcmp 字典序即数值序,网段筛选的
+        // BETWEEN 语义与 v4 列一致;v6 行的 remote_ip 列填 0 占位
+        // (NOT NULL 基线不变),族判定以 remote_ip6 IS NULL 为准
+        step(conn, 9, |tx| {
+            tx.execute("ALTER TABLE conn_events ADD COLUMN remote_ip6 BLOB", [])?;
+            Ok(())
+        });
+    }
 }

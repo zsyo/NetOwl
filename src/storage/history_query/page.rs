@@ -2,8 +2,9 @@
 
 use std::time::{Duration, Instant};
 
+use super::filter::parse_remote_filter;
 use super::filter::{AggregateSort, Filter, SummarySort};
-use super::fmt::{local_tz_offset_secs, month_start, parse_ip_prefix};
+use super::fmt::{local_tz_offset_secs, month_start};
 use super::query::{query_aggregate, query_detail, query_summary, query_usage};
 use crate::model::Protocol;
 use crate::storage::history::{Db, Writer, db_size, unix_now};
@@ -147,7 +148,7 @@ impl PageState {
         let filter = Filter {
             start: self.range.start(unix_now()),
             process: self.process.trim().to_owned(),
-            remote: parse_ip_prefix(&self.remote),
+            remote: parse_remote_filter(&self.remote),
             proto: self.proto,
             hide_local,
             hide_lan,

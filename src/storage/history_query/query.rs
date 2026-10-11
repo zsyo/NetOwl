@@ -1,6 +1,6 @@
 //! 历史只读查询(明细/聚合/汇总/用量)与批量删除,全部参数绑定。
 
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use rusqlite::params;
 
@@ -49,7 +49,7 @@ pub(super) fn query_usage(
 pub(super) fn query_detail(db: &Db, f: &Filter) -> rusqlite::Result<Vec<DetailRow>> {
     let sql = format!(
         "SELECT event_id, first_seen, last_seen, pid, process, proc_path, proto, remote_ip, remote_port,
-                bytes_in, bytes_out
+                bytes_in, bytes_out, remote_ip6
          FROM conn_events {} ORDER BY last_seen DESC LIMIT {QUERY_LIMIT}",
         Filter::where_clause()
     );
@@ -64,6 +64,7 @@ pub(super) fn query_detail(db: &Db, f: &Filter) -> rusqlite::Result<Vec<DetailRo
             proc_path: row.get(5)?,
             proto: parse_proto(&row.get::<_, String>(6)?),
             remote_ip: Ipv4Addr::from(row.get::<_, i64>(7)? as u32),
+            remote_ip6: parse_ip6(row.get::<_, Option<Vec<u8>>>(11)?),
             remote_port: row.get::<_, i64>(8)? as u16,
             bytes_in: row.get::<_, i64>(9)?.max(0) as u64,
             bytes_out: row.get::<_, i64>(10)?.max(0) as u64,
@@ -82,10 +83,10 @@ pub(super) fn query_aggregate(
 ) -> rusqlite::Result<Vec<AggregateRow>> {
     let dir = if ascending { "ASC" } else { "DESC" };
     let sql = format!(
-        "SELECT process, proto, remote_ip, COUNT(*) AS n,
+        "SELECT process, proto, remote_ip, remote_ip6, COUNT(*) AS n,
                 SUM(last_seen - first_seen) AS total, MAX(last_seen) AS last_active,
                 SUM(bytes_out) AS out_total, SUM(bytes_in) AS in_total
-         FROM conn_events {} GROUP BY process, proto, remote_ip
+         FROM conn_events {} GROUP BY process, proto, remote_ip, remote_ip6
          ORDER BY {} {dir} LIMIT {QUERY_LIMIT}",
         Filter::where_clause(),
         sort.order_col()
@@ -96,11 +97,12 @@ pub(super) fn query_aggregate(
             process: row.get(0)?,
             proto: parse_proto(&row.get::<_, String>(1)?),
             remote_ip: Ipv4Addr::from(row.get::<_, i64>(2)? as u32),
-            count: row.get::<_, i64>(3)? as u64,
-            total_secs: row.get::<_, i64>(4)?.max(0) as u64,
-            last_active: row.get::<_, i64>(5)? as u64,
-            bytes_out: row.get::<_, i64>(6)?.max(0) as u64,
-            bytes_in: row.get::<_, i64>(7)?.max(0) as u64,
+            remote_ip6: parse_ip6(row.get::<_, Option<Vec<u8>>>(3)?),
+            count: row.get::<_, i64>(4)? as u64,
+            total_secs: row.get::<_, i64>(5)?.max(0) as u64,
+            last_active: row.get::<_, i64>(6)? as u64,
+            bytes_out: row.get::<_, i64>(7)?.max(0) as u64,
+            bytes_in: row.get::<_, i64>(8)?.max(0) as u64,
         })
     })?;
     rows.collect()
@@ -144,7 +146,7 @@ pub(super) fn query_summary(
 pub struct PendingDelete {
     pub process: String,
     pub proto: Option<Protocol>,
-    pub remote_ip: Option<Ipv4Addr>,
+    pub remote_ip: Option<IpAddr>,
 }
 
 /// 明细行删除:事件身份 + 首末时刻定位唯一行(端口复用产生同 event_id
@@ -156,17 +158,28 @@ pub fn delete_detail(db: &Db, r: &DetailRow) -> rusqlite::Result<usize> {
     )
 }
 
-/// 聚合组删除:同进程 + 协议 + 远端的全部记录
+/// 聚合组删除:同进程 + 协议 + 远端(按族落到对应地址列)的全部记录
 pub fn delete_aggregate_group(
     db: &Db,
     process: &str,
     proto: Protocol,
-    remote_ip: Ipv4Addr,
+    remote: IpAddr,
 ) -> rusqlite::Result<usize> {
-    db.execute(
-        "DELETE FROM conn_events WHERE process = ?1 AND proto = ?2 AND remote_ip = ?3",
-        params![process, proto.as_str(), u32::from(remote_ip) as i64],
-    )
+    match remote {
+        IpAddr::V4(v4) => db.execute(
+            "DELETE FROM conn_events WHERE process = ?1 AND proto = ?2
+             AND remote_ip6 IS NULL AND remote_ip = ?3",
+            params![process, proto.as_str(), u32::from(v4) as i64],
+        ),
+        IpAddr::V6(v6) => db.execute(
+            "DELETE FROM conn_events WHERE process = ?1 AND proto = ?2 AND remote_ip6 = ?3",
+            params![
+                process,
+                proto.as_str(),
+                u128::from(v6).to_be_bytes().as_slice()
+            ],
+        ),
+    }
 }
 
 /// 进程全部记录删除
@@ -175,6 +188,12 @@ pub fn delete_process(db: &Db, process: &str) -> rusqlite::Result<usize> {
         "DELETE FROM conn_events WHERE process = ?1",
         params![process],
     )
+}
+
+/// remote_ip6 列读回:16 字节大端 BLOB,长度不符视为损坏行(NULL 语义)
+fn parse_ip6(b: Option<Vec<u8>>) -> Option<Ipv6Addr> {
+    let bytes: [u8; 16] = b?.try_into().ok()?;
+    Some(Ipv6Addr::from(bytes))
 }
 
 fn parse_proto(s: &str) -> Protocol {

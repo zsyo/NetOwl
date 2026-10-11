@@ -105,8 +105,7 @@ pub(super) fn proc_cell(
 
 /// 位置单元格:归属地实时反查(geoip 数据重建不影响历史行)+ 运营商
 /// 后缀(数据源无机构信息的段不拼),未知占位
-pub(super) fn location_cell(ui: &mut egui::Ui, i18n: &I18n, ip: std::net::Ipv4Addr) {
-    let ip = std::net::IpAddr::V4(ip);
+pub(super) fn location_cell(ui: &mut egui::Ui, i18n: &I18n, ip: std::net::IpAddr) {
     let mut text = match geoip::locate(ip).map(Place::Geo) {
         Some(p) => geoip::place_label(p, i18n),
         None => i18n.t("conn-loc-unknown"),

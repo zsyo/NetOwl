@@ -1,12 +1,15 @@
-//! 本机公网 IP 探测:并发请求多个知名公共回显接口,取最先返回的合法 IPv4
-//! (任一接口失效不影响探测)。手写最小 HTTP/1.1 GET(std TcpStream,不走
-//! 系统代理),全部接口为 http 明文端点以避免引入 TLS 依赖;探测结果为公网
-//! 视角的出口 IP(代理环境即代理出口)。全部失败时调用方回退默认点位。
-//! NETOWL_IP 环境变量可指定固定本机 IP(演示/截图场景隐藏真实位置):
-//! 非空合法 IPv4 生效,全程不发起任何真实探测;非法值告警后按未指定处理。
+//! 本机公网 IP 探测:并发请求多个知名公共回显接口(IPv4 与 IPv6 端点
+//! 并行),取最先返回的合法 IPv4,全部失败时回退首个 IPv6 结果(本机
+//! 地图点位以 v4 为准,与连接主流族一致;任一接口失效不影响探测)。
+//! 手写最小 HTTP/1.1 GET(std TcpStream,不走系统代理),全部接口为
+//! http 明文端点以避免引入 TLS 依赖;探测结果为公网视角的出口 IP
+//! (代理环境即代理出口)。全部失败时调用方回退默认点位。
+//! NETOWL_IP 环境变量可指定固定本机 IP(v4/v6 均可;演示/截图场景
+//! 隐藏真实位置):非空合法地址生效,全程不发起任何真实探测;
+//! 非法值告警后按未指定处理。
 
 use std::io::{Read, Write};
-use std::net::{Ipv4Addr, TcpStream, ToSocketAddrs};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, TcpStream, ToSocketAddrs};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::time::Duration;
 
@@ -18,6 +21,9 @@ const PROBE_URLS: &[&str] = &[
     "http://myip.ipip.net",
     "http://cip.cc",
     "http://members.3322.org/dyndns/getip",
+    "http://api6.ipify.org",
+    "http://ipv6.icanhazip.com",
+    "http://v6.ident.me",
 ];
 
 /// 单请求连接/读写超时
@@ -26,10 +32,13 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(4);
 /// NETOWL_IP 指定固定本机 IP 时,poll 送达结果的来源标注
 const PINNED_SOURCE: &str = "NETOWL_IP";
 
-/// 周期探测器:每轮 begin_round 后,首个到达的结果经 poll 送达,其余丢弃
+/// 周期探测器:每轮 begin_round 后,首个到达的 IPv4 结果经 poll 送达;
+/// v4 全部失败(接口线程全部收尾)时回退首个 IPv6 结果,其余丢弃
 pub struct Probe {
-    rx: Receiver<(Ipv4Addr, &'static str)>,
+    rx: Receiver<(IpAddr, &'static str)>,
     round_done: bool,
+    /// IPv6 结果暂存:v4 优先送达,接口线程全部收尾仍无 v4 才回退
+    v6_pending: Option<(IpAddr, &'static str)>,
     /// NETOWL_IP 固定 IP 模式:不发起任何真实探测(含 10 分钟周期重探)
     pinned: bool,
 }
@@ -42,6 +51,7 @@ impl Probe {
             rx: mpsc::channel().1,
             // 初值 true:首轮 begin_round 不做"上轮全失败"判定
             round_done: true,
+            v6_pending: None,
             pinned: false,
         };
         match env_pinned_ip() {
@@ -87,24 +97,36 @@ impl Probe {
         }
     }
 
-    /// 非阻塞读取本轮探测结果:返回首个成功结果,后续结果静默丢弃
-    pub fn poll(&mut self) -> Option<(Ipv4Addr, &'static str)> {
+    /// 非阻塞读取本轮探测结果:首个 IPv4 结果优先送达,后续结果静默
+    /// 丢弃;接口线程全部收尾后仍无 v4 才回退暂存的 v6 结果
+    pub fn poll(&mut self) -> Option<(IpAddr, &'static str)> {
         loop {
             match self.rx.try_recv() {
                 Ok(hit) => {
                     if !self.round_done {
-                        self.round_done = true;
-                        return Some(hit);
+                        if hit.0.is_ipv4() {
+                            self.round_done = true;
+                            return Some(hit);
+                        }
+                        self.v6_pending.get_or_insert(hit);
                     }
                 }
-                Err(TryRecvError::Empty | TryRecvError::Disconnected) => return None,
+                Err(TryRecvError::Disconnected) => {
+                    if !self.round_done {
+                        self.round_done = true;
+                        return self.v6_pending.take();
+                    }
+                    return None;
+                }
+                Err(TryRecvError::Empty) => return None,
             }
         }
     }
 }
 
-/// 单接口探测:GET -> 响应体提取首个合法 IPv4
-fn probe_url(url: &'static str) -> Option<Ipv4Addr> {
+/// 单接口探测:GET -> 响应体提取首个合法地址(v4 端点返回 v4,v6
+/// 端点返回 v6;族由端点决定,不在本函数区分)
+fn probe_url(url: &'static str) -> Option<IpAddr> {
     let rest = url.strip_prefix("http://")?;
     let (host, path) = match rest.find('/') {
         Some(i) => (&rest[..i], &rest[i..]),
@@ -132,12 +154,12 @@ fn probe_url(url: &'static str) -> Option<Ipv4Addr> {
     // 跳过 HTTP 头取响应体(头中可能出现无关数字)
     let text = String::from_utf8_lossy(&buf);
     let body = text.split("\r\n\r\n").nth(1).unwrap_or(&text);
-    extract_ipv4(body)
+    extract_ip(body)
 }
 
 /// 读取 NETOWL_IP(启动时一次):非空合法 IPv4 视作固定本机 IP;
 /// 非法值告警并视作未指定,空值/未设置静默按未指定处理
-fn env_pinned_ip() -> Option<Ipv4Addr> {
+fn env_pinned_ip() -> Option<IpAddr> {
     let Ok(raw) = std::env::var("NETOWL_IP") else {
         return None;
     };
@@ -145,13 +167,29 @@ fn env_pinned_ip() -> Option<Ipv4Addr> {
     if raw.is_empty() {
         return None;
     }
-    match raw.parse::<Ipv4Addr>() {
+    match raw.parse::<IpAddr>() {
         Ok(ip) => Some(ip),
         Err(_) => {
-            tracing::warn!("[LocalIp] NETOWL_IP=\"{raw}\" 不是合法 IPv4,忽略,继续真实探测");
+            tracing::warn!("[LocalIp] NETOWL_IP=\"{raw}\" 不是合法 IP 地址,忽略,继续真实探测");
             None
         }
     }
+}
+
+/// 从文本中提取首个合法地址:v6 裸回显整体即地址,逐 token 找 v6 形状
+/// (含冒号且可解析),最后回退 v4 点分提取
+fn extract_ip(text: &str) -> Option<IpAddr> {
+    if let Ok(v6) = text.trim().parse::<Ipv6Addr>() {
+        return Some(IpAddr::V6(v6));
+    }
+    for token in text.split(|c: char| c.is_whitespace() || c == ',') {
+        if token.contains(':')
+            && let Ok(v6) = token.parse::<Ipv6Addr>()
+        {
+            return Some(IpAddr::V6(v6));
+        }
+    }
+    extract_ipv4(text).map(IpAddr::V4)
 }
 
 /// 从文本中提取第一个形如 a.b.c.d 且各段 0-255 的 IPv4

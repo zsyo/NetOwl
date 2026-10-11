@@ -118,11 +118,11 @@ impl NetOwlApp {
             if f.key.local_ip.is_loopback() || f.key.remote_ip.is_loopback() {
                 continue;
             }
-            // ClosedConn 暂为 IPv4,v6 短命连接落库随历史库 v6 适配接入
-            let IpAddr::V4(rip) = f.key.remote_ip else {
-                continue;
+            let (rip, rip6) = match f.key.remote_ip {
+                IpAddr::V4(v4) => (v4, None),
+                IpAddr::V6(v6) => (Ipv4Addr::UNSPECIFIED, Some(v6)),
             };
-            events.push(short_lived_event(&f, rip));
+            events.push(short_lived_event(&f, rip, rip6));
         }
         if !events.is_empty() {
             tracing::debug!("[ETW] 短命连接落库 {} 条", events.len());
@@ -193,9 +193,13 @@ fn merge_udp_groups<'a>(flows: &'a [etw::FlowAgg]) -> HashMap<(u32, u16), UdpGro
 }
 
 /// 短命连接完结事件:进程反查失败(已退出)时进程名留空;
-/// 起止时间由流的首末事件时刻换算 unix 秒。远端 IP 由调用方解出
-/// IPv4(v6 落库随历史库 v6 适配接入)
-fn short_lived_event(f: &etw::FlowAgg, rip: Ipv4Addr) -> history::ClosedConn {
+/// 起止时间由流的首末事件时刻换算 unix 秒。远端地址按族由调用方解出
+/// (v4 存 remote_ip 列,v6 存 remote_ip6 列)
+fn short_lived_event(
+    f: &etw::FlowAgg,
+    rip: Ipv4Addr,
+    rip6: Option<std::net::Ipv6Addr>,
+) -> history::ClosedConn {
     let (proc_path, process) = match collector::query_process_path(f.key.pid) {
         Some(path) => {
             let name = crate::model::image_name(&path).to_owned();
@@ -216,6 +220,7 @@ fn short_lived_event(f: &etw::FlowAgg, rip: Ipv4Addr) -> history::ClosedConn {
         signed: Signing::Unknown,
         proto: f.key.proto,
         remote_ip: rip,
+        remote_ip6: rip6,
         remote_port: f.key.remote_port,
         bytes_in: f.down_bytes,
         bytes_out: f.up_bytes,

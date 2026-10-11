@@ -41,7 +41,10 @@ pub struct ClosedConn {
     pub proc_path: Option<String>,
     pub signed: Signing,
     pub proto: Protocol,
+    /// IPv4 连接的远端地址;IPv6 行为零值占位(族判定见 remote_ip6)
     pub remote_ip: Ipv4Addr,
+    /// IPv6 连接的远端地址(v4 行为 None)
+    pub remote_ip6: Option<std::net::Ipv6Addr>,
     pub remote_port: u16,
     /// 收发字节(ETW 合并的连接级累计,完结时定稿)
     pub bytes_in: u64,
@@ -73,10 +76,11 @@ impl Tracker {
         let mut current: HashSet<u64> = HashSet::with_capacity(conns.len());
         for c in conns {
             current.insert(c.id);
-            // ClosedConn 仅覆盖 IPv4(v6 落库随历史库 v6 适配一并接入),
-            // v6 行不入历史
-            let IpAddr::V4(rip) = c.remote_ip else {
-                continue;
+            // v4 存 remote_ip 列,v6 存 remote_ip6 列(另一列零值/NULL 占位,
+            // 见 ClosedConn 字段注释)
+            let (rip, rip6) = match c.remote_ip {
+                IpAddr::V4(v4) => (v4, None),
+                IpAddr::V6(v6) => (Ipv4Addr::UNSPECIFIED, Some(v6)),
             };
             let e = self.index.entry(c.id).or_insert_with(|| ClosedConn {
                 event_id: c.id,
@@ -88,6 +92,7 @@ impl Tracker {
                 signed: c.signed,
                 proto: c.proto,
                 remote_ip: rip,
+                remote_ip6: rip6,
                 remote_port: c.remote_port,
                 bytes_in: c.bytes_in,
                 bytes_out: c.bytes_out,
@@ -95,6 +100,7 @@ impl Tracker {
             // 首见登记 first_seen,远端与字节每轮刷新(见函数注释):
             // 字节随 ETW 合并逐轮增长,只登记首见会以 0 落库
             e.remote_ip = rip;
+            e.remote_ip6 = rip6;
             e.remote_port = c.remote_port;
             e.bytes_in = c.bytes_in;
             e.bytes_out = c.bytes_out;
@@ -248,6 +254,7 @@ fn write_batch(conn: &mut Db, events: &[ClosedConn]) {
         }
     };
     let insert = |stmt: &mut rusqlite::Statement, e: &ClosedConn| {
+        let rip6 = e.remote_ip6.map(|v| v.octets().to_vec());
         stmt.execute(params![
             e.event_id as i64,
             e.first_seen as i64,
@@ -260,12 +267,13 @@ fn write_batch(conn: &mut Db, events: &[ClosedConn]) {
             u32::from(e.remote_ip),
             e.remote_port,
             e.bytes_in as i64,
-            e.bytes_out as i64
+            e.bytes_out as i64,
+            rip6
         ])
     };
     match tx.prepare(
-        "INSERT INTO conn_events (event_id, first_seen, last_seen, pid, process, proc_path, signed, proto, remote_ip, remote_port, bytes_in, bytes_out)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        "INSERT INTO conn_events (event_id, first_seen, last_seen, pid, process, proc_path, signed, proto, remote_ip, remote_port, bytes_in, bytes_out, remote_ip6)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
     ) {
         Ok(mut stmt) => {
             for e in events {

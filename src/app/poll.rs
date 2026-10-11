@@ -96,7 +96,7 @@ impl NetOwlApp {
     /// 启动定位窗口内的首个结果把地图瞬跳到本机中心最大缩放(默认视图)
     pub(super) fn poll_local_ip(&mut self, ctx: &egui::Context) {
         if let Some((ip, source)) = self.local_probe.poll() {
-            let place = geoip::locate(IpAddr::V4(ip)).map(Place::Geo);
+            let place = geoip::locate(ip).map(Place::Geo);
             if place != self.local_place {
                 self.local_place = place;
                 if place.is_some() {

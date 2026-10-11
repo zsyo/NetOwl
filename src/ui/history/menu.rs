@@ -15,7 +15,7 @@ pub(super) fn detail_menu(ui: &mut egui::Ui, r: &DetailRow, i18n: &I18n) -> bool
         ui,
         i18n,
         r.proc_path.as_deref(),
-        Some((r.remote_ip.to_string().as_str(), r.remote_port)),
+        Some((r.remote_addr().to_string().as_str(), r.remote_port)),
     );
     delete
 }

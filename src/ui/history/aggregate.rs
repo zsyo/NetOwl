@@ -133,13 +133,13 @@ pub(super) fn table(
                                 state.pending_delete = Some(history_query::PendingDelete {
                                     process: r.process.clone(),
                                     proto: Some(r.proto),
-                                    remote_ip: Some(r.remote_ip),
+                                    remote_ip: Some(r.remote_addr()),
                                 });
                             }
                             if widgets::menu::menu_item(ui, i18n.t("menu-copy-remote"), true)
                                 .clicked()
                             {
-                                ui.ctx().copy_text(r.remote_ip.to_string());
+                                ui.ctx().copy_text(r.remote_addr().to_string());
                             }
                         });
                         widgets::table::fixed_cell(ui, flex_w, 22.0, |ui| {
@@ -167,7 +167,7 @@ pub(super) fn table(
                         widgets::table::fixed_cell(ui, flex_w, 22.0, |ui| {
                             ui.add(
                                 Label::new(
-                                    RichText::new(r.remote_ip.to_string())
+                                    RichText::new(r.remote_addr().to_string())
                                         .size(theme::font::BODY)
                                         .color(theme::c().text),
                                 )
@@ -175,7 +175,7 @@ pub(super) fn table(
                             );
                         });
                         widgets::table::fixed_cell(ui, A_LOC_W, 22.0, |ui| {
-                            cells::location_cell(ui, i18n, r.remote_ip);
+                            cells::location_cell(ui, i18n, r.remote_addr());
                         });
                         widgets::table::fixed_cell(ui, A_CNT_W, 22.0, |ui| {
                             ui.label(

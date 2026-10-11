@@ -20,8 +20,7 @@ fn csv_field(s: &str) -> String {
 
 /// 位置列文本(与页面 location_cell 同口径):GeoIP 反查 + 运营商后缀,
 /// 未知占位
-fn location_text(i18n: &I18n, ip: std::net::Ipv4Addr) -> String {
-    let ip = std::net::IpAddr::V4(ip);
+fn location_text(i18n: &I18n, ip: std::net::IpAddr) -> String {
     let mut text = match geoip::locate(ip).map(Place::Geo) {
         Some(place) => geoip::place_label(place, i18n),
         None => i18n.t("conn-loc-unknown"),
@@ -77,8 +76,8 @@ pub(super) fn export_csv(
                 out.push(vec![
                     r.process.clone(),
                     r.proto.as_str().to_owned(),
-                    format!("{}:{}", r.remote_ip, r.remote_port),
-                    location_text(i18n, r.remote_ip),
+                    format!("{}:{}", r.remote_addr(), r.remote_port),
+                    location_text(i18n, r.remote_addr()),
                     history_query::fmt_local(r.first_seen),
                     history_query::fmt_duration(r.last_seen.saturating_sub(r.first_seen)),
                     r.bytes_in.to_string(),
@@ -108,8 +107,8 @@ pub(super) fn export_csv(
                 out.push(vec![
                     r.process.clone(),
                     r.proto.as_str().to_owned(),
-                    r.remote_ip.to_string(),
-                    location_text(i18n, r.remote_ip),
+                    r.remote_addr().to_string(),
+                    location_text(i18n, r.remote_addr()),
                     r.count.to_string(),
                     history_query::fmt_duration(r.total_secs),
                     history_query::fmt_local(r.last_active),
