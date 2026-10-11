@@ -178,11 +178,21 @@ pub(super) fn edit_window(
 
                 field_label(ui, i18n.t("col-port"));
                 ui.horizontal(|ui| {
-                    ui.add(
-                        egui::DragValue::new(&mut draft.port)
-                            .range(0..=65535)
-                            .custom_formatter(|v, _| labels::port_display(v as u16)),
-                    );
+                    // DragValue 默认无边框按钮样式,包一层与输入框同源的
+                    // 底色描边(取当前主题 Visuals)
+                    let vis = &ui.style().visuals;
+                    egui::Frame::new()
+                        .fill(vis.text_edit_bg_color())
+                        .stroke(vis.widgets.inactive.bg_stroke)
+                        .corner_radius(vis.widgets.inactive.corner_radius)
+                        .show(ui, |ui| {
+                            ui.add_sized(
+                                [64.0, 24.0],
+                                egui::DragValue::new(&mut draft.port)
+                                    .range(0..=65535)
+                                    .custom_formatter(|v, _| labels::port_display(v as u16)),
+                            )
+                        });
                     ui.label(theme::dim_text(
                         &i18n.t("rules-port-any-hint"),
                         theme::font::XS,

@@ -344,7 +344,7 @@ rules-direction-hint = 当前按远端端口近似判定,>=49152 视为入站
 rules-remote-ip-hint = 如 10.0.0.0/8、142.250. 或 1.2.3.4
 rules-remote-domain-hint = 域名后缀,如 example.com
 rules-remote-domain-desc = 保存后经域名解析展开为 IP 在内核拦截,结果约每 10 分钟刷新
-rules-port-any-hint = 0 = 任意端口
+rules-port-any-hint = - = 任意端口
 rules-err-name = 名称不能为空
 rules-err-remote = 网段格式无法解析
 rules-err-remote-domain = 域名格式无效,仅支持字母/数字/连字符/点,如 example.com
@@ -396,7 +396,7 @@ conns-group-count = {$count} 条
 quota-warn-toast = 本月流量已达 80%({$used})
 quota-exceed-toast = 本月流量已超配额({$used})
 settings-quality-targets = 自定义采样目标
-settings-quality-targets-hint = 添加需持续监测的地址(如游戏服务器),无连接时也探测延迟与丢包,状态在各行实时显示;活跃连接的远端已自动覆盖。端口 0 = 禁 ping 时不做 TCP 补测,备注用于告警提示
+settings-quality-targets-hint = 添加需持续监测的地址(如游戏服务器),无连接时也探测延迟与丢包,状态在各行实时显示;活跃连接的远端已自动覆盖。端口 - = 禁 ping 时不做 TCP 补测,备注用于告警提示
 settings-quality-label-hint = 备注
 settings-quality-add = 添加目标
 settings-quality-remove = 删除

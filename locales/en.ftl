@@ -343,7 +343,7 @@ rules-direction-hint = Approximated by remote port for now; >=49152 counts as in
 rules-remote-ip-hint = e.g. 10.0.0.0/8, 142.250. or 1.2.3.4
 rules-remote-domain-hint = Domain suffix, e.g. example.com
 rules-remote-domain-desc = Enforced in-kernel via resolved IPs after save; resolution refreshes about every 10 minutes
-rules-port-any-hint = 0 = any port
+rules-port-any-hint = - = any port
 rules-err-name = Name must not be empty
 rules-err-remote = Cannot parse the IP range
 rules-err-remote-domain = Invalid domain format: letters, digits, hyphens and dots only, e.g. example.com
@@ -395,7 +395,7 @@ conns-group-count = {$count} conns
 quota-warn-toast = Monthly usage reached 80% ({$used})
 quota-exceed-toast = Monthly usage exceeded the quota ({$used})
 settings-quality-targets = Custom probe targets
-settings-quality-targets-hint = Add addresses to monitor continuously (e.g. game servers), probed even without active connections, results shown live on each row; active-connection remotes are covered automatically. Port 0 = no TCP fallback when ping is blocked; label shows in alerts
+settings-quality-targets-hint = Add addresses to monitor continuously (e.g. game servers), probed even without active connections, results shown live on each row; active-connection remotes are covered automatically. Port - = no TCP fallback when ping is blocked; label shows in alerts
 settings-quality-label-hint = Label
 settings-quality-add = Add target
 settings-quality-remove = Remove
