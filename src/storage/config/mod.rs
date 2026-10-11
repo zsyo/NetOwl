@@ -123,6 +123,10 @@ pub struct GeneralConfig {
     /// "wan"(中文四位分节)/ "kmb"(国际三位分节)
     #[serde(default = "default_count_format")]
     pub count_format: String,
+    /// 网络质量采样(活跃公网远端 ICMP 探测,地图节点健康度着色;
+    /// IcmpSendEcho 为系统代发,无额外权限要求)
+    #[serde(default = "default_true")]
+    pub quality_monitor: bool,
 }
 
 impl Default for GeneralConfig {
@@ -148,6 +152,7 @@ impl Default for GeneralConfig {
             update_channel: String::new(),
             hotkey: default_hotkey(),
             count_format: default_count_format(),
+            quality_monitor: true,
         }
     }
 }

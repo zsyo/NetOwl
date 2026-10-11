@@ -12,7 +12,7 @@ use super::{CONNS_REFRESH_INTERVAL, MAP_LOCATE_WINDOW, NetOwlApp, RATE_HIST_LEN}
 use crate::collector::{self, CollectorKind};
 use crate::i18n::I18n;
 use crate::map::basemap;
-use crate::net::{etw, local_ip, rdns, resolve, traffic};
+use crate::net::{etw, local_ip, quality, rdns, resolve, traffic};
 use crate::platform::resize::DragResize;
 use crate::platform::{single_instance, tray};
 use crate::rules;
@@ -120,6 +120,7 @@ impl NetOwlApp {
             collector: collector::build(CollectorKind::from_config(&config.general.collector)),
             rdns: rdns::Rdns::new(),
             resolve: resolve::Resolver::new(),
+            quality: quality::Quality::new(),
             traffic: traffic::Sampler::new(),
             rates: (0, 0),
             rate_hist: Vec::with_capacity(RATE_HIST_LEN + 1),
@@ -139,6 +140,7 @@ impl NetOwlApp {
             etw_poll_at: Instant::now(),
             // 首帧立即拉取快照:把起点回拨一个周期
             conns_refresh_at: Instant::now() - CONNS_REFRESH_INTERVAL,
+            quality_poll_at: Instant::now(),
             self_path: std::env::current_exe()
                 .ok()
                 .map(|p| p.to_string_lossy().into_owned()),

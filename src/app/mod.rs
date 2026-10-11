@@ -37,6 +37,7 @@ use crate::map::basemap;
 use crate::model::{Connection, Place};
 use crate::net::etw;
 use crate::net::local_ip;
+use crate::net::quality;
 use crate::net::rdns;
 use crate::net::resolve;
 use crate::net::traffic;
@@ -114,6 +115,8 @@ pub struct NetOwlApp {
     rdns: rdns::Rdns,
     /// 域名正向解析(启用中域名规则的 A 记录查询,WFP 展开数据源)
     resolve: resolve::Resolver,
+    /// 网络质量采样(活跃公网远端 ICMP 探测,地图健康度着色)
+    quality: quality::Quality,
     /// 总上传/下载速率采样(GetIfTable2 接口字节差值)
     traffic: traffic::Sampler,
     /// 最近总速率(字节/秒):(下行, 上行),导航栏展示
@@ -147,6 +150,8 @@ pub struct NetOwlApp {
     etw_poll_at: Instant,
     /// 连接快照上次刷新时刻(1s 节流,高帧率帧内跳过 O(连接数) 逻辑)
     conns_refresh_at: Instant,
+    /// 网络质量采样上次轮询时刻(1s 节流,与采集同频)
+    quality_poll_at: Instant,
     /// 自身可执行文件路径(启动时缓存一次;静默拒绝模式的自身放行规则用)
     self_path: Option<String>,
     /// 右下角 toast 通知队列(新设备接入/用量配额告警)

@@ -4,6 +4,7 @@
 //! 全部按 1s 节流,高帧率重绘帧内跳过。
 
 use std::collections::HashSet;
+use std::net::Ipv4Addr;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -18,6 +19,7 @@ use crate::map;
 use crate::map::world;
 use crate::model::{Place, Protocol};
 use crate::net::geoip;
+use crate::net::rdns;
 use crate::rules;
 use crate::rules::wfp;
 use crate::storage::history;
@@ -188,6 +190,30 @@ impl NetOwlApp {
         let real = self.collector.kind() == CollectorKind::Real;
         let events = self.tracker.diff(real, &self.conns, history::unix_now());
         self.writer.send(events);
+    }
+
+    /// 网络质量采样:目标 = 活跃连接的公网远端(rDNS 同口径),60s TTL
+    /// 内复用结果。与采集同频节流;开关关闭时不派发、不清理(既有样本
+    /// 自然过期,重开后从零重建),自定义目标由设置侧叠加入队
+    pub(super) fn poll_quality(&mut self) {
+        if self.quality_poll_at.elapsed() < CONNS_REFRESH_INTERVAL {
+            return;
+        }
+        self.quality_poll_at = Instant::now();
+        self.quality.update();
+        if !self.config.general.quality_monitor {
+            return;
+        }
+        let wanted: HashSet<Ipv4Addr> = self
+            .conns
+            .iter()
+            .map(|c| c.remote_ip)
+            .filter(rdns::is_queryable)
+            .collect();
+        for ip in &wanted {
+            self.quality.enqueue(*ip, None);
+        }
+        self.quality.prune(&wanted);
     }
 
     /// WFP 过滤器同步:与采集同频重建目标集合(进程路径粘滞展开,

@@ -146,6 +146,7 @@ impl eframe::App for NetOwlApp {
         self.poll_update_check(ctx);
         self.sync_silent_mode();
         self.sync_ask_toggle();
+        self.poll_quality();
         self.poll_wfp();
 
         // 进入设置页时重扫 locales,加载运行期间新增的词条文件;
