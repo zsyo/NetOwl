@@ -15,17 +15,20 @@ pub(crate) fn menu_item(ui: &mut egui::Ui, text: String, enabled: bool) -> egui:
     )
 }
 
-/// “复制选中文本”菜单项:点击返回 true(由调用方置 App 的
-/// copy_selected_pending,下一帧 logic 注入 Event::Copy,见 frame.rs)。
-/// 启用态取 LabelSelectionState::has_selection——egui 不公开选中文本
-/// 内容(私有 text_to_copy),复制由 egui 在 Label 绘制时自行完成
+/// “复制选中文本”菜单项:仅在确有选中文本时才追加(无选中不占
+/// 菜单位)。点击返回 true(由调用方置 App 的 copy_selected_pending,
+/// 下一帧 logic 注入 Event::Copy,见 frame.rs)。选中文本内容 egui
+/// 不公开读取(私有 text_to_copy),复制由 egui 在 Label 绘制时自行完成
 pub fn copy_selected_item(ui: &mut egui::Ui, i18n: &I18n) -> bool {
     let has = ui
         .ctx()
         .plugin::<egui::text_selection::LabelSelectionState>()
         .lock()
         .has_selection();
-    menu_item(ui, i18n.t("menu-copy-selected"), has).clicked()
+    if !has {
+        return false;
+    }
+    menu_item(ui, i18n.t("menu-copy-selected"), true).clicked()
 }
 
 /// 行右键菜单公共尾组:定位程序 / 复制远端(`remote` 传 Some 才出现)/
