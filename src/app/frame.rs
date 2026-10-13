@@ -104,12 +104,18 @@ impl NetOwlApp {
     /// hit-test(context_menu"按住跨帧重排点击错位"的根除),右键也
     /// 不经 egui(raw_input_hook 拦截,Label 选中态不受影响)
     fn show_menu_float(&mut self, ui: &mut egui::Ui) {
-        // 本帧右键 press:命中行热区则开(替换旧菜单),未命中关闭
+        // 本帧右键 press:命中行热区则开(替换旧菜单),未命中关闭。
+        // 选中快照/范围随菜单定格(打开期间拖选/取消不影响已开菜单)
         for (pos, pressed) in self.right_clicks.drain(..) {
             if !pressed {
                 continue;
             }
-            self.menu = ui::menu_float::OpenMenu::open_at(&self.row_hits, pos);
+            self.menu = ui::menu_float::OpenMenu::open_at(
+                &self.row_hits,
+                pos,
+                self.selected_text.clone(),
+                self.sel_range,
+            );
             if let Some(m) = &self.menu {
                 tracing::debug!("[Menu] 打开 page={} 列={:?}", m.hit.ctx.kind(), m.col);
             }
@@ -155,6 +161,21 @@ impl NetOwlApp {
                         ui::toast::ToastKind::Success,
                         self.i18n.t("toast-copied"),
                     );
+                }
+                ui::menu_float::MenuAction::CopySelectedText(text) => {
+                    ctx.copy_text(text);
+                    ui::toast::push_bottom(
+                        &mut self.toasts,
+                        ui::toast::ToastKind::Success,
+                        self.i18n.t("toast-copied"),
+                    );
+                    // 选中态随本次复制结束(清高亮与快照,一次性)
+                    self.selected_text = None;
+                    self.sel_range = None;
+                    self.sel_active = false;
+                    ctx.plugin_or_default::<egui::text_selection::LabelSelectionState>()
+                        .lock()
+                        .clear_selection();
                 }
                 ui::menu_float::MenuAction::KillConn(conn) => {
                     match collector::close_tcp_connection(&conn) {
@@ -237,51 +258,64 @@ impl eframe::App for NetOwlApp {
 
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let t0 = Instant::now();
-        // 选中文本快照:egui 仅在 Label 绘制时查询 Event::Copy 并自行
-        // 填充选中文本(私有 API 无公开读取途径),故拖选期间每帧注入,
-        // CopyCatcher 插件在帧末 output_hook 捕获 egui 写出的
-        // CopyText,本帧读走上帧结果——松手/被点击清除后快照仍在,
-        // “复制选中文本”菜单项不依赖 selection 存活。注入仅限指针
-        // 交互帧(按下/松开),避免剪贴板被无操作持续覆写
+        // 选中文本快照与范围(T5):egui 无公开 API 读选中内容,拖选
+        // 结束(松手且仍有选中)后注入一次 Event::Copy,CopyCatcher 在
+        // 帧末 output_hook 捕获 egui 写出的 CopyText 定格。不能每帧
+        // 注入——egui 的 copy_text 是同帧多 Label 累加器,拖选中间态
+        // (按下点塌缩/跨 Label 半选)会覆写快照,定格注入只取松手瞬间
+        // 的最终选中(探针实证:单 Label 子串正确,右键拦截后 selection
+        // 保留)。sel_range = 拖选指针起止边界框,菜单据此判断"是否
+        // 在选中文字上右键";单击(无拖选)与选中取消即清,杜绝跨页污染
         let sel_now = ctx
-            .plugin::<egui::text_selection::LabelSelectionState>()
+            .plugin_or_default::<egui::text_selection::LabelSelectionState>()
             .lock()
             .has_selection();
-        // 仅拖选进行中与松手帧注入(任意按住都注入会把剪贴板覆写成
-        // 选中文本,那是拖选主动操作的副产品,不应被无关点击触发)
-        let interacting =
-            ctx.input(|i| i.pointer.any_released() || i.pointer.is_decidedly_dragging());
-        if sel_now && interacting {
-            ctx.input_mut(|i| i.events.push(egui::Event::Copy));
+        let (primary_down, press_origin, hover_pos, any_released) = ctx.input(|i| {
+            (
+                i.pointer.primary_down(),
+                i.pointer.press_origin(),
+                i.pointer.hover_pos(),
+                i.pointer.any_released(),
+            )
+        });
+        // 拖选进行中:primary down 且指针离开按下点超过阈值(区分单击)。
+        // 边界框向外 expand 10px——水平拖选矩形高度为 0,用户右键
+        // 落在文字行内任意位置(非精确拖选线)也应算选中区
+        if let (Some(o), Some(h)) = (press_origin, hover_pos)
+            && primary_down
+            && o.distance(h) > 4.0
+        {
+            self.sel_range = Some(egui::Rect::from_two_pos(o, h).expand(10.0));
+            if !self.sel_active {
+                tracing::debug!("[Sel] 拖选开始 {o:?}");
+            }
+            self.sel_active = true;
+        }
+        if any_released {
+            if self.sel_active && sel_now {
+                // 拖选松手:注入一次 Copy 定格快照(当帧 ui 消费,
+                // 下帧 logic 经 CopyCatcher 读走)
+                ctx.input_mut(|i| i.events.push(egui::Event::Copy));
+            } else if !self.sel_active {
+                // 单击(光标移动/无拖选):快照与范围清空,菜单不再
+                // 出现"复制选中文本"
+                self.selected_text = None;
+                self.sel_range = None;
+            }
+            self.sel_active = false;
+        }
+        if !sel_now {
+            // 选中被取消(点击他处/Esc):范围与快照一并清
+            self.sel_range = None;
+            self.selected_text = None;
         }
         if let Some(text) = ctx
             .plugin_or_default::<ui::copy_catcher::CopyCatcher>()
             .lock()
             .take()
         {
+            tracing::debug!("[Sel] 快照定格 {} 字符", text.chars().count());
             self.selected_text = Some(text);
-        }
-        // selection 变化追踪(排查“右键弹菜单即清除选中”问题):
-        // 记录翻转帧的输入状态(哪颗键按下/指针位置)
-        if sel_now != self.last_selection {
-            let sec = ctx.input(|i| i.pointer.button_down(egui::PointerButton::Secondary));
-            let pos = ctx.input(|i| i.pointer.hover_pos());
-            tracing::debug!(
-                "[Sel] 选中 {} -> {}(右键按下 {sec},指针 {pos:?})",
-                self.last_selection,
-                sel_now
-            );
-            self.last_selection = sel_now;
-        }
-        // “复制选中文本”点击:复制在菜单闭包内经快照完成,此处只推
-        // 底部气泡(与剪贴板写入同帧,用户无感知差异)
-        if self.copy_clicked {
-            self.copy_clicked = false;
-            ui::toast::push_bottom(
-                &mut self.toasts,
-                ui::toast::ToastKind::Success,
-                self.i18n.t("toast-copied"),
-            );
         }
         self.handle_tray_commands(ctx);
         self.calibrate_window_visible();
@@ -340,6 +374,11 @@ impl eframe::App for NetOwlApp {
             if self.page == Page::History {
                 self.history.dirty = true;
             }
+            // 选中快照与范围随切页清空(旧页 Label 已不在场,保留会
+            // 让新页右键菜单误显"复制选中文本"——跨页污染根治)
+            self.selected_text = None;
+            self.sel_range = None;
+            self.sel_active = false;
         }
         self.last_page = self.page;
 

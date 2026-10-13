@@ -29,13 +29,22 @@ pub struct OpenMenu {
     pub hit: RowHit,
     /// 命中列下标("复制该单元格内容"用;None = 不在任何列内)
     pub col: Option<usize>,
+    /// 打开时的选中文本快照(None = 无选中)
+    pub selected: Option<String>,
+    /// 打开时的选中范围(屏幕矩形;None = 无选中)
+    pub sel_range: Option<egui::Rect>,
     /// 上帧菜单 rect(左键外点关闭判定;首帧 ZERO 跳过判定)
     pub rect: egui::Rect,
 }
 
 impl OpenMenu {
     /// 右键位置命中行热区则开菜单(未命中返回 None,由调用方关闭旧菜单)
-    pub fn open_at(row_hits: &[RowHit], pos: egui::Pos2) -> Option<Self> {
+    pub fn open_at(
+        row_hits: &[RowHit],
+        pos: egui::Pos2,
+        selected: Option<String>,
+        sel_range: Option<egui::Rect>,
+    ) -> Option<Self> {
         // 后注册行居上(与 egui 平手取最后注册者同语义)
         row_hits
             .iter()
@@ -45,6 +54,8 @@ impl OpenMenu {
                 pos,
                 col: hit.col_at(pos),
                 hit: hit.clone(),
+                selected,
+                sel_range,
                 rect: egui::Rect::ZERO,
             })
     }
@@ -54,6 +65,8 @@ impl OpenMenu {
 pub enum MenuAction {
     /// 写剪贴板 + 底部气泡
     CopyText(String),
+    /// 复制选中文本(执行时清选中态与快照,一次性)
+    CopySelectedText(String),
     /// 结束连接(SetTcpEntry;构造时已校验 TCP/v4/提权)
     KillConn(Connection),
     /// 资源管理器定位映像
@@ -75,6 +88,7 @@ impl MenuAction {
     pub fn kind(&self) -> &'static str {
         match self {
             MenuAction::CopyText(_) => "copy",
+            MenuAction::CopySelectedText(_) => "copy-selected",
             MenuAction::KillConn(_) => "kill",
             MenuAction::LocateProc(_) => "locate",
             MenuAction::NavHistory => "nav-history",
@@ -109,8 +123,9 @@ pub fn show(
     (actions, resp.response.rect)
 }
 
-/// 菜单项列表(按命中行类型;顺序与迁移前 context_menu 一致),
-/// 尾部统一"复制该单元格内容"
+/// 菜单项列表:选中复制项置顶(有选中且右键在选中范围内才出现),
+/// 其后按命中行类型(顺序与迁移前 context_menu 一致),尾部统一
+/// "复制该单元格内容"
 fn items(
     ui: &mut egui::Ui,
     i18n: &I18n,
@@ -118,6 +133,14 @@ fn items(
     elevated: bool,
     actions: &mut Vec<MenuAction>,
 ) {
+    // 复制选中文本:确有选中快照,且右键位置落在选中范围内
+    // (拖选起止边界框)才出现——平时右键/点别处不显示
+    if let Some(text) = &menu.selected
+        && menu.sel_range.is_some_and(|r| r.contains(menu.pos))
+        && widgets::menu::menu_item(ui, i18n.t("menu-copy-selected"), true).clicked()
+    {
+        actions.push(MenuAction::CopySelectedText(text.clone()));
+    }
     match &menu.hit.ctx {
         RowCtx::Conn(conn) => {
             if conn.proto == Protocol::Tcp {

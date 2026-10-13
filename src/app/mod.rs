@@ -182,16 +182,16 @@ pub struct NetOwlApp {
     /// 生效,流空闲收割后行会回落 *:*;缓存 socket 最后通信的远端,
     /// socket 存活期间持续展示(键 = (pid, 本地端口),表行消失时清理)
     udp_last_remote: HashMap<(u32, u16), (IpAddr, u16)>,
-    /// “复制选中文本”菜单项已点击:下一帧 logic 开头注入 Event::Copy
-    /// (egui 只在 Label 绘制时查询该事件,选中文本无公开读取 API)
-    /// “复制选中文本”菜单项已点击:logic 据此推底部气泡(复制本身在
-    /// 菜单闭包内经 selected_text 快照完成)
-    copy_clicked: bool,
-    /// 选中文本快照:拖选期间每帧注入 Event::Copy,CopyCatcher 插件在
-    /// output_hook 捕获 egui 写出的 CopyText(选中态被清除后仍在)
+    /// 选中文本快照:拖选结束(松手且仍有选中)后注入一次 Event::Copy,
+    /// CopyCatcher 插件在 output_hook 捕获 egui 写出的 CopyText 定格
+    /// (选中态被清除后仍在,菜单复制不依赖 selection 存活)
     selected_text: Option<String>,
-    /// 上一帧是否有选中(selection 变化追踪日志用)
-    last_selection: bool,
+    /// 选中范围:拖选指针起止边界框(屏幕坐标)。右键菜单据此判断
+    /// "是否在选中文字上右键";松手定格,选中取消/切页即清
+    sel_range: Option<egui::Rect>,
+    /// 拖选进行中标志(primary down 且指针移动超过阈值):松手帧与
+    /// 单击区分——拖选松手注入 Copy 定格快照,单击则清空快照
+    sel_active: bool,
     /// raw_input_hook 摘出的右键事件队列(pos, pressed;逻辑坐标):
     /// egui 的 Label 选中会把任何按键 press 当"开始新选择",右键在
     /// 选中文字上会破坏选中——钩子里摘掉 Secondary 两事件,egui 完全
