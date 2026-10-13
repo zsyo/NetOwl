@@ -8,7 +8,7 @@ mod rows;
 mod sort;
 mod toolbar;
 
-use super::{ConnView, Page};
+use super::ConnView;
 
 use eframe::egui;
 
@@ -39,24 +39,19 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         config,
         rules,
         conn_rates,
-        history,
-        nav_request,
         conn_sort,
         conn_search,
         focus_conn_search,
         conn_proto,
         conn_row_hover,
-        elevated,
         ..
     } = ctx;
     // &mut UiCtx 解构出的引用字段带两层 &mut,借类型注解 coerce 回单层
     let conn_sort: &mut ConnSortState = conn_sort;
-    let nav_request: &mut Option<Page> = nav_request;
     let conn_search: &mut String = conn_search;
     let focus_conn_search: &mut bool = focus_conn_search;
     let conn_proto: &mut Option<Protocol> = conn_proto;
     let conn_row_hover: &mut widgets::table::RowHover = conn_row_hover;
-    let elevated = *elevated;
     widgets::header::page_header(ui, &i18n.t("conns-title"), &i18n.t("conns-subtitle"));
     ui.add_space(theme::sp::SM);
 
@@ -205,7 +200,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                     for idx in row_range {
                         match &flat[idx] {
                             FlatRow::Conn(conn) => {
-                                if rows::conn_row(
+                                rows::conn_row(
                                     ui,
                                     conn,
                                     i18n,
@@ -218,14 +213,8 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                                     table_left,
                                     table_right,
                                     flex_w,
-                                    elevated,
                                     idx,
-                                    ctx.copy_selected,
-                                    ctx.selected_text,
-                                ) {
-                                    history.set_process_filter(conn.process.clone());
-                                    *nav_request = Some(Page::History);
-                                }
+                                );
                             }
                             FlatRow::Header(data) => {
                                 if group::group_header(

@@ -10,6 +10,9 @@ use crate::model::{Connection, Protocol};
 use crate::ui::{theme, widgets};
 
 /// 行右键菜单;返回"查看历史记录"是否被点击(跳转由调用方执行)
+// 旧 context_menu 挂载点已移除(改走 ui/menu_float 自建浮层),
+// 本函数保留至 T4 菜单项迁移后删除
+#[allow(dead_code)]
 pub(super) fn conn_menu(ui: &mut egui::Ui, conn: &Connection, elevated: bool, i18n: &I18n) -> bool {
     if conn.proto == Protocol::Tcp {
         // 强制关闭走 SetTcpEntry(MIB_TCPROW),内核无 IPv6 等价入口,

@@ -1,5 +1,5 @@
 //! 端口监听视图:TCP LISTEN 与 UDP 绑定端点表(进程/协议/本地端点/PID)。
-//! 无远端与流量语义,行右键复制本地端点;搜索词过滤进程。
+//! 无远端与流量语义;搜索词过滤进程。
 
 use std::collections::HashMap;
 
@@ -7,7 +7,6 @@ use eframe::egui;
 use egui::RichText;
 
 use super::super::{UiCtx, theme, widgets};
-use crate::i18n::I18n;
 use crate::model::ListenEntry;
 
 /// 监听表(独立表头 + 虚拟化行;搜索词按进程名/路径过滤)
@@ -19,8 +18,6 @@ pub(super) fn listen_table(ui: &mut egui::Ui, ctx: &mut UiCtx) {
         default_icon_tex,
         conn_search,
         conn_proto,
-        copy_selected,
-        selected_text,
         ..
     } = ctx;
     let needle = conn_search.trim().to_lowercase();
@@ -65,8 +62,6 @@ pub(super) fn listen_table(ui: &mut egui::Ui, ctx: &mut UiCtx) {
     // 声明 rect 之外,滚动范围被反测撑大,拖住滚动条时 offset 在两套
     // 高度间反复钳制(页面抖动)。对齐后声明高 = 实际高
     ui.spacing_mut().item_spacing.y = widgets::table::ROW_SPACING_Y;
-    let table_left = ui.max_rect().left();
-    let table_right = ui.max_rect().right();
     egui::ScrollArea::vertical().auto_shrink(false).show_rows(
         ui,
         widgets::table::ROW_H,
@@ -79,23 +74,14 @@ pub(super) fn listen_table(ui: &mut egui::Ui, ctx: &mut UiCtx) {
                 .show(ui, |ui| {
                     for i in row_range {
                         let l = rows[i];
-                        let row_rect = egui::Rect::from_min_max(
-                            egui::pos2(table_left, ui.cursor().top()),
-                            egui::pos2(table_right, ui.cursor().top() + widgets::table::ROW_H),
-                        )
-                        .expand2(egui::vec2(0.0, widgets::table::ROW_SPACING_Y * 0.5));
                         listen_row(
                             ui,
                             l,
-                            i18n,
                             icon_tex,
                             *default_icon_tex,
                             flex_w,
                             L_PROTO_W,
                             L_PID_W,
-                            row_rect,
-                            copy_selected,
-                            selected_text,
                         );
                         ui.end_row();
                     }
@@ -109,15 +95,11 @@ pub(super) fn listen_table(ui: &mut egui::Ui, ctx: &mut UiCtx) {
 fn listen_row(
     ui: &mut egui::Ui,
     l: &ListenEntry,
-    i18n: &I18n,
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
     default_icon_tex: Option<&egui::TextureHandle>,
     flex_w: f32,
     proto_w: f32,
     pid_w: f32,
-    row_rect: egui::Rect,
-    copy_selected: &mut bool,
-    selected_text: &mut Option<String>,
 ) {
     widgets::table::fixed_cell(ui, flex_w, widgets::table::ROW_H, |ui| {
         ui.horizontal(|ui| {
@@ -164,21 +146,5 @@ fn listen_row(
                 .size(theme::font::BODY)
                 .color(theme::c().text_dim),
         );
-    });
-    // 整行 interact 注册在全部单元格之后(同连接行:Label 可选文本
-    // 抢 click,平手取最后注册者,行件在后才赢),右键全区域可弹
-    let row_resp = ui.interact(
-        row_rect,
-        egui::Id::new(("listen_row", l.pid, l.local_addr, l.local_port)),
-        egui::Sense::click(),
-    );
-    row_resp.context_menu(|ui| {
-        if widgets::menu::copy_selected_item(ui, i18n, selected_text) {
-            *copy_selected = true;
-        }
-        if widgets::menu::menu_item(ui, i18n.t("menu-copy-remote"), true).clicked() {
-            ui.ctx()
-                .copy_text(format!("{}:{}", l.local_addr, l.local_port));
-        }
     });
 }

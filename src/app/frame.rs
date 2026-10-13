@@ -100,6 +100,31 @@ impl NetOwlApp {
 }
 
 impl eframe::App for NetOwlApp {
+    /// 右键事件拦截(egui 处理输入之前):摘掉 Secondary press/release
+    /// 两事件(必须一并删——只删 press 时,若同帧 Primary 在按下,
+    /// release 仍会生成 Click 让 secondary_clicked 触发)。egui 的
+    /// Label 选中把任何按键 press 当"开始新选择"(text_cursor_state.rs
+    /// :79 any_pressed 不分键),右键在选中文字上会破坏选中态;摘掉后
+    /// Label 完全感知不到右键,选中分毫不动。事件转入 right_clicks
+    /// 队列,由 ui() 末尾的自建右键菜单消费
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        let mut rights = Vec::new();
+        raw_input.events.retain(|e| {
+            if let egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Secondary,
+                pressed,
+                ..
+            } = e
+            {
+                rights.push((*pos, *pressed));
+                return false;
+            }
+            true
+        });
+        self.right_clicks.extend(rights);
+    }
+
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let t0 = Instant::now();
         // 选中文本快照:egui 仅在 Label 绘制时查询 Event::Copy 并自行

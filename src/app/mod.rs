@@ -192,6 +192,11 @@ pub struct NetOwlApp {
     selected_text: Option<String>,
     /// 上一帧是否有选中(selection 变化追踪日志用)
     last_selection: bool,
+    /// raw_input_hook 摘出的右键事件队列(pos, pressed;逻辑坐标):
+    /// egui 的 Label 选中会把任何按键 press 当"开始新选择",右键在
+    /// 选中文字上会破坏选中——钩子里摘掉 Secondary 两事件,egui 完全
+    /// 感知不到右键;事件转此队列由自建右键菜单消费(ui 末尾)
+    right_clicks: Vec<(egui::Pos2, bool)>,
     /// 连接列表表头排序状态(会话内,不持久化)
     conn_sort: ui::ConnSortState,
     /// 连接页搜索词(进程/远端/域名包含过滤,会话内,不持久化)

@@ -1,21 +1,19 @@
 //! 连接列表行渲染:进程两行列(图标 + 签名/路径)、协议徽章、rDNS
-//! 域名两行列、归属、速率与累计字节、规则求值动作徽章,以及行右键
-//! 菜单挂接与行悬停垫底。
+//! 域名两行列、归属、速率与累计字节、规则求值动作徽章与行悬停垫底。
 
 use std::collections::HashMap;
 
 use eframe::egui;
 use egui::{Label, RichText};
 
-use super::menu;
 use crate::i18n::I18n;
 use crate::model::{Connection, Signing, fmt_bytes};
 use crate::net::rdns;
 use crate::rules as rules_engine;
 use crate::ui::{theme, widgets};
 
-/// 单行渲染(行悬停垫底 + 右键菜单 + 九列内容);返回"查看历史
-/// 记录"是否被点击(跳转由调用方执行)
+/// 单行渲染(行悬停垫底 + 九列内容;右键菜单经行热区走自建浮层,
+/// 见 ui/menu_float 与 row_hit)
 #[allow(clippy::too_many_arguments)]
 pub(super) fn conn_row(
     ui: &mut egui::Ui,
@@ -30,21 +28,11 @@ pub(super) fn conn_row(
     table_left: f32,
     table_right: f32,
     flex_w: f32,
-    elevated: bool,
     idx: usize,
-    copy_selected: &mut bool,
-    selected_text: &mut Option<String>,
-) -> bool {
+) {
     use super::{C_ACTION_W, C_LOC_W, C_PROTO_W, C_RATE_W, C_TOTAL_W};
     let row_top = ui.cursor().top();
     conn_row_hover.begin(ui, table_left, table_right, row_top, idx);
-    // 行整格区域(interact 在全部单元格之后注册,见行尾注释)
-    let row_rect = egui::Rect::from_min_max(
-        egui::pos2(table_left, row_top),
-        egui::pos2(table_right, row_top + 36.0),
-    )
-    .expand2(egui::vec2(0.0, widgets::table::ROW_SPACING_Y * 0.5));
-    let mut view_history = false;
     let process = if conn.process.is_empty() {
         format!(
             "{} {}",
@@ -182,25 +170,8 @@ pub(super) fn conn_row(
             }
         }
     });
-    // 整行 interact 注册在全部单元格之后:egui 的 Label 默认可选文本
-    // (selectable_labels,sense 含 CLICK),同层平手命中取最后注册者
-    // ——行件在单元格之后注册才能赢得 click,右键菜单全区域可弹;
-    // 左键拖选文本不经 click 归属(LabelSelectionState 内部推进),
-    // 不受注册顺序影响
-    let row_resp = ui.interact(
-        row_rect,
-        egui::Id::new(("conn_row", conn.id)),
-        egui::Sense::click(),
-    );
-    row_resp.context_menu(|ui| {
-        if widgets::menu::copy_selected_item(ui, i18n, selected_text) {
-            *copy_selected = true;
-        }
-        view_history = menu::conn_menu(ui, conn, elevated, i18n);
-    });
     ui.end_row();
     conn_row_hover.end(ui, row_top);
-    view_history
 }
 
 /// 进程列第二行文本:签名状态 + 映像路径(超长取尾部保留文件名)

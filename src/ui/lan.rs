@@ -19,8 +19,6 @@ use crate::ui::widgets;
 pub(super) fn lan_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     let devices = ctx.lan_devices;
     let i18n = &mut ctx.i18n;
-    let copy_selected = &mut *ctx.copy_selected;
-    let selected_text = &mut *ctx.selected_text;
     widgets::header::page_header(ui, &i18n.t("lan-title"), &i18n.t("lan-subtitle"));
     ui.add_space(theme::sp::SM);
 
@@ -149,12 +147,6 @@ pub(super) fn lan_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                         if row_resp.hovered() {
                             ui.painter().rect_filled(row_rect, 0.0, theme::c().hover_bg);
                         }
-                        row_resp.context_menu(|ui| {
-                            if widgets::menu::copy_selected_item(ui, i18n, selected_text) {
-                                *copy_selected = true;
-                            }
-                            device_menu(ui, &d.mac, d.ip, i18n);
-                        });
                         ui.end_row();
                     }
                 });
@@ -169,6 +161,9 @@ fn status_color(d: &DeviceRow) -> egui::Color32 {
 }
 
 /// 设备行右键菜单:复制 IP / 复制 MAC
+// 旧 context_menu 挂载点已移除(改走 ui/menu_float 自建浮层),
+// 本函数保留至 T4 菜单项迁移后删除
+#[allow(dead_code)]
 fn device_menu(ui: &mut egui::Ui, mac: &str, ip: Ipv4Addr, i18n: &crate::i18n::I18n) {
     if widgets::menu::menu_item(ui, i18n.t("lan-copy-ip"), true).clicked() {
         ui.ctx().copy_text(ip.to_string());

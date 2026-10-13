@@ -71,8 +71,6 @@ pub(super) fn table(
     default_icon_tex: Option<&egui::TextureHandle>,
     conns: &[Connection],
     config: &Config,
-    copy_selected: &mut bool,
-    selected_text: &mut Option<String>,
 ) {
     refresh_merged(state, conns, config);
     let Some((_, merged)) = state.summary_merged.as_ref() else {
@@ -205,18 +203,6 @@ pub(super) fn table(
                         if !r.process.is_empty() {
                             resp = resp.on_hover_text(i18n.t("history-summary-drill"));
                         }
-                        resp.context_menu(|ui| {
-                            if widgets::menu::copy_selected_item(ui, i18n, selected_text) {
-                                *copy_selected = true;
-                            }
-                            if super::menu::summary_menu(ui, r, i18n) {
-                                state.pending_delete = Some(history_query::PendingDelete {
-                                    process: r.process.clone(),
-                                    proto: None,
-                                    remote_ip: None,
-                                });
-                            }
-                        });
                         ui.end_row();
                     }
                 });
