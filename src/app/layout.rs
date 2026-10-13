@@ -99,6 +99,7 @@ impl NetOwlApp {
             focus_conn_search: &mut self.focus_conn_search,
             hotkey_capture: &mut self.hotkey_capture,
             conn_proto: &mut self.conn_proto,
+            copy_selected: &mut self.copy_selected_pending,
             update_check_request: &mut self.update_request,
             update_checking: self.update_rx.is_some(),
             update_result: &mut self.update_result,

@@ -102,6 +102,19 @@ impl NetOwlApp {
 impl eframe::App for NetOwlApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let t0 = Instant::now();
+        // “复制选中文本”点击后的下一帧处理:egui 仅在 Label 绘制时查询
+        // Event::Copy 并自行填充选中文本(私有 API,无公开读取途径),
+        // 故必须早于本帧任何表格绘制前注入;剪贴板由 egui 在该帧
+        // end_pass 写入
+        if self.copy_selected_pending {
+            self.copy_selected_pending = false;
+            ctx.input_mut(|i| i.events.push(egui::Event::Copy));
+            ui::toast::push_bottom(
+                &mut self.toasts,
+                ui::toast::ToastKind::Success,
+                self.i18n.t("toast-copied"),
+            );
+        }
         self.handle_tray_commands(ctx);
         self.calibrate_window_visible();
         self.sync_tray_pinned();

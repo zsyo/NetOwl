@@ -17,6 +17,7 @@ pub(super) fn table(
     i18n: &I18n,
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
     default_icon_tex: Option<&egui::TextureHandle>,
+    copy_selected: &mut bool,
 ) {
     let Rows::Aggregate(rows) = &state.rows else {
         return;
@@ -117,31 +118,6 @@ pub(super) fn table(
                         let row_top = ui.cursor().top();
                         let row_rect =
                             cells::row_background(ui, table_left, table_right, row_top, r_idx);
-                        let row_resp = ui.interact(
-                            row_rect,
-                            egui::Id::new(("history_aggregate_row", r_idx)),
-                            egui::Sense::click(),
-                        );
-                        row_resp.context_menu(|ui| {
-                            if widgets::menu::menu_item(
-                                ui,
-                                i18n.t("history-menu-delete-group"),
-                                true,
-                            )
-                            .clicked()
-                            {
-                                state.pending_delete = Some(history_query::PendingDelete {
-                                    process: r.process.clone(),
-                                    proto: Some(r.proto),
-                                    remote_ip: Some(r.remote_addr()),
-                                });
-                            }
-                            if widgets::menu::menu_item(ui, i18n.t("menu-copy-remote"), true)
-                                .clicked()
-                            {
-                                ui.ctx().copy_text(r.remote_addr().to_string());
-                            }
-                        });
                         widgets::table::fixed_cell(ui, flex_w, 22.0, |ui| {
                             cells::proc_cell(
                                 ui,
@@ -201,6 +177,37 @@ pub(super) fn table(
                         });
                         widgets::table::fixed_num_cell(ui, A_BYTES_W, |ui| {
                             cells::bytes_cell(ui, r.bytes_out, true);
+                        });
+                        // 整行 interact 注册在全部单元格之后(Label 可选
+                        // 文本抢 click,平手取最后注册者,行件在后才赢),
+                        // 右键全区域可弹;拖选不经 click 归属不受影响
+                        let row_resp = ui.interact(
+                            row_rect,
+                            egui::Id::new(("history_aggregate_row", r_idx)),
+                            egui::Sense::click(),
+                        );
+                        row_resp.context_menu(|ui| {
+                            if widgets::menu::copy_selected_item(ui, i18n) {
+                                *copy_selected = true;
+                            }
+                            if widgets::menu::menu_item(
+                                ui,
+                                i18n.t("history-menu-delete-group"),
+                                true,
+                            )
+                            .clicked()
+                            {
+                                state.pending_delete = Some(history_query::PendingDelete {
+                                    process: r.process.clone(),
+                                    proto: Some(r.proto),
+                                    remote_ip: Some(r.remote_addr()),
+                                });
+                            }
+                            if widgets::menu::menu_item(ui, i18n.t("menu-copy-remote"), true)
+                                .clicked()
+                            {
+                                ui.ctx().copy_text(r.remote_addr().to_string());
+                            }
                         });
                         ui.end_row();
                     }

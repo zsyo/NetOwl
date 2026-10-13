@@ -156,6 +156,7 @@ impl NetOwlApp {
             etw_seen: HashSet::new(),
             conn_rates: HashMap::new(),
             udp_last_remote: HashMap::new(),
+            copy_selected_pending: false,
             conn_sort: None,
             conn_search: String::new(),
             focus_conn_search: false,

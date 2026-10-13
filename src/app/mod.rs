@@ -182,6 +182,9 @@ pub struct NetOwlApp {
     /// 生效,流空闲收割后行会回落 *:*;缓存 socket 最后通信的远端,
     /// socket 存活期间持续展示(键 = (pid, 本地端口),表行消失时清理)
     udp_last_remote: HashMap<(u32, u16), (IpAddr, u16)>,
+    /// “复制选中文本”菜单项已点击:下一帧 logic 开头注入 Event::Copy
+    /// (egui 只在 Label 绘制时查询该事件,选中文本无公开读取 API)
+    copy_selected_pending: bool,
     /// 连接列表表头排序状态(会话内,不持久化)
     conn_sort: ui::ConnSortState,
     /// 连接页搜索词(进程/远端/域名包含过滤,会话内,不持久化)

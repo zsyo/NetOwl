@@ -62,6 +62,7 @@ pub(super) fn refresh_merged(
     state.summary_merged = Some((Instant::now(), merged));
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn table(
     ui: &mut egui::Ui,
     state: &mut history_query::PageState,
@@ -70,6 +71,7 @@ pub(super) fn table(
     default_icon_tex: Option<&egui::TextureHandle>,
     conns: &[Connection],
     config: &Config,
+    copy_selected: &mut bool,
 ) {
     refresh_merged(state, conns, config);
     let Some((_, merged)) = state.summary_merged.as_ref() else {
@@ -158,30 +160,6 @@ pub(super) fn table(
                         let row_top = ui.cursor().top();
                         let row_rect =
                             cells::row_background(ui, table_left, table_right, row_top, r_idx);
-                        // 整行点击下钻:切明细视图并按该进程名过滤
-                        // (空进程名行无法在明细中精确过滤,禁用交互)
-                        if !r.process.is_empty() {
-                            let mut resp = ui.interact(
-                                row_rect,
-                                egui::Id::new(("history_summary_row", r_idx)),
-                                egui::Sense::click(),
-                            );
-                            if resp.clicked() {
-                                state.view = history_query::ViewMode::Detail;
-                                state.process = r.process.clone();
-                                state.dirty = true;
-                            }
-                            resp = resp.on_hover_text(i18n.t("history-summary-drill"));
-                            resp.context_menu(|ui| {
-                                if super::menu::summary_menu(ui, r, i18n) {
-                                    state.pending_delete = Some(history_query::PendingDelete {
-                                        process: r.process.clone(),
-                                        proto: None,
-                                        remote_ip: None,
-                                    });
-                                }
-                            });
-                        }
                         widgets::table::fixed_cell(ui, flex_w, 22.0, |ui| {
                             cells::proc_cell(
                                 ui,
@@ -208,6 +186,35 @@ pub(super) fn table(
                                 history_query::fmt_duration(r.total_secs),
                                 theme::c().text,
                             );
+                        });
+                        // 整行 interact 注册在全部单元格之后(同明细:
+                        // Label 可选文本抢 click,平手取最后注册者)。
+                        // 空进程名行只有右键菜单(下钻禁用:明细页无法
+                        // 按空名精确过滤),不再整行无交互
+                        let mut resp = ui.interact(
+                            row_rect,
+                            egui::Id::new(("history_summary_row", r_idx)),
+                            egui::Sense::click(),
+                        );
+                        if !r.process.is_empty() && resp.clicked() {
+                            state.view = history_query::ViewMode::Detail;
+                            state.process = r.process.clone();
+                            state.dirty = true;
+                        }
+                        if !r.process.is_empty() {
+                            resp = resp.on_hover_text(i18n.t("history-summary-drill"));
+                        }
+                        resp.context_menu(|ui| {
+                            if widgets::menu::copy_selected_item(ui, i18n) {
+                                *copy_selected = true;
+                            }
+                            if super::menu::summary_menu(ui, r, i18n) {
+                                state.pending_delete = Some(history_query::PendingDelete {
+                                    process: r.process.clone(),
+                                    proto: None,
+                                    remote_ip: None,
+                                });
+                            }
                         });
                         ui.end_row();
                     }

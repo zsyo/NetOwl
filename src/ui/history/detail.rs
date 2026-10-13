@@ -19,6 +19,7 @@ pub(super) fn table(
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
     default_icon_tex: Option<&egui::TextureHandle>,
     db: &Db,
+    copy_selected: &mut bool,
 ) {
     let Rows::Detail(rows) = &state.rows else {
         return;
@@ -75,24 +76,6 @@ pub(super) fn table(
                         let row_top = ui.cursor().top();
                         let row_rect =
                             cells::row_background(ui, table_left, table_right, row_top, r_idx);
-                        let row_resp = ui.interact(
-                            row_rect,
-                            egui::Id::new(("history_detail_row", r_idx)),
-                            egui::Sense::click(),
-                        );
-                        row_resp.context_menu(|ui| {
-                            if menu::detail_menu(ui, r, i18n) {
-                                match history_query::delete_detail(db, r) {
-                                    Ok(n) => {
-                                        state.dirty = true;
-                                        tracing::info!("[History] 已删除 {n} 条明细记录");
-                                    }
-                                    Err(e) => {
-                                        tracing::warn!("[History] 删除明细记录失败: {e}")
-                                    }
-                                }
-                            }
-                        });
                         widgets::table::fixed_cell(ui, flex_w, 22.0, |ui| {
                             cells::proc_cell(
                                 ui,
@@ -147,6 +130,32 @@ pub(super) fn table(
                         });
                         widgets::table::fixed_num_cell(ui, D_BYTES_W, |ui| {
                             cells::bytes_cell(ui, r.bytes_out, true);
+                        });
+                        // 整行 interact 注册在全部单元格之后:egui 的
+                        // Label 默认可选文本(sense 含 CLICK),同层平手
+                        // 命中取最后注册者——行件在后才能赢得 click,
+                        // 右键菜单全区域可弹(左键拖选不经 click 归属,
+                        // 不受影响)
+                        let row_resp = ui.interact(
+                            row_rect,
+                            egui::Id::new(("history_detail_row", r_idx)),
+                            egui::Sense::click(),
+                        );
+                        row_resp.context_menu(|ui| {
+                            if widgets::menu::copy_selected_item(ui, i18n) {
+                                *copy_selected = true;
+                            }
+                            if menu::detail_menu(ui, r, i18n) {
+                                match history_query::delete_detail(db, r) {
+                                    Ok(n) => {
+                                        state.dirty = true;
+                                        tracing::info!("[History] 已删除 {n} 条明细记录");
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!("[History] 删除明细记录失败: {e}")
+                                    }
+                                }
+                            }
                         });
                         ui.end_row();
                     }

@@ -19,6 +19,7 @@ use crate::ui::widgets;
 pub(super) fn lan_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     let devices = ctx.lan_devices;
     let i18n = &mut ctx.i18n;
+    let copy_selected = &mut *ctx.copy_selected;
     widgets::header::page_header(ui, &i18n.t("lan-title"), &i18n.t("lan-subtitle"));
     ui.add_space(theme::sp::SM);
 
@@ -78,16 +79,6 @@ pub(super) fn lan_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                             egui::pos2(table_right, row_top + widgets::table::ROW_H),
                         )
                         .expand2(egui::vec2(0.0, widgets::table::ROW_SPACING_Y * 0.5));
-                        let row_resp = ui.interact(
-                            row_rect,
-                            egui::Id::new(("lan_row", &d.mac)),
-                            egui::Sense::click(),
-                        );
-                        // 行悬停垫底(与其他表格页一致;斑马纹之上)
-                        if row_resp.hovered() {
-                            ui.painter().rect_filled(row_rect, 0.0, theme::c().hover_bg);
-                        }
-                        row_resp.context_menu(|ui| device_menu(ui, &d.mac, d.ip, i18n));
                         widgets::table::fixed_cell(ui, flex_w, 18.0, |ui| {
                             ui.add(
                                 Label::new(
@@ -145,6 +136,23 @@ pub(super) fn lan_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                                     );
                                 }
                             });
+                        });
+                        // 整行 interact 注册在全部单元格之后(同其他
+                        // 表格:Label 可选文本抢 click,平手取最后注册者),
+                        // 右键全区域可弹;悬停垫底与斑马纹之上
+                        let row_resp = ui.interact(
+                            row_rect,
+                            egui::Id::new(("lan_row", &d.mac)),
+                            egui::Sense::click(),
+                        );
+                        if row_resp.hovered() {
+                            ui.painter().rect_filled(row_rect, 0.0, theme::c().hover_bg);
+                        }
+                        row_resp.context_menu(|ui| {
+                            if widgets::menu::copy_selected_item(ui, i18n) {
+                                *copy_selected = true;
+                            }
+                            device_menu(ui, &d.mac, d.ip, i18n);
                         });
                         ui.end_row();
                     }

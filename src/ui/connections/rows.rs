@@ -32,26 +32,18 @@ pub(super) fn conn_row(
     flex_w: f32,
     elevated: bool,
     idx: usize,
+    copy_selected: &mut bool,
 ) -> bool {
     use super::{C_ACTION_W, C_LOC_W, C_PROTO_W, C_RATE_W, C_TOTAL_W};
     let row_top = ui.cursor().top();
     conn_row_hover.begin(ui, table_left, table_right, row_top, idx);
-    // 行整格右键菜单(Sense::click 使行级 hit-test 胜过
-    // 行内仅 hover 的文本控件);左键无动作
+    // 行整格区域(interact 在全部单元格之后注册,见行尾注释)
     let row_rect = egui::Rect::from_min_max(
         egui::pos2(table_left, row_top),
         egui::pos2(table_right, row_top + 36.0),
     )
     .expand2(egui::vec2(0.0, widgets::table::ROW_SPACING_Y * 0.5));
-    let row_resp = ui.interact(
-        row_rect,
-        egui::Id::new(("conn_row", conn.id)),
-        egui::Sense::click(),
-    );
     let mut view_history = false;
-    row_resp.context_menu(|ui| {
-        view_history = menu::conn_menu(ui, conn, elevated, i18n);
-    });
     let process = if conn.process.is_empty() {
         format!(
             "{} {}",
@@ -188,6 +180,22 @@ pub(super) fn conn_row(
                 ui.label("");
             }
         }
+    });
+    // 整行 interact 注册在全部单元格之后:egui 的 Label 默认可选文本
+    // (selectable_labels,sense 含 CLICK),同层平手命中取最后注册者
+    // ——行件在单元格之后注册才能赢得 click,右键菜单全区域可弹;
+    // 左键拖选文本不经 click 归属(LabelSelectionState 内部推进),
+    // 不受注册顺序影响
+    let row_resp = ui.interact(
+        row_rect,
+        egui::Id::new(("conn_row", conn.id)),
+        egui::Sense::click(),
+    );
+    row_resp.context_menu(|ui| {
+        if widgets::menu::copy_selected_item(ui, i18n) {
+            *copy_selected = true;
+        }
+        view_history = menu::conn_menu(ui, conn, elevated, i18n);
     });
     ui.end_row();
     conn_row_hover.end(ui, row_top);

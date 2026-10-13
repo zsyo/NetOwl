@@ -40,6 +40,7 @@ pub fn show(
     writer: &history::Writer,
     config: &mut Config,
     elevated: bool,
+    copy_selected: &mut bool,
 ) -> bool {
     state.refresh_if_needed(db, config.general.hide_local, config.general.hide_lan);
     let mut config_changed = false;
@@ -75,6 +76,7 @@ pub fn show(
         db,
         config,
         elevated,
+        copy_selected,
     );
     confirm::confirm_delete_modal(ui, state, i18n, db);
     config_changed
@@ -140,16 +142,34 @@ fn rows_table(
     db: &Db,
     config: &Config,
     elevated: bool,
+    copy_selected: &mut bool,
 ) {
     match &state.rows {
         history_query::Rows::Detail(_) => {
-            detail::table(ui, state, i18n, icon_tex, default_icon_tex, db);
+            detail::table(
+                ui,
+                state,
+                i18n,
+                icon_tex,
+                default_icon_tex,
+                db,
+                copy_selected,
+            );
         }
         history_query::Rows::Aggregate(_) => {
-            aggregate::table(ui, state, i18n, icon_tex, default_icon_tex);
+            aggregate::table(ui, state, i18n, icon_tex, default_icon_tex, copy_selected);
         }
         history_query::Rows::Summary(_) => {
-            summary::table(ui, state, i18n, icon_tex, default_icon_tex, conns, config);
+            summary::table(
+                ui,
+                state,
+                i18n,
+                icon_tex,
+                default_icon_tex,
+                conns,
+                config,
+                copy_selected,
+            );
         }
         history_query::Rows::Usage(_) => {
             usage::table(ui, state, i18n, elevated);
