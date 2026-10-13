@@ -102,13 +102,46 @@ impl NetOwlApp {
 impl eframe::App for NetOwlApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let t0 = Instant::now();
-        // “复制选中文本”点击后的下一帧处理:egui 仅在 Label 绘制时查询
-        // Event::Copy 并自行填充选中文本(私有 API,无公开读取途径),
-        // 故必须早于本帧任何表格绘制前注入;剪贴板由 egui 在该帧
-        // end_pass 写入
-        if self.copy_selected_pending {
-            self.copy_selected_pending = false;
+        // 选中文本快照:egui 仅在 Label 绘制时查询 Event::Copy 并自行
+        // 填充选中文本(私有 API 无公开读取途径),故拖选期间每帧注入,
+        // CopyCatcher 插件在帧末 output_hook 捕获 egui 写出的
+        // CopyText,本帧读走上帧结果——松手/被点击清除后快照仍在,
+        // “复制选中文本”菜单项不依赖 selection 存活。注入仅限指针
+        // 交互帧(按下/松开),避免剪贴板被无操作持续覆写
+        let sel_now = ctx
+            .plugin::<egui::text_selection::LabelSelectionState>()
+            .lock()
+            .has_selection();
+        // 仅拖选进行中与松手帧注入(任意按住都注入会把剪贴板覆写成
+        // 选中文本,那是拖选主动操作的副产品,不应被无关点击触发)
+        let interacting =
+            ctx.input(|i| i.pointer.any_released() || i.pointer.is_decidedly_dragging());
+        if sel_now && interacting {
             ctx.input_mut(|i| i.events.push(egui::Event::Copy));
+        }
+        if let Some(text) = ctx
+            .plugin_or_default::<ui::copy_catcher::CopyCatcher>()
+            .lock()
+            .take()
+        {
+            self.selected_text = Some(text);
+        }
+        // selection 变化追踪(排查“右键弹菜单即清除选中”问题):
+        // 记录翻转帧的输入状态(哪颗键按下/指针位置)
+        if sel_now != self.last_selection {
+            let sec = ctx.input(|i| i.pointer.button_down(egui::PointerButton::Secondary));
+            let pos = ctx.input(|i| i.pointer.hover_pos());
+            tracing::debug!(
+                "[Sel] 选中 {} -> {}(右键按下 {sec},指针 {pos:?})",
+                self.last_selection,
+                sel_now
+            );
+            self.last_selection = sel_now;
+        }
+        // “复制选中文本”点击:复制在菜单闭包内经快照完成,此处只推
+        // 底部气泡(与剪贴板写入同帧,用户无感知差异)
+        if self.copy_clicked {
+            self.copy_clicked = false;
             ui::toast::push_bottom(
                 &mut self.toasts,
                 ui::toast::ToastKind::Success,

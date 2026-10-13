@@ -18,6 +18,7 @@ pub(super) fn table(
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
     default_icon_tex: Option<&egui::TextureHandle>,
     copy_selected: &mut bool,
+    selected_text: &mut Option<String>,
 ) {
     let Rows::Aggregate(rows) = &state.rows else {
         return;
@@ -187,7 +188,7 @@ pub(super) fn table(
                             egui::Sense::click(),
                         );
                         row_resp.context_menu(|ui| {
-                            if widgets::menu::copy_selected_item(ui, i18n) {
+                            if widgets::menu::copy_selected_item(ui, i18n, selected_text) {
                                 *copy_selected = true;
                             }
                             if widgets::menu::menu_item(

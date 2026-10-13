@@ -33,6 +33,7 @@ pub(super) fn conn_row(
     elevated: bool,
     idx: usize,
     copy_selected: &mut bool,
+    selected_text: &mut Option<String>,
 ) -> bool {
     use super::{C_ACTION_W, C_LOC_W, C_PROTO_W, C_RATE_W, C_TOTAL_W};
     let row_top = ui.cursor().top();
@@ -192,7 +193,7 @@ pub(super) fn conn_row(
         egui::Sense::click(),
     );
     row_resp.context_menu(|ui| {
-        if widgets::menu::copy_selected_item(ui, i18n) {
+        if widgets::menu::copy_selected_item(ui, i18n, selected_text) {
             *copy_selected = true;
         }
         view_history = menu::conn_menu(ui, conn, elevated, i18n);

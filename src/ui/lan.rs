@@ -20,6 +20,7 @@ pub(super) fn lan_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     let devices = ctx.lan_devices;
     let i18n = &mut ctx.i18n;
     let copy_selected = &mut *ctx.copy_selected;
+    let selected_text = &mut *ctx.selected_text;
     widgets::header::page_header(ui, &i18n.t("lan-title"), &i18n.t("lan-subtitle"));
     ui.add_space(theme::sp::SM);
 
@@ -149,7 +150,7 @@ pub(super) fn lan_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                             ui.painter().rect_filled(row_rect, 0.0, theme::c().hover_bg);
                         }
                         row_resp.context_menu(|ui| {
-                            if widgets::menu::copy_selected_item(ui, i18n) {
+                            if widgets::menu::copy_selected_item(ui, i18n, selected_text) {
                                 *copy_selected = true;
                             }
                             device_menu(ui, &d.mac, d.ip, i18n);

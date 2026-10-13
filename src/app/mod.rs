@@ -184,7 +184,14 @@ pub struct NetOwlApp {
     udp_last_remote: HashMap<(u32, u16), (IpAddr, u16)>,
     /// “复制选中文本”菜单项已点击:下一帧 logic 开头注入 Event::Copy
     /// (egui 只在 Label 绘制时查询该事件,选中文本无公开读取 API)
-    copy_selected_pending: bool,
+    /// “复制选中文本”菜单项已点击:logic 据此推底部气泡(复制本身在
+    /// 菜单闭包内经 selected_text 快照完成)
+    copy_clicked: bool,
+    /// 选中文本快照:拖选期间每帧注入 Event::Copy,CopyCatcher 插件在
+    /// output_hook 捕获 egui 写出的 CopyText(选中态被清除后仍在)
+    selected_text: Option<String>,
+    /// 上一帧是否有选中(selection 变化追踪日志用)
+    last_selection: bool,
     /// 连接列表表头排序状态(会话内,不持久化)
     conn_sort: ui::ConnSortState,
     /// 连接页搜索词(进程/远端/域名包含过滤,会话内,不持久化)

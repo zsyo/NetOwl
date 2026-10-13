@@ -221,6 +221,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                                     elevated,
                                     idx,
                                     ctx.copy_selected,
+                                    ctx.selected_text,
                                 ) {
                                     history.set_process_filter(conn.process.clone());
                                     *nav_request = Some(Page::History);

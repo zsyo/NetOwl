@@ -72,6 +72,7 @@ pub(super) fn table(
     conns: &[Connection],
     config: &Config,
     copy_selected: &mut bool,
+    selected_text: &mut Option<String>,
 ) {
     refresh_merged(state, conns, config);
     let Some((_, merged)) = state.summary_merged.as_ref() else {
@@ -205,7 +206,7 @@ pub(super) fn table(
                             resp = resp.on_hover_text(i18n.t("history-summary-drill"));
                         }
                         resp.context_menu(|ui| {
-                            if widgets::menu::copy_selected_item(ui, i18n) {
+                            if widgets::menu::copy_selected_item(ui, i18n, selected_text) {
                                 *copy_selected = true;
                             }
                             if super::menu::summary_menu(ui, r, i18n) {

@@ -15,20 +15,24 @@ pub(crate) fn menu_item(ui: &mut egui::Ui, text: String, enabled: bool) -> egui:
     )
 }
 
-/// “复制选中文本”菜单项:仅在确有选中文本时才追加(无选中不占
-/// 菜单位)。点击返回 true(由调用方置 App 的 copy_selected_pending,
-/// 下一帧 logic 注入 Event::Copy,见 frame.rs)。选中文本内容 egui
-/// 不公开读取(私有 text_to_copy),复制由 egui 在 Label 绘制时自行完成
-pub fn copy_selected_item(ui: &mut egui::Ui, i18n: &I18n) -> bool {
-    let has = ui
-        .ctx()
-        .plugin::<egui::text_selection::LabelSelectionState>()
-        .lock()
-        .has_selection();
-    if !has {
+/// “复制选中文本”菜单项:仅在有快照时出现(快照 = 拖选期间经
+/// CopyCatcher 捕获的选中文本,与选中态生死解耦——egui 会在点击
+/// 菜单时清除 selection,若直接读 selection,按住跨帧会导致菜单重排、
+/// 点击错位;快照在菜单集合保持稳定)。点击 = 写剪贴板 + 清除选中
+/// 高亮与快照(一次性,点后菜单不再出现该项),返回 true 由调用方推气泡
+pub fn copy_selected_item(ui: &mut egui::Ui, i18n: &I18n, selected: &mut Option<String>) -> bool {
+    if selected.is_none() || !menu_item(ui, i18n.t("menu-copy-selected"), true).clicked() {
         return false;
     }
-    menu_item(ui, i18n.t("menu-copy-selected"), true).clicked()
+    if let Some(text) = selected.take() {
+        ui.ctx().copy_text(text);
+    }
+    // 选中态随本次菜单操作结束(清除高亮)
+    ui.ctx()
+        .plugin::<egui::text_selection::LabelSelectionState>()
+        .lock()
+        .clear_selection();
+    true
 }
 
 /// 行右键菜单公共尾组:定位程序 / 复制远端(`remote` 传 Some 才出现)/

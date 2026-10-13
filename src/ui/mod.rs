@@ -3,6 +3,7 @@
 
 use std::collections::HashSet;
 pub mod ask;
+pub mod copy_catcher;
 pub mod floating_ball;
 pub mod history;
 pub mod icons;
@@ -136,8 +137,11 @@ pub struct UiCtx<'a> {
     pub hotkey_capture: &'a mut HotkeyCapture,
     /// 连接页协议筛选(连接/监听两视图共用,会话态)
     pub conn_proto: &'a mut Option<crate::model::Protocol>,
-    /// “复制选中文本”菜单项点击标志(App 层下一帧注入 Event::Copy)
+    /// “复制选中文本”菜单项点击标志(App 层据此推底部气泡;复制本身
+    /// 在菜单闭包内经快照完成)
     pub copy_selected: &'a mut bool,
+    /// 选中文本快照(拖选期间经 CopyCatcher 捕获,与选中态生死解耦)
+    pub selected_text: &'a mut Option<String>,
     /// 检查更新:UI 触发标志(设置页按钮写入,App 层帧内派发)
     pub update_check_request: &'a mut bool,
     /// 检查更新:是否在途(重复触发被 App 层忽略)
@@ -221,6 +225,7 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
             ctx.config,
             ctx.elevated,
             ctx.copy_selected,
+            ctx.selected_text,
         ),
         Page::Lan => lan::lan_ui(ui, ctx),
         Page::Rules => rules::show(

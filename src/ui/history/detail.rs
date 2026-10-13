@@ -12,6 +12,7 @@ use crate::i18n::I18n;
 use crate::storage::history_query::{self, Rows};
 use crate::ui::{theme, widgets};
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn table(
     ui: &mut egui::Ui,
     state: &mut history_query::PageState,
@@ -20,6 +21,7 @@ pub(super) fn table(
     default_icon_tex: Option<&egui::TextureHandle>,
     db: &Db,
     copy_selected: &mut bool,
+    selected_text: &mut Option<String>,
 ) {
     let Rows::Detail(rows) = &state.rows else {
         return;
@@ -142,7 +144,7 @@ pub(super) fn table(
                             egui::Sense::click(),
                         );
                         row_resp.context_menu(|ui| {
-                            if widgets::menu::copy_selected_item(ui, i18n) {
+                            if widgets::menu::copy_selected_item(ui, i18n, selected_text) {
                                 *copy_selected = true;
                             }
                             if menu::detail_menu(ui, r, i18n) {

@@ -20,6 +20,7 @@ pub(super) fn listen_table(ui: &mut egui::Ui, ctx: &mut UiCtx) {
         conn_search,
         conn_proto,
         copy_selected,
+        selected_text,
         ..
     } = ctx;
     let needle = conn_search.trim().to_lowercase();
@@ -94,6 +95,7 @@ pub(super) fn listen_table(ui: &mut egui::Ui, ctx: &mut UiCtx) {
                             L_PID_W,
                             row_rect,
                             copy_selected,
+                            selected_text,
                         );
                         ui.end_row();
                     }
@@ -115,6 +117,7 @@ fn listen_row(
     pid_w: f32,
     row_rect: egui::Rect,
     copy_selected: &mut bool,
+    selected_text: &mut Option<String>,
 ) {
     widgets::table::fixed_cell(ui, flex_w, widgets::table::ROW_H, |ui| {
         ui.horizontal(|ui| {
@@ -170,7 +173,7 @@ fn listen_row(
         egui::Sense::click(),
     );
     row_resp.context_menu(|ui| {
-        if widgets::menu::copy_selected_item(ui, i18n) {
+        if widgets::menu::copy_selected_item(ui, i18n, selected_text) {
             *copy_selected = true;
         }
         if widgets::menu::menu_item(ui, i18n.t("menu-copy-remote"), true).clicked() {
