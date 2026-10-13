@@ -220,7 +220,7 @@ pub(super) fn targets_section(
                 ui.horizontal(|ui| {
                     *changed |= ui
                         .add_sized(
-                            [150.0, 24.0],
+                            [300.0, 24.0],
                             egui::TextEdit::singleline(&mut t.ip)
                                 .hint_text("1.2.3.4")
                                 .vertical_align(egui::Align::Center),
