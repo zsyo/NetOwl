@@ -4,7 +4,7 @@
 //! 全部按 1s 节流,高帧率重绘帧内跳过。
 
 use std::collections::HashSet;
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -204,29 +204,26 @@ impl NetOwlApp {
         if !self.config.general.quality_monitor {
             return;
         }
-        let mut wanted: HashSet<Ipv4Addr> = self
+        let mut wanted: HashSet<IpAddr> = self
             .conns
             .iter()
-            .filter_map(|c| match c.remote_ip {
-                // 质量探测(ICMP/TCP 计时)暂为 IPv4,v6 随 v6 适配接入
-                IpAddr::V4(v4) if rdns::is_queryable(&c.remote_ip) => Some(v4),
-                _ => None,
-            })
+            .map(|c| c.remote_ip)
+            .filter(rdns::is_queryable)
             .collect();
         for ip in &wanted {
             self.quality.enqueue(*ip, None);
         }
         // 自定义目标:同 IP 时 TCP 补测端口覆盖自动目标(自定义优先);
         // IP 解析失败(手输未完成)跳过,设置页有即时校验提示
-        let mut custom: Vec<(Ipv4Addr, String)> = Vec::new();
+        let mut custom: Vec<(IpAddr, String)> = Vec::new();
         for t in &self.config.general.quality_targets {
-            let Ok(ip) = t.ip.trim().parse::<Ipv4Addr>() else {
+            let Ok(ip) = t.ip.trim().parse::<IpAddr>() else {
                 continue;
             };
             self.quality.enqueue(ip, (t.port != 0).then_some(t.port));
             custom.push((ip, t.label.clone()));
         }
-        let custom_ips: HashSet<Ipv4Addr> = custom.iter().map(|(ip, _)| *ip).collect();
+        let custom_ips: HashSet<IpAddr> = custom.iter().map(|(ip, _)| *ip).collect();
         wanted.extend(custom_ips.iter().copied());
         self.quality.prune(&wanted);
         self.poll_quality_alert(&custom);
@@ -234,7 +231,7 @@ impl NetOwlApp {
 
     /// 自定义目标连续多轮无响应:toast 告警一次(集合去重),恢复响应后
     /// 重新武装;目标删除后样本经 prune 回收,告警态随之失效
-    fn poll_quality_alert(&mut self, custom: &[(Ipv4Addr, String)]) {
+    fn poll_quality_alert(&mut self, custom: &[(IpAddr, String)]) {
         for (ip, label) in custom {
             let fails = self.quality.consec_fails(*ip);
             if fails >= QUALITY_ALERT_FAILS {

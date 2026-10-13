@@ -1,7 +1,7 @@
-//! 网络质量采样:对活跃连接的公网远端做 ICMP 延迟探测(IcmpSendEcho,
-//! 系统代发 raw ICMP,普通用户权限即可),供地图节点健康度着色与端点
-//! 详情展示。探测在独立线程执行,update() 非阻塞收割;限流节奏与
-//! rDNS/域名解析一致,目标 60s TTL 内复用结果。
+//! 网络质量采样:对活跃连接的公网远端做 ICMP 延迟探测(v4 IcmpSendEcho /
+//! v6 Icmp6SendEcho2,系统代发 raw ICMP,普通用户权限即可),供地图节点
+//! 健康度着色与端点详情展示。探测在独立线程执行,update() 非阻塞收割;
+//! 限流节奏与 rDNS/域名解析一致,目标 60s TTL 内复用结果。
 //!
 //! 延迟口径:ICMP RTT 的 EMA 平滑 + 最近窗口丢包率。ICMP 被目标禁用时
 //! 无数据(节点按未知显示);带 TCP 端口的目标(用户显式添加的自定义
@@ -9,13 +9,17 @@
 //! 含协议栈开销,数值略高于 ICMP RTT,且会向目标发起一次真实连接。
 
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream};
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
 use windows::Win32::Foundation::GetLastError;
 use windows::Win32::NetworkManagement::IpHelper::{
-    ICMP_ECHO_REPLY, IcmpCloseHandle, IcmpCreateFile, IcmpSendEcho,
+    ICMP_ECHO_REPLY, ICMPV6_ECHO_REPLY_LH, Icmp6CreateFile, Icmp6SendEcho2, IcmpCloseHandle,
+    IcmpCreateFile, IcmpSendEcho,
+};
+use windows::Win32::Networking::WinSock::{
+    AF_INET6, IN6_ADDR, IN6_ADDR_0, SOCKADDR_IN6, SOCKADDR_IN6_0,
 };
 
 /// 并发探测上限:极端情况线程滞留占满槽位即暂停派发,不拖累界面
@@ -82,18 +86,18 @@ impl Inner {
 /// 异步质量采样器:enqueue() 入队目标、update() 收割派发、lookup() 查快照
 pub struct Quality {
     /// 探测线程回报通道(发送端克隆给每个探测线程)
-    tx: mpsc::Sender<(Ipv4Addr, Option<u32>)>,
-    rx: Receiver<(Ipv4Addr, Option<u32>)>,
+    tx: mpsc::Sender<(IpAddr, Option<u32>)>,
+    rx: Receiver<(IpAddr, Option<u32>)>,
     /// 已派发未返回的目标(探测可能阻塞到超时,防重复派发)
-    pending: HashSet<Ipv4Addr>,
+    pending: HashSet<IpAddr>,
     /// 待派发队列
-    queue: VecDeque<Ipv4Addr>,
+    queue: VecDeque<IpAddr>,
     /// 队列成员集合(与 queue 同步维护,查重免线性扫描)
-    queued: HashSet<Ipv4Addr>,
+    queued: HashSet<IpAddr>,
     /// 各目标的 TCP 补测端口(None = 仅 ICMP);自动目标恒 None,
     /// 自定义目标覆盖,同 IP 双重入队时后者胜
-    tcp_ports: HashMap<Ipv4Addr, Option<u16>>,
-    samples: HashMap<Ipv4Addr, Inner>,
+    tcp_ports: HashMap<IpAddr, Option<u16>>,
+    samples: HashMap<IpAddr, Inner>,
     last_dispatch: Instant,
 }
 
@@ -115,7 +119,7 @@ impl Quality {
     /// 入队一个目标(幂等:60s 内已有采样或在途/在队即跳过)。
     /// tcp_port 传 Some 的目标(ICMP 无响应时)单轮回退 TCP 握手计时;
     /// 调用方按节流全量入队应持续采样的目标即可
-    pub fn enqueue(&mut self, ip: Ipv4Addr, tcp_port: Option<u16>) {
+    pub fn enqueue(&mut self, ip: IpAddr, tcp_port: Option<u16>) {
         let now = Instant::now();
         if let Some(s) = self.samples.get(&ip)
             && now.duration_since(s.at) < SAMPLE_TTL
@@ -191,13 +195,9 @@ impl Quality {
         }
     }
 
-    /// 目标的采样快照;从未探测返回 None(有样本即可读,rtt 可能为 None)。
-    /// 仅覆盖 IPv4(ICMP 探测为 v4),IPv6 随 v6 适配一并接入
+    /// 目标的采样快照;从未探测返回 None(有样本即可读,rtt 可能为 None)
     pub fn lookup(&self, ip: IpAddr) -> Option<Sample> {
-        let IpAddr::V4(v4) = ip else {
-            return None;
-        };
-        self.samples.get(&v4).map(|s| Sample {
+        self.samples.get(&ip).map(|s| Sample {
             rtt: s.rtt,
             loss: s.loss(),
             at: s.at,
@@ -206,7 +206,7 @@ impl Quality {
 
     /// 窗口尾部连续失败轮数(自定义目标告警判定:达到阈值触发一次,
     /// 尾部重新出现成功即归零)
-    pub fn consec_fails(&self, ip: Ipv4Addr) -> usize {
+    pub fn consec_fails(&self, ip: IpAddr) -> usize {
         self.samples
             .get(&ip)
             .map(|s| s.window.iter().rev().take_while(|&&ok| !ok).count())
@@ -216,7 +216,7 @@ impl Quality {
     /// 清理不再需要的目标(队列/在途/采样同步收缩);wanted 须包含全部
     /// 应持续采样的目标(活跃连接远端 + 自定义目标)。在途探测无法取消,
     /// 结果回收后下一轮 prune 一并清除
-    pub fn prune(&mut self, wanted: &HashSet<Ipv4Addr>) {
+    pub fn prune(&mut self, wanted: &HashSet<IpAddr>) {
         self.queue.retain(|ip| wanted.contains(ip));
         self.queued.retain(|ip| wanted.contains(ip));
         self.pending.retain(|ip| wanted.contains(ip));
@@ -225,10 +225,18 @@ impl Quality {
     }
 }
 
-/// ICMP echo 探测(同步,单轮);Ok = RTT 毫秒,Err = 内核 Status 码
-/// (n=0 时取 GetLastError;常见 11010 = IP_REQ_TIMED_OUT 超时,
-/// 11003/11013 = 目标不可达,0 = IP_SUCCESS 之外的通用失败)
-fn icmp_probe(ip: Ipv4Addr) -> Result<u32, u32> {
+/// ICMP echo 探测(同步,单轮,按地址族分派);Ok = RTT 毫秒,
+/// Err = 内核 Status 码(n=0 时取 GetLastError;常见 11010 =
+/// IP_REQ_TIMED_OUT 超时,11003/11013 = 目标不可达)
+fn icmp_probe(ip: IpAddr) -> Result<u32, u32> {
+    match ip {
+        IpAddr::V4(v4) => icmp_probe_v4(v4),
+        IpAddr::V6(v6) => icmp_probe_v6(v6),
+    }
+}
+
+/// v4 echo 探测:IcmpSendEcho
+fn icmp_probe_v4(ip: Ipv4Addr) -> Result<u32, u32> {
     // 每轮独立创建/关闭句柄:频率受派发限流(约 8 次/秒),开销可忽略
     let handle = unsafe { IcmpCreateFile() }.map_err(|e| e.code().0 as u32)?;
     // IPAddr 为网络字节序:内存字节即地址原文。x86 为 LE,按 le_bytes
@@ -267,10 +275,72 @@ fn icmp_probe(ip: Ipv4Addr) -> Result<u32, u32> {
     result
 }
 
+/// v6 echo 探测:Icmp6SendEcho2 同步语义(Event/ApcRoutine 均 NULL,
+/// 函数在 Timeout 内等待并返回 reply 数)。句柄必须来自
+/// Icmp6CreateFile——v6 与 v4 的 IcmpCreateFile 不通用,拿 v4 句柄
+/// 调用直接 ERROR_INVALID_PARAMETER(实测定案)
+fn icmp_probe_v6(ip: Ipv6Addr) -> Result<u32, u32> {
+    let handle = unsafe { Icmp6CreateFile() }.map_err(|e| e.code().0 as u32)?;
+    let dest = SOCKADDR_IN6 {
+        sin6_family: AF_INET6,
+        sin6_port: 0,
+        sin6_flowinfo: 0,
+        sin6_addr: IN6_ADDR {
+            u: IN6_ADDR_0 { Byte: ip.octets() },
+        },
+        Anonymous: SOCKADDR_IN6_0 { sin6_scope_id: 0 },
+    };
+    // 源地址填 in6addr_any(::):未指定地址由内核按路由选源,link-local
+    // 目标随默认路由出接口
+    let src = SOCKADDR_IN6 {
+        sin6_family: AF_INET6,
+        sin6_port: 0,
+        sin6_flowinfo: 0,
+        sin6_addr: IN6_ADDR {
+            u: IN6_ADDR_0 { Byte: [0u8; 16] },
+        },
+        Anonymous: SOCKADDR_IN6_0 { sin6_scope_id: 0 },
+    };
+    /// ICMP 请求负载(8 字节,与 ping 默认一致)
+    const REQUEST_LEN: usize = 8;
+    let request = [0u8; REQUEST_LEN];
+    let mut reply = [0u8; std::mem::size_of::<ICMPV6_ECHO_REPLY_LH>() + REQUEST_LEN];
+    let n = unsafe {
+        Icmp6SendEcho2(
+            handle,
+            None,
+            None,
+            None,
+            &src,
+            &dest,
+            request.as_ptr().cast(),
+            request.len() as u16,
+            None,
+            reply.as_mut_ptr().cast(),
+            reply.len() as u32,
+            PROBE_TIMEOUT.as_millis() as u32,
+        )
+    };
+    // 回复数 > 0 且 Status 0 = IP_SUCCESS,RoundTripTime 为内核记录的
+    // 毫秒数(与 v4 路径同构);n = 0 时 GetLastError 携带失败原因
+    let result = if n > 0 {
+        let r = unsafe { &*(reply.as_ptr() as *const ICMPV6_ECHO_REPLY_LH) };
+        if r.Status == 0 {
+            Ok(r.RoundTripTime)
+        } else {
+            Err(r.Status)
+        }
+    } else {
+        Err(unsafe { GetLastError() }.0)
+    };
+    let _ = unsafe { IcmpCloseHandle(handle) };
+    result
+}
+
 /// TCP 握手计时(connect 全程;会与目标建立并立即关闭一次真实连接)
-fn tcp_probe(ip: Ipv4Addr, port: u16) -> Option<u32> {
+fn tcp_probe(ip: IpAddr, port: u16) -> Option<u32> {
     let t0 = Instant::now();
-    TcpStream::connect_timeout(&SocketAddr::from((ip, port)), PROBE_TIMEOUT)
+    TcpStream::connect_timeout(&SocketAddr::new(ip, port), PROBE_TIMEOUT)
         .ok()
         .map(|_| t0.elapsed().as_millis() as u32)
 }

@@ -24,7 +24,7 @@ pub mod lan;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::IpAddr;
 use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 
@@ -155,7 +155,7 @@ pub struct NetOwlApp {
     /// 网络质量采样上次轮询时刻(1s 节流,与采集同频)
     quality_poll_at: Instant,
     /// 自定义质量目标已告警集合(连续无响应 toast 一次,恢复响应后重置)
-    quality_alerted: HashSet<Ipv4Addr>,
+    quality_alerted: HashSet<IpAddr>,
     /// 自身可执行文件路径(启动时缓存一次;静默拒绝模式的自身放行规则用)
     self_path: Option<String>,
     /// 右下角 toast 通知队列(新设备接入/用量配额告警)

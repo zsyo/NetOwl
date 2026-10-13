@@ -263,7 +263,7 @@ pub(super) fn targets_section(
                         removed = Some(i);
                     }
                     let ip = t.ip.trim();
-                    if !ip.is_empty() && ip.parse::<std::net::Ipv4Addr>().is_err() {
+                    if !ip.is_empty() && ip.parse::<std::net::IpAddr>().is_err() {
                         ui.label(
                             RichText::new(i18n.t("settings-quality-invalid-ip"))
                                 .size(theme::font::XS)
