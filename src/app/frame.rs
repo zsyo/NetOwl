@@ -8,6 +8,7 @@ use std::time::Instant;
 use eframe::egui;
 
 use super::{CONFIG_SAVE_DEBOUNCE, FRAME_STATS_INTERVAL, HITS_FLUSH_INTERVAL, NetOwlApp};
+use crate::collector;
 use crate::platform::{shutdown_hook, single_instance};
 use crate::ui::ask as ui_ask;
 use crate::ui::{self, Page, theme};
@@ -95,6 +96,91 @@ impl NetOwlApp {
         if focus_search {
             self.focus_conn_search = true;
             ctx.request_repaint();
+        }
+    }
+    /// 自建右键菜单浮层:开/关判定 + 绘制 + 动作入队。菜单是
+    /// Foreground Area 浮层,与表格行 rect 不相交——点击不经表格
+    /// hit-test(context_menu"按住跨帧重排点击错位"的根除),右键也
+    /// 不经 egui(raw_input_hook 拦截,Label 选中态不受影响)
+    fn show_menu_float(&mut self, ui: &mut egui::Ui) {
+        // 本帧右键 press:命中行热区则开(替换旧菜单),未命中关闭
+        for (pos, pressed) in self.right_clicks.drain(..) {
+            if !pressed {
+                continue;
+            }
+            self.menu = ui::menu_float::OpenMenu::open_at(&self.row_hits, pos);
+            if let Some(m) = &self.menu {
+                tracing::debug!("[Menu] 打开 page={} 列={:?}", m.hit.ctx.kind(), m.col);
+            }
+        }
+        let Some(mut menu) = self.menu.take() else {
+            return;
+        };
+        // 关闭:Esc / 左键点在菜单外。首帧 rect 未建立(ZERO),跳过
+        // 外点判定;按下点即本帧右键锚点,同帧左键 press 不存在
+        let (esc, outside) = ui.ctx().input(|i| {
+            let esc = i.key_pressed(egui::Key::Escape);
+            let outside = menu.rect.is_positive()
+                && i.pointer.primary_pressed()
+                && i.pointer
+                    .interact_pos()
+                    .is_some_and(|p| !menu.rect.contains(p));
+            (esc, outside)
+        });
+        if esc || outside {
+            tracing::debug!("[Menu] 关闭({})", if esc { "Esc" } else { "外点" });
+            self.menu = None;
+            return;
+        }
+        let (actions, rect) = ui::menu_float::show(ui.ctx(), &self.i18n, &menu, self.elevated);
+        menu.rect = rect;
+        if actions.is_empty() {
+            // 无动作:菜单保持打开(rect 已刷新,供下帧外点判定)
+            self.menu = Some(menu);
+        }
+        // 有点击项:菜单关闭,动作帧末执行
+        self.menu_actions.extend(actions);
+    }
+
+    /// 帧末执行菜单动作(剪贴板 + 底部气泡 / 结束连接 / 定位 / 跳转)
+    fn run_menu_actions(&mut self, ctx: &egui::Context) {
+        for a in self.menu_actions.drain(..) {
+            tracing::debug!("[Menu] 执行动作 {}", a.kind());
+            match a {
+                ui::menu_float::MenuAction::CopyText(text) => {
+                    ctx.copy_text(text);
+                    ui::toast::push_bottom(
+                        &mut self.toasts,
+                        ui::toast::ToastKind::Success,
+                        self.i18n.t("toast-copied"),
+                    );
+                }
+                ui::menu_float::MenuAction::KillConn(conn) => {
+                    match collector::close_tcp_connection(&conn) {
+                        Ok(()) => tracing::info!(
+                            "[Connections] 已请求结束连接 {}:{} -> {}:{} (PID {})",
+                            conn.local_addr,
+                            conn.local_port,
+                            conn.remote_ip,
+                            conn.remote_port,
+                            conn.pid
+                        ),
+                        Err(e) => tracing::warn!(
+                            "[Connections] 结束连接失败 {}:{} -> {}:{}: {e}",
+                            conn.local_addr,
+                            conn.local_port,
+                            conn.remote_ip,
+                            conn.remote_port
+                        ),
+                    }
+                }
+                ui::menu_float::MenuAction::LocateProc(path) => {
+                    crate::platform::paths::select_in_explorer(std::path::Path::new(&path));
+                }
+                ui::menu_float::MenuAction::NavHistory => {
+                    self.nav_request = Some(ui::Page::History);
+                }
+            }
         }
     }
 }
@@ -304,21 +390,8 @@ impl eframe::App for NetOwlApp {
         if let Some(p) = self.nav_request.take() {
             self.page = p;
         }
-        // 右键命中测试(自建菜单浮层前置):热区表由各表格行渲染注册,
-        // 后注册行居上(与 egui 平手取最后注册者同语义)。T3 起在此开菜单
-        for (pos, pressed) in self.right_clicks.drain(..) {
-            if !pressed {
-                continue;
-            }
-            match self.row_hits.iter().rev().find(|h| h.rect.contains(pos)) {
-                Some(hit) => tracing::debug!(
-                    "[Menu] 右键命中 page={} 列={:?}",
-                    hit.ctx.kind(),
-                    hit.col_at(pos)
-                ),
-                None => tracing::debug!("[Menu] 右键未命中行热区 ({pos:?})"),
-            }
-        }
+        // 自建右键菜单浮层(开/关判定 + 绘制 + 动作入队)
+        self.show_menu_float(ui);
         let repaint = super::layout::repaint_interval(shown, &self.page, log_open);
         // 节奏变化(页面切换/显示隐藏)输出 TRACE;稳定节奏不重复输出
         let repaint_ms = u64::try_from(repaint.as_millis()).unwrap_or(u64::MAX);
@@ -350,6 +423,8 @@ impl eframe::App for NetOwlApp {
         self.show_floating_ball(ui);
 
         // 右下角 toast 通知(新设备接入/用量配额告警)
+        // 菜单动作先行执行:复制等反馈走底部气泡,与 toast 同帧展示
+        self.run_menu_actions(ui.ctx());
         crate::ui::toast::show(ui.ctx(), &mut self.toasts);
 
         if config_changed {

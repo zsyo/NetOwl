@@ -12,6 +12,7 @@ pub mod map_conn;
 pub mod map_inspector;
 pub mod map_panel;
 pub mod map_widgets;
+pub mod menu_float;
 pub mod nav;
 mod nav_rate;
 pub mod profile_manager;
@@ -42,6 +43,7 @@ use crate::storage::config::Config;
 use crate::storage::history as history_store;
 use crate::storage::history_query;
 
+pub use menu_float::{MenuAction, OpenMenu};
 pub use nav::nav_ui;
 pub use row_hit::{RowCtx, RowHit};
 

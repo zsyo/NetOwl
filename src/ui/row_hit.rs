@@ -15,6 +15,7 @@ use crate::net::lan::DeviceRow;
 use crate::storage::history_query::SummaryRow;
 
 /// 单个行热区:行整格区域 + 列右边界 + 行上下文
+#[derive(Clone)]
 pub struct RowHit {
     /// 行整格区域(屏幕坐标)
     pub rect: egui::Rect,
@@ -56,6 +57,7 @@ impl RowHit {
 
 /// 行上下文:六表格行的 owned 数据子集(不可 Clone 的行类型手动提取
 /// 菜单动作所需字段)
+#[derive(Clone)]
 pub enum RowCtx {
     /// 连接页连接行
     Conn(Connection),

@@ -200,6 +200,10 @@ pub struct NetOwlApp {
     /// 表格行热区表(每帧重建:ui 开头 clear,行渲染时注册;自建右键
     /// 浮层命中测试与"复制该单元格"列定位的数据源)
     row_hits: Vec<ui::RowHit>,
+    /// 自建右键菜单浮层(打开中;None = 关闭)
+    menu: Option<ui::menu_float::OpenMenu>,
+    /// 菜单动作队列(帧末统一执行,摆脱 Ui 内不相交捕获与借用约束)
+    menu_actions: Vec<ui::menu_float::MenuAction>,
     /// 连接列表表头排序状态(会话内,不持久化)
     conn_sort: ui::ConnSortState,
     /// 连接页搜索词(进程/远端/域名包含过滤,会话内,不持久化)
