@@ -10,6 +10,7 @@ use eframe::egui;
 use super::{CONFIG_SAVE_DEBOUNCE, FRAME_STATS_INTERVAL, HITS_FLUSH_INTERVAL, NetOwlApp};
 use crate::collector;
 use crate::platform::{shutdown_hook, single_instance};
+use crate::storage::history_query;
 use crate::ui::ask as ui_ask;
 use crate::ui::{self, Page, theme};
 
@@ -179,6 +180,29 @@ impl NetOwlApp {
                 }
                 ui::menu_float::MenuAction::NavHistory => {
                     self.nav_request = Some(ui::Page::History);
+                }
+                ui::menu_float::MenuAction::DeleteDetail {
+                    event_id,
+                    first_seen,
+                    last_seen,
+                } => {
+                    // 明细删除直接执行(与迁移前 detail 菜单一致,无确认)
+                    match history_query::delete_detail(
+                        &self.history_db,
+                        event_id,
+                        first_seen,
+                        last_seen,
+                    ) {
+                        Ok(n) => {
+                            self.history.dirty = true;
+                            tracing::info!("[History] 已删除 {n} 条明细记录");
+                        }
+                        Err(e) => tracing::warn!("[History] 删除明细记录失败: {e}"),
+                    }
+                }
+                ui::menu_float::MenuAction::AskDelete(pending) => {
+                    // 聚合组/整进程删除走确认弹窗链路(confirm_delete_modal)
+                    self.history.pending_delete = Some(pending);
                 }
             }
         }

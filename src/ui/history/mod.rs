@@ -9,7 +9,6 @@ mod cells;
 mod confirm;
 mod detail;
 mod export;
-mod menu;
 mod summary;
 mod toolbar;
 mod usage;

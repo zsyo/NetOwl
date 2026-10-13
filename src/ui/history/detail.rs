@@ -131,7 +131,7 @@ pub(super) fn table(
                             cells::bytes_cell(ui, r.bytes_out, true);
                         });
                         // 右键热区注册:删除键(event_id + 首末时刻)与
-                        // 定位/复制字段手动提取(DetailRow 不可 Clone)
+                        // 定位/复制/单元格文本字段手动提取(DetailRow 不可 Clone)
                         RowHit::push(
                             row_hits,
                             row_rect,
@@ -143,9 +143,13 @@ pub(super) fn table(
                                 event_id: r.event_id,
                                 first_seen: r.first_seen,
                                 last_seen: r.last_seen,
+                                process: r.process.clone(),
+                                pid: r.pid,
                                 proc_path: r.proc_path.clone(),
                                 remote: r.remote_addr(),
                                 remote_port: r.remote_port,
+                                bytes_in: r.bytes_in,
+                                bytes_out: r.bytes_out,
                             },
                         );
                         ui.end_row();

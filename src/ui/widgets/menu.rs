@@ -1,5 +1,4 @@
-//! 右键菜单与下拉共用的菜单项按钮,及行右键菜单公共项组
-//! (定位程序/复制远端/复制路径/复制选中文本)。
+//! 右键菜单共用的菜单项按钮与"复制选中文本"项。
 
 use eframe::egui;
 use egui::RichText;
@@ -33,29 +32,4 @@ pub fn copy_selected_item(ui: &mut egui::Ui, i18n: &I18n, selected: &mut Option<
         .lock()
         .clear_selection();
     true
-}
-
-/// 行右键菜单公共尾组:定位程序 / 复制远端(`remote` 传 Some 才出现)/
-/// 复制路径;动作就地执行(资源管理器定位与剪贴板),无状态返回
-pub fn locate_copy_items(
-    ui: &mut egui::Ui,
-    i18n: &I18n,
-    proc_path: Option<&str>,
-    remote: Option<(&str, u16)>,
-) {
-    if menu_item(ui, i18n.t("menu-locate"), proc_path.is_some()).clicked()
-        && let Some(path) = proc_path
-    {
-        crate::platform::paths::select_in_explorer(std::path::Path::new(path));
-    }
-    if let Some((ip, port)) = remote
-        && menu_item(ui, i18n.t("menu-copy-remote"), true).clicked()
-    {
-        ui.ctx().copy_text(format!("{ip}:{port}"));
-    }
-    if menu_item(ui, i18n.t("menu-copy-path"), proc_path.is_some()).clicked()
-        && let Some(path) = proc_path
-    {
-        ui.ctx().copy_text(path.to_owned());
-    }
 }

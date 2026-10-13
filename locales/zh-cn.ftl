@@ -104,6 +104,7 @@ menu-locate = 定位程序
 menu-copy-remote = 复制远端地址
 menu-copy-selected = 复制选中文本
 menu-copy-path = 复制进程路径
+menu-copy-cell = 复制该单元格内容
 history-menu-delete-row = 删除该条记录
 history-menu-delete-group = 删除该组记录
 history-menu-delete-process = 删除该进程全部记录

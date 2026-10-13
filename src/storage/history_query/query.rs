@@ -151,10 +151,15 @@ pub struct PendingDelete {
 
 /// 明细行删除:事件身份 + 首末时刻定位唯一行(端口复用产生同 event_id
 /// 的多次连接,由 first_seen 区分)
-pub fn delete_detail(db: &Db, r: &DetailRow) -> rusqlite::Result<usize> {
+pub fn delete_detail(
+    db: &Db,
+    event_id: u64,
+    first_seen: u64,
+    last_seen: u64,
+) -> rusqlite::Result<usize> {
     db.execute(
         "DELETE FROM conn_events WHERE event_id = ?1 AND first_seen = ?2 AND last_seen = ?3",
-        params![r.event_id as i64, r.first_seen as i64, r.last_seen as i64],
+        params![event_id as i64, first_seen as i64, last_seen as i64],
     )
 }
 

@@ -63,20 +63,30 @@ pub enum RowCtx {
     Conn(Connection),
     /// 连接页监听视图行
     Listen(ListenEntry),
-    /// 历史明细行:删除键(event_id + 首末时刻)+ 定位/复制字段
+    /// 历史明细行:删除键(event_id + 首末时刻)+ 定位/复制与
+    /// "复制该单元格"文本字段
     Detail {
         event_id: u64,
         first_seen: u64,
         last_seen: u64,
+        process: String,
+        pid: u32,
         proc_path: Option<String>,
         remote: IpAddr,
         remote_port: u16,
+        bytes_in: u64,
+        bytes_out: u64,
     },
-    /// 历史聚合行:组删除键(进程 + 协议 + 远端)
+    /// 历史聚合行:组删除键(进程 + 协议 + 远端)+ 单元格文本字段
     Aggregate {
         process: String,
         proto: Protocol,
         remote: IpAddr,
+        count: u64,
+        total_secs: u64,
+        last_active: u64,
+        bytes_in: u64,
+        bytes_out: u64,
     },
     /// 历史汇总行(整进程)
     Summary(SummaryRow),

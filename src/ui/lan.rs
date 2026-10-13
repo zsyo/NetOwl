@@ -4,8 +4,6 @@
 //!
 //! 设备量小(几十台量级),不虚拟化:表头固定在滚动区外,行整体滚动。
 
-use std::net::Ipv4Addr;
-
 use eframe::egui;
 use egui::{Label, RichText};
 
@@ -164,17 +162,4 @@ pub(super) fn lan_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
 fn status_color(d: &DeviceRow) -> egui::Color32 {
     let p = theme::c();
     if d.online { p.status_ok } else { p.text_dim }
-}
-
-/// 设备行右键菜单:复制 IP / 复制 MAC
-// 旧 context_menu 挂载点已移除(改走 ui/menu_float 自建浮层),
-// 本函数保留至 T4 菜单项迁移后删除
-#[allow(dead_code)]
-fn device_menu(ui: &mut egui::Ui, mac: &str, ip: Ipv4Addr, i18n: &crate::i18n::I18n) {
-    if widgets::menu::menu_item(ui, i18n.t("lan-copy-ip"), true).clicked() {
-        ui.ctx().copy_text(ip.to_string());
-    }
-    if widgets::menu::menu_item(ui, i18n.t("lan-copy-mac"), true).clicked() {
-        ui.ctx().copy_text(mac.to_owned());
-    }
 }

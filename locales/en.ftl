@@ -104,6 +104,7 @@ menu-locate = Reveal program
 menu-copy-remote = Copy remote address
 menu-copy-selected = Copy selected text
 menu-copy-path = Copy process path
+menu-copy-cell = Copy cell content
 history-menu-delete-row = Delete this record
 history-menu-delete-group = Delete this group
 history-menu-delete-process = Delete all records of this process

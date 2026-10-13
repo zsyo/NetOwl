@@ -179,7 +179,7 @@ pub(super) fn table(
                             cells::bytes_cell(ui, r.bytes_out, true);
                         });
                         // 右键热区注册:组删除键(进程 + 协议 + 远端)
-                        // 手动提取(AggregateRow 不可 Clone)
+                        // 与单元格文本字段手动提取(AggregateRow 不可 Clone)
                         RowHit::push(
                             row_hits,
                             row_rect,
@@ -191,6 +191,11 @@ pub(super) fn table(
                                 process: r.process.clone(),
                                 proto: r.proto,
                                 remote: r.remote_addr(),
+                                count: r.count,
+                                total_secs: r.total_secs,
+                                last_active: r.last_active,
+                                bytes_in: r.bytes_in,
+                                bytes_out: r.bytes_out,
                             },
                         );
                         ui.end_row();

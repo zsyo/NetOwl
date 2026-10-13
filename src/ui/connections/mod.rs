@@ -3,7 +3,6 @@
 
 mod group;
 mod listen;
-mod menu;
 mod rows;
 mod sort;
 mod toolbar;
