@@ -40,8 +40,13 @@ pub fn show(
     config: &mut Config,
     elevated: bool,
     row_hits: &mut Vec<RowHit>,
+    frozen: bool,
 ) -> bool {
-    state.refresh_if_needed(db, config.general.hide_local, config.general.hide_lan);
+    // 冻结中(右键菜单打开):跳过查询刷新,rows 定格在打开瞬间;
+    // 首次进入 rows 为空时仍查一次建立基线(空表冻结无意义)
+    if !frozen || matches!(&state.rows, history_query::Rows::Detail(r) if r.is_empty()) {
+        state.refresh_if_needed(db, config.general.hide_local, config.general.hide_lan);
+    }
     let mut config_changed = false;
 
     widgets::header::page_header(ui, &i18n.t("history-title"), &i18n.t("history-subtitle"));
@@ -75,6 +80,7 @@ pub fn show(
         config,
         elevated,
         row_hits,
+        frozen,
     );
     confirm::confirm_delete_modal(ui, state, i18n, db);
     config_changed
@@ -140,6 +146,7 @@ fn rows_table(
     config: &Config,
     elevated: bool,
     row_hits: &mut Vec<RowHit>,
+    frozen: bool,
 ) {
     match &state.rows {
         history_query::Rows::Detail(_) => {
@@ -158,6 +165,7 @@ fn rows_table(
                 conns,
                 config,
                 row_hits,
+                frozen,
             );
         }
         history_query::Rows::Usage(_) => {

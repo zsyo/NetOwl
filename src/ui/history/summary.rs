@@ -72,8 +72,13 @@ pub(super) fn table(
     conns: &[Connection],
     config: &Config,
     row_hits: &mut Vec<RowHit>,
+    frozen: bool,
 ) {
-    refresh_merged(state, conns, config);
+    // 冻结中(右键菜单打开):合并缓存不重建,汇总行定格;无缓存时
+    // (切到汇总视图第一帧即右键)仍建立一次基线
+    if !frozen || state.summary_merged.is_none() {
+        refresh_merged(state, conns, config);
+    }
     let Some((_, merged)) = state.summary_merged.as_ref() else {
         return;
     };

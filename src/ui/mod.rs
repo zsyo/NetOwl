@@ -177,6 +177,9 @@ pub struct UiCtx<'a> {
     pub writer: &'a history_store::Writer,
     /// 局域网设备视图(ARP 发现,last_seen 降序)
     pub lan_devices: &'a [crate::net::lan::DeviceRow],
+    /// 历史页数据冻结中(右键菜单打开:暂停查询刷新与汇总合并,
+    /// 行内容定格;关闭后恢复)
+    pub history_frozen: bool,
     pub local_pos: (f32, f32),
 }
 
@@ -226,6 +229,7 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
             ctx.config,
             ctx.elevated,
             ctx.row_hits,
+            ctx.history_frozen,
         ),
         Page::Lan => lan::lan_ui(ui, ctx),
         Page::Rules => rules::show(

@@ -163,6 +163,7 @@ impl NetOwlApp {
             row_hits: Vec::new(),
             menu: None,
             menu_actions: Vec::new(),
+            menu_frozen: None,
             conn_sort: None,
             conn_search: String::new(),
             focus_conn_search: false,

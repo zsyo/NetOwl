@@ -8,6 +8,7 @@
 //! 左键外点 / Esc;动作入 MenuAction 队列帧末统一执行(可访问 db/
 //! collector/platform,不受 Ui 借用约束)。
 
+use std::collections::HashMap;
 use std::net::IpAddr;
 
 use eframe::egui;
@@ -15,8 +16,9 @@ use egui::{CornerRadius, Frame, Margin, RichText, Stroke};
 
 use super::row_hit::{RowCtx, RowHit};
 use crate::i18n::I18n;
-use crate::model::{Connection, Place, Protocol, fmt_bytes};
+use crate::model::{Connection, ListenEntry, Place, Protocol, fmt_bytes};
 use crate::net::geoip;
+use crate::net::lan::DeviceRow;
 use crate::storage::history_query::{self, PendingDelete};
 use crate::ui::theme;
 use crate::ui::widgets;
@@ -96,6 +98,22 @@ impl MenuAction {
             MenuAction::AskDelete(_) => "ask-delete",
         }
     }
+}
+
+/// 菜单打开期间被右击表格的冻结数据源:打开瞬间定格,菜单关闭即弃。
+/// 采集/速率/查询在后台继续跑(数据不丢),关闭后 UI 恢复即为最新
+pub enum MenuFrozen {
+    /// 连接页:连接表 + 每连接速率表克隆(行内容/顺序/速率列静止)
+    Conns {
+        conns: Vec<Connection>,
+        rates: HashMap<u64, (u64, u64)>,
+    },
+    /// 监听视图:监听表克隆
+    Listens(Vec<ListenEntry>),
+    /// 局域网页:设备表克隆
+    Lan(Vec<DeviceRow>),
+    /// 历史页:查询结果不克隆,冻结 = 暂停刷新(rows/汇总合并定格)
+    History,
 }
 
 /// 绘制菜单浮层;返回本帧动作与刷新后的 rect。开/关判定在调用方

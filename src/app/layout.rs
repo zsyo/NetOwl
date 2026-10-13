@@ -2,6 +2,7 @@
 //! 地图面板声明、重绘节奏判定、边缘缩放热区。eframe::App trait impl
 //! 必须同块于 frame,本文件经方法调用参与每帧绘制编排。
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use eframe::egui;
@@ -9,8 +10,11 @@ use eframe::egui;
 use super::{MIN_WINDOW_SIZE, NetOwlApp, REPAINT_ANIMATED, REPAINT_IDLE, REPAINT_STATIC};
 use crate::collector::CollectorKind;
 use crate::map::world;
+use crate::model::{Connection, ListenEntry};
 use crate::net::geoip;
+use crate::net::lan::DeviceRow;
 use crate::platform::resize;
+use crate::ui::menu_float::MenuFrozen;
 use crate::ui::{self, Page, UiCtx, theme};
 
 impl NetOwlApp {
@@ -79,8 +83,24 @@ impl NetOwlApp {
             .unwrap_or((world::LOCAL.lon, world::LOCAL.lat));
         // 质量采样开关先读出(config 在字面量内以 &mut 借出,不能同处再读)
         let quality_on = self.config.general.quality_monitor;
+        // 菜单打开期间:被右击表格的数据源走冻结克隆(行内容/顺序/
+        // 速率列静止),其余页面与数据照常实时
+        let (conns, conn_rates): (&[Connection], &HashMap<u64, (u64, u64)>) =
+            match &self.menu_frozen {
+                Some(MenuFrozen::Conns { conns, rates }) => (conns, rates),
+                _ => (&self.conns, &self.conn_rates),
+            };
+        let listens: &[ListenEntry] = match &self.menu_frozen {
+            Some(MenuFrozen::Listens(v)) => v,
+            _ => &self.listens,
+        };
+        let lan_devices: &[DeviceRow] = match &self.menu_frozen {
+            Some(MenuFrozen::Lan(v)) => v,
+            _ => self.lan.devices(),
+        };
+        let history_frozen = matches!(self.menu_frozen, Some(MenuFrozen::History));
         let mut ctx = UiCtx {
-            conns: &self.conns,
+            conns,
             i18n: &mut self.i18n,
             map_view: &mut self.map_view,
             config: &mut self.config,
@@ -88,13 +108,13 @@ impl NetOwlApp {
             quality: quality_on.then_some(&self.quality),
             rates: self.rates,
             rate_hist: &self.rate_hist,
-            conn_rates: &self.conn_rates,
+            conn_rates,
             conn_sort: &mut self.conn_sort,
             conn_view: &mut self.conn_view,
             conn_grouped: &mut self.conn_grouped,
             conn_collapsed: &mut self.conn_collapsed,
             nav_request: &mut self.nav_request,
-            listens: &self.listens,
+            listens,
             conn_search: &mut self.conn_search,
             focus_conn_search: &mut self.focus_conn_search,
             hotkey_capture: &mut self.hotkey_capture,
@@ -116,8 +136,9 @@ impl NetOwlApp {
             wfp_status: self.wfp.status(),
             elevated: self.elevated,
             writer: &self.writer,
-            lan_devices: self.lan.devices(),
+            lan_devices,
             local_pos,
+            history_frozen,
         };
         let mut config_changed = false;
 

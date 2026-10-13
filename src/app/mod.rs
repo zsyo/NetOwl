@@ -204,6 +204,9 @@ pub struct NetOwlApp {
     menu: Option<ui::menu_float::OpenMenu>,
     /// 菜单动作队列(帧末统一执行,摆脱 Ui 内不相交捕获与借用约束)
     menu_actions: Vec<ui::menu_float::MenuAction>,
+    /// 菜单打开期间被右击表格的冻结数据源(打开瞬间定格;None = 实时)。
+    /// 采集/速率/查询在后台继续,关闭后 UI 恢复即为最新
+    menu_frozen: Option<ui::menu_float::MenuFrozen>,
     /// 连接列表表头排序状态(会话内,不持久化)
     conn_sort: ui::ConnSortState,
     /// 连接页搜索词(进程/远端/域名包含过滤,会话内,不持久化)

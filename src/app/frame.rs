@@ -118,6 +118,21 @@ impl NetOwlApp {
             );
             if let Some(m) = &self.menu {
                 tracing::debug!("[Menu] 打开 page={} 列={:?}", m.hit.ctx.kind(), m.col);
+                // 冻结被右击表格的数据源:打开期间行内容/顺序/速率列
+                // 静止(采集与查询在后台继续,关闭后恢复即为最新)
+                self.menu_frozen = match m.hit.ctx.kind() {
+                    "conn" => Some(ui::menu_float::MenuFrozen::Conns {
+                        conns: self.conns.clone(),
+                        rates: self.conn_rates.clone(),
+                    }),
+                    "listen" => Some(ui::menu_float::MenuFrozen::Listens(self.listens.clone())),
+                    "lan" => Some(ui::menu_float::MenuFrozen::Lan(self.lan.devices().to_vec())),
+                    "detail" | "aggregate" | "summary" => Some(ui::menu_float::MenuFrozen::History),
+                    _ => None,
+                };
+                if self.menu_frozen.is_some() {
+                    tracing::debug!("[Menu] 冻结表格数据源({})", m.hit.ctx.kind());
+                }
             }
         }
         let Some(mut menu) = self.menu.take() else {
@@ -137,6 +152,7 @@ impl NetOwlApp {
         if esc || outside {
             tracing::debug!("[Menu] 关闭({})", if esc { "Esc" } else { "外点" });
             self.menu = None;
+            self.menu_frozen = None;
             return;
         }
         let (actions, rect) = ui::menu_float::show(ui.ctx(), &self.i18n, &menu, self.elevated);
@@ -144,6 +160,9 @@ impl NetOwlApp {
         if actions.is_empty() {
             // 无动作:菜单保持打开(rect 已刷新,供下帧外点判定)
             self.menu = Some(menu);
+        } else {
+            // 有点击项:菜单关闭,冻结一并解除(动作帧末执行)
+            self.menu_frozen = None;
         }
         // 有点击项:菜单关闭,动作帧末执行
         self.menu_actions.extend(actions);
