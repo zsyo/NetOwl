@@ -103,6 +103,7 @@ impl NetOwlApp {
             update_checking: self.update_rx.is_some(),
             update_result: &mut self.update_result,
             conn_row_hover: &mut self.conn_row_hover,
+            row_hits: &mut self.row_hits,
             rules_row_hover: &mut self.rules_row_hover,
             log_window: &mut self.log_window,
             icon_tex: &self.icon_tex,

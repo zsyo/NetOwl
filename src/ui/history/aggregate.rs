@@ -9,7 +9,7 @@ use egui::{Label, RichText};
 use super::cells;
 use crate::i18n::I18n;
 use crate::storage::history_query::{self, AggregateSort, Rows};
-use crate::ui::{theme, widgets};
+use crate::ui::{RowCtx, RowHit, theme, widgets};
 
 pub(super) fn table(
     ui: &mut egui::Ui,
@@ -17,6 +17,7 @@ pub(super) fn table(
     i18n: &I18n,
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
     default_icon_tex: Option<&egui::TextureHandle>,
+    row_hits: &mut Vec<RowHit>,
 ) {
     let Rows::Aggregate(rows) = &state.rows else {
         return;
@@ -115,7 +116,8 @@ pub(super) fn table(
                     for r_idx in row_range {
                         let r = &rows[r_idx];
                         let row_top = ui.cursor().top();
-                        cells::row_background(ui, table_left, table_right, row_top, r_idx);
+                        let row_rect =
+                            cells::row_background(ui, table_left, table_right, row_top, r_idx);
                         widgets::table::fixed_cell(ui, flex_w, 22.0, |ui| {
                             cells::proc_cell(
                                 ui,
@@ -176,6 +178,21 @@ pub(super) fn table(
                         widgets::table::fixed_num_cell(ui, A_BYTES_W, |ui| {
                             cells::bytes_cell(ui, r.bytes_out, true);
                         });
+                        // 右键热区注册:组删除键(进程 + 协议 + 远端)
+                        // 手动提取(AggregateRow 不可 Clone)
+                        RowHit::push(
+                            row_hits,
+                            row_rect,
+                            &[
+                                flex_w, A_PROTO_W, flex_w, A_LOC_W, A_CNT_W, A_DUR_W, A_LAST_W,
+                                A_BYTES_W, A_BYTES_W,
+                            ],
+                            RowCtx::Aggregate {
+                                process: r.process.clone(),
+                                proto: r.proto,
+                                remote: r.remote_addr(),
+                            },
+                        );
                         ui.end_row();
                     }
                 });

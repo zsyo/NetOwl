@@ -25,7 +25,7 @@ use crate::model::{Connection, fmt_bytes};
 use crate::storage::config::Config;
 use crate::storage::history;
 use crate::storage::history_query;
-use crate::ui::{icons, theme, widgets};
+use crate::ui::{RowHit, icons, theme, widgets};
 
 /// 历史页;返回是否直接改动了配置(勾选不再提醒/清空还原提醒)
 #[allow(clippy::too_many_arguments)]
@@ -40,6 +40,7 @@ pub fn show(
     writer: &history::Writer,
     config: &mut Config,
     elevated: bool,
+    row_hits: &mut Vec<RowHit>,
 ) -> bool {
     state.refresh_if_needed(db, config.general.hide_local, config.general.hide_lan);
     let mut config_changed = false;
@@ -74,6 +75,7 @@ pub fn show(
         conns,
         config,
         elevated,
+        row_hits,
     );
     confirm::confirm_delete_modal(ui, state, i18n, db);
     config_changed
@@ -138,16 +140,26 @@ fn rows_table(
     conns: &[Connection],
     config: &Config,
     elevated: bool,
+    row_hits: &mut Vec<RowHit>,
 ) {
     match &state.rows {
         history_query::Rows::Detail(_) => {
-            detail::table(ui, state, i18n, icon_tex, default_icon_tex);
+            detail::table(ui, state, i18n, icon_tex, default_icon_tex, row_hits);
         }
         history_query::Rows::Aggregate(_) => {
-            aggregate::table(ui, state, i18n, icon_tex, default_icon_tex);
+            aggregate::table(ui, state, i18n, icon_tex, default_icon_tex, row_hits);
         }
         history_query::Rows::Summary(_) => {
-            summary::table(ui, state, i18n, icon_tex, default_icon_tex, conns, config);
+            summary::table(
+                ui,
+                state,
+                i18n,
+                icon_tex,
+                default_icon_tex,
+                conns,
+                config,
+                row_hits,
+            );
         }
         history_query::Rows::Usage(_) => {
             usage::table(ui, state, i18n, elevated);

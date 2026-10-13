@@ -283,6 +283,8 @@ impl eframe::App for NetOwlApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ui_t0 = Instant::now();
+        // 行热区表每帧重建(show_panels 内各行渲染时注册)
+        self.row_hits.clear();
         // 页面与重绘判定先行(page 借用持续到帧末,后续不能碰 self)
         let shown = self.is_shown(ui.ctx());
         let log_open = self.log_window.open;
@@ -301,6 +303,21 @@ impl eframe::App for NetOwlApp {
         // 跨页跳转请求(Inspector 跳连接/历史、右键菜单查看历史)帧末应用
         if let Some(p) = self.nav_request.take() {
             self.page = p;
+        }
+        // 右键命中测试(自建菜单浮层前置):热区表由各表格行渲染注册,
+        // 后注册行居上(与 egui 平手取最后注册者同语义)。T3 起在此开菜单
+        for (pos, pressed) in self.right_clicks.drain(..) {
+            if !pressed {
+                continue;
+            }
+            match self.row_hits.iter().rev().find(|h| h.rect.contains(pos)) {
+                Some(hit) => tracing::debug!(
+                    "[Menu] 右键命中 page={} 列={:?}",
+                    hit.ctx.kind(),
+                    hit.col_at(pos)
+                ),
+                None => tracing::debug!("[Menu] 右键未命中行热区 ({pos:?})"),
+            }
         }
         let repaint = super::layout::repaint_interval(shown, &self.page, log_open);
         // 节奏变化(页面切换/显示隐藏)输出 TRACE;稳定节奏不重复输出

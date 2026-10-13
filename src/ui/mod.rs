@@ -15,6 +15,7 @@ pub mod map_widgets;
 pub mod nav;
 mod nav_rate;
 pub mod profile_manager;
+pub mod row_hit;
 pub mod rules;
 pub mod theme;
 pub mod titlebar;
@@ -42,6 +43,7 @@ use crate::storage::history as history_store;
 use crate::storage::history_query;
 
 pub use nav::nav_ui;
+pub use row_hit::{RowCtx, RowHit};
 
 /// 连接列表排序键(表头点击切换;None = 表快照原序)
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -145,6 +147,8 @@ pub struct UiCtx<'a> {
     pub update_result: &'a mut Option<Result<Option<crate::platform::update::ReleaseInfo>, String>>,
     /// 连接页行悬停辅助(跨帧行高,行首垫底用)
     pub conn_row_hover: &'a mut widgets::table::RowHover,
+    /// 表格行热区表(每帧重建,自建右键浮层命中测试;行渲染时注册)
+    pub row_hits: &'a mut Vec<RowHit>,
     /// 规则页行悬停辅助(跨帧行高)
     pub rules_row_hover: &'a mut widgets::table::RowHover,
     /// 进程图标纹理(键 = 映像路径);None 表示已提取且无图标
@@ -219,6 +223,7 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
             ctx.writer,
             ctx.config,
             ctx.elevated,
+            ctx.row_hits,
         ),
         Page::Lan => lan::lan_ui(ui, ctx),
         Page::Rules => rules::show(

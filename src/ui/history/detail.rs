@@ -9,7 +9,7 @@ use egui::{Label, RichText};
 use super::cells;
 use crate::i18n::I18n;
 use crate::storage::history_query::{self, Rows};
-use crate::ui::{theme, widgets};
+use crate::ui::{RowCtx, RowHit, theme, widgets};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn table(
@@ -18,6 +18,7 @@ pub(super) fn table(
     i18n: &I18n,
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
     default_icon_tex: Option<&egui::TextureHandle>,
+    row_hits: &mut Vec<RowHit>,
 ) {
     let Rows::Detail(rows) = &state.rows else {
         return;
@@ -72,7 +73,8 @@ pub(super) fn table(
                     for r_idx in row_range {
                         let r = &rows[r_idx];
                         let row_top = ui.cursor().top();
-                        cells::row_background(ui, table_left, table_right, row_top, r_idx);
+                        let row_rect =
+                            cells::row_background(ui, table_left, table_right, row_top, r_idx);
                         widgets::table::fixed_cell(ui, flex_w, 22.0, |ui| {
                             cells::proc_cell(
                                 ui,
@@ -128,6 +130,24 @@ pub(super) fn table(
                         widgets::table::fixed_num_cell(ui, D_BYTES_W, |ui| {
                             cells::bytes_cell(ui, r.bytes_out, true);
                         });
+                        // 右键热区注册:删除键(event_id + 首末时刻)与
+                        // 定位/复制字段手动提取(DetailRow 不可 Clone)
+                        RowHit::push(
+                            row_hits,
+                            row_rect,
+                            &[
+                                flex_w, D_PROTO_W, flex_w, D_LOC_W, D_SEEN_W, D_DUR_W, D_BYTES_W,
+                                D_BYTES_W,
+                            ],
+                            RowCtx::Detail {
+                                event_id: r.event_id,
+                                first_seen: r.first_seen,
+                                last_seen: r.last_seen,
+                                proc_path: r.proc_path.clone(),
+                                remote: r.remote_addr(),
+                                remote_port: r.remote_port,
+                            },
+                        );
                         ui.end_row();
                     }
                 });

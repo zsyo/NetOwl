@@ -44,6 +44,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         focus_conn_search,
         conn_proto,
         conn_row_hover,
+        row_hits,
         ..
     } = ctx;
     // &mut UiCtx 解构出的引用字段带两层 &mut,借类型注解 coerce 回单层
@@ -210,6 +211,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                                     conn_rates,
                                     rules,
                                     conn_row_hover,
+                                    row_hits,
                                     table_left,
                                     table_right,
                                     flex_w,

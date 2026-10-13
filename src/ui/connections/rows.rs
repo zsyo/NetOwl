@@ -10,7 +10,7 @@ use crate::i18n::I18n;
 use crate::model::{Connection, Signing, fmt_bytes};
 use crate::net::rdns;
 use crate::rules as rules_engine;
-use crate::ui::{theme, widgets};
+use crate::ui::{RowCtx, RowHit, theme, widgets};
 
 /// 单行渲染(行悬停垫底 + 九列内容;右键菜单经行热区走自建浮层,
 /// 见 ui/menu_float 与 row_hit)
@@ -25,6 +25,7 @@ pub(super) fn conn_row(
     conn_rates: &HashMap<u64, (u64, u64)>,
     rules: &mut rules_engine::RuleSet,
     conn_row_hover: &mut widgets::table::RowHover,
+    row_hits: &mut Vec<RowHit>,
     table_left: f32,
     table_right: f32,
     flex_w: f32,
@@ -33,6 +34,12 @@ pub(super) fn conn_row(
     use super::{C_ACTION_W, C_LOC_W, C_PROTO_W, C_RATE_W, C_TOTAL_W};
     let row_top = ui.cursor().top();
     conn_row_hover.begin(ui, table_left, table_right, row_top, idx);
+    // 行整格区域(含行间距半高,与悬停垫底同域):右键热区注册用
+    let row_rect = egui::Rect::from_min_max(
+        egui::pos2(table_left, row_top),
+        egui::pos2(table_right, row_top + 36.0),
+    )
+    .expand2(egui::vec2(0.0, widgets::table::ROW_SPACING_Y * 0.5));
     let process = if conn.process.is_empty() {
         format!(
             "{} {}",
@@ -170,6 +177,17 @@ pub(super) fn conn_row(
             }
         }
     });
+    // 右键热区注册:列宽与表头同一组常量(末列右界贴行右缘),
+    // "复制该单元格内容"按命中列取文本
+    RowHit::push(
+        row_hits,
+        row_rect,
+        &[
+            flex_w, C_PROTO_W, flex_w, C_LOC_W, C_RATE_W, C_RATE_W, C_TOTAL_W, C_TOTAL_W,
+            C_ACTION_W,
+        ],
+        RowCtx::Conn(conn.clone()),
+    );
     ui.end_row();
     conn_row_hover.end(ui, row_top);
 }

@@ -9,6 +9,7 @@ use windows::Win32::Foundation::{ERROR_INSUFFICIENT_BUFFER, ERROR_SUCCESS};
 use windows::Win32::NetworkManagement::IpHelper::{GetIpNetTable, MIB_IPNETTABLE};
 
 /// LAN 页设备行(库记录 + 本轮在线状态合并)
+#[derive(Clone)]
 pub struct DeviceRow {
     /// 规范化 MAC("aa:bb:cc:dd:ee:ff" 小写冒号串,表主键)
     pub mac: String,

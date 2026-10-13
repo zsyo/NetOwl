@@ -160,6 +160,7 @@ impl NetOwlApp {
             selected_text: None,
             last_selection: false,
             right_clicks: Vec::new(),
+            row_hits: Vec::new(),
             conn_sort: None,
             conn_search: String::new(),
             focus_conn_search: false,

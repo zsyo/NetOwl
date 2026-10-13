@@ -11,7 +11,7 @@ use crate::i18n::I18n;
 use crate::model::Connection;
 use crate::storage::config::Config;
 use crate::storage::history_query::{self, Rows, SummaryRow, SummarySort};
-use crate::ui::{conn_visible, theme, widgets};
+use crate::ui::{RowCtx, RowHit, conn_visible, theme, widgets};
 
 /// 汇总视图活跃合并缓存的生存期:略短于静态页 1s 重绘间隔,
 /// 保证每次常规重绘都会拿到新鲜活跃字节,交互帧复用不重算
@@ -71,6 +71,7 @@ pub(super) fn table(
     default_icon_tex: Option<&egui::TextureHandle>,
     conns: &[Connection],
     config: &Config,
+    row_hits: &mut Vec<RowHit>,
 ) {
     refresh_merged(state, conns, config);
     let Some((_, merged)) = state.summary_merged.as_ref() else {
@@ -203,6 +204,14 @@ pub(super) fn table(
                         if !r.process.is_empty() {
                             resp = resp.on_hover_text(i18n.t("history-summary-drill"));
                         }
+                        // 右键热区注册(整进程删除 + 定位/复制;SummaryRow
+                        // 可 Clone 直接携带)
+                        RowHit::push(
+                            row_hits,
+                            row_rect,
+                            &[flex_w, SUM_UP_W, SUM_DOWN_W, SUM_CNT_W, SUM_DUR_W],
+                            RowCtx::Summary(r.clone()),
+                        );
                         ui.end_row();
                     }
                 });

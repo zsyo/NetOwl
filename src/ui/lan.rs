@@ -11,14 +11,13 @@ use egui::{Label, RichText};
 
 use crate::net::lan::DeviceRow;
 use crate::storage::history_query;
-use crate::ui::UiCtx;
-use crate::ui::theme;
-use crate::ui::widgets;
+use crate::ui::{RowCtx, RowHit, UiCtx, theme, widgets};
 
 /// 局域网页;返回恒 false(无直接配置改动)
 pub(super) fn lan_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     let devices = ctx.lan_devices;
     let i18n = &mut ctx.i18n;
+    let row_hits = &mut ctx.row_hits;
     widgets::header::page_header(ui, &i18n.t("lan-title"), &i18n.t("lan-subtitle"));
     ui.add_space(theme::sp::SM);
 
@@ -147,6 +146,13 @@ pub(super) fn lan_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                         if row_resp.hovered() {
                             ui.painter().rect_filled(row_rect, 0.0, theme::c().hover_bg);
                         }
+                        // 右键热区注册(复制 IP / MAC)
+                        RowHit::push(
+                            row_hits,
+                            row_rect,
+                            &[flex_w, C_MAC_W, C_SEEN_W, C_SEEN_W, C_STATUS_W],
+                            RowCtx::Lan(d.clone()),
+                        );
                         ui.end_row();
                     }
                 });
