@@ -30,10 +30,19 @@ pub fn noise_filter(
     let label = format!("{}  {}", icons::FUNNEL, i18n.t("filter-noise"));
     let pad = ui.spacing().button_padding;
     let icon_w = ui.spacing().icon_width;
-    let btn_w = text_width(ui, &label, theme::font::BODY)
+    let menu_margin = f32::from(ui.spacing().menu_margin.left);
+    // 弹窗与按钮同宽(ComboBox 弹窗即与按钮同宽):按钮宽取"按钮内容"
+    // 与"最宽菜单项 + 弹窗双边距"的较大值,弹窗内容宽按按钮宽反推,
+    // 两项由 justified 布局拉齐,避免按钮与弹窗一宽一窄
+    let item_w = [i18n.t("filter-hide-local"), i18n.t("filter-hide-lan")]
+        .iter()
+        .map(|t| ITEM_PAD + CHECK_COL_W + text_width(ui, t, theme::font::BODY) + ITEM_PAD)
+        .fold(0.0, f32::max);
+    let btn_w = (text_width(ui, &label, theme::font::BODY)
         + ui.spacing().icon_spacing
         + icon_w
-        + pad.x * 2.0;
+        + pad.x * 2.0)
+        .max(item_w + menu_margin * 2.0);
     let mut button = egui::Button::new(RichText::new(label).size(theme::font::BODY))
         .min_size(egui::vec2(btn_w, ROW_H))
         .corner_radius(egui::CornerRadius::same(theme::RADIUS_SM));
@@ -53,6 +62,8 @@ pub fn noise_filter(
                         MenuConfig::new().close_behavior(PopupCloseBehavior::CloseOnClickOutside),
                     )
                     .ui(ui, |ui| {
+                        // 弹窗内容宽 = 按钮宽 - 弹窗框架边距,总宽即按钮宽
+                        ui.set_width((btn_w - menu_margin * 2.0).max(0.0));
                         ui.with_layout(
                             egui::Layout::top_down(egui::Align::LEFT).with_cross_justify(true),
                             |ui| {
