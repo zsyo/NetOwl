@@ -73,7 +73,8 @@ pub struct Palette {
     /// 强描边(输入框/卡片边界,弱化描边强调层级时使用)
     pub stroke_strong: Color32,
     // 交互态
-    /// 控件悬停底色
+    /// 控件悬停底色;须与弹窗底色 bg_elevated 有可感知差(菜单项悬停
+    /// 高亮画在弹窗底色上,同色会导致深色主题下悬停反馈不可见)
     pub hover_bg: Color32,
     /// 控件展开底色(下拉菜单打开等)
     pub open_bg: Color32,
@@ -118,7 +119,10 @@ pub(super) const DARK: Palette = Palette {
     on_accent: Color32::from_rgb(255, 255, 255),
     stroke: Color32::from_rgb(42, 51, 69),
     stroke_strong: Color32::from_rgb(56, 67, 89),
-    hover_bg: Color32::from_rgb(27, 35, 51),
+    // 悬停底色:比弹窗底色 bg_elevated (26,35,52) 亮一档,菜单项/
+    // 表格行/按钮悬停反馈在深色底上均可感知( egui 原生弹窗选项的
+    // 悬停高亮经 theme.rs widgets.hovered 同源取此色)
+    hover_bg: Color32::from_rgb(42, 52, 74),
     open_bg: Color32::from_rgb(26, 35, 52),
 };
 
