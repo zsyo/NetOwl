@@ -169,6 +169,9 @@ ball-menu-close = 关闭悬浮窗
 
 settings-log = 运行日志
 settings-log-level = 日志级别
+settings-log-retain = 保留历史日志
+settings-log-retain-hint = 自动删除超过该天数的日志归档文件(latest.log 不动),0 表示不自动清理
+settings-log-retain-unit = 天
 settings-log-level-hint = 立即生效,作用于控制台与日志文件;浏览窗口内可独立调整显示级别
 settings-log-file-on = 写入日志文件
 settings-log-file-hint = 写入 exe 同级 logs 目录,旧文件按时间戳自动轮转

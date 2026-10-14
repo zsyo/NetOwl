@@ -110,6 +110,10 @@ pub struct GeneralConfig {
     /// 文件日志(exe 同级 logs/latest.log,旧文件按时间戳轮转)
     #[serde(default)]
     pub log_to_file: bool,
+    /// 日志归档保留天数(logs/ 下轮转归档按修改时间自动清理,
+    /// latest.log 不动;0 = 不自动清理)
+    #[serde(default = "default_log_retain_days")]
+    pub log_retain_days: u32,
     /// 检查更新渠道:"stable"(正式版,默认)/ "preview"(预览版,含
     /// pre-release;最新为正式版时同样覆盖)
     #[serde(default)]
@@ -166,6 +170,7 @@ impl Default for GeneralConfig {
             usage_quota_gb: 0,
             log_level: default_log_level(),
             log_to_file: false,
+            log_retain_days: default_log_retain_days(),
             update_channel: String::new(),
             hotkey: default_hotkey(),
             count_format: default_count_format(),
@@ -185,6 +190,11 @@ fn default_profile() -> i64 {
 
 fn default_log_level() -> String {
     "info".to_owned()
+}
+
+/// 默认日志归档保留 7 天
+fn default_log_retain_days() -> u32 {
+    7
 }
 
 /// 默认全局快捷键:Ctrl+Alt+N(与 PRESETS[1] 一致)

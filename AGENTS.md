@@ -116,7 +116,9 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   层 GUID 按族取 CONNECT/RECV_ACCEPT 的 V4/V6 版]
   [app id blob/网段 RANGE/协议端口等值]))
 - src/storage/ - 持久化(config.rs:应用配置(config.toml,serde TOML + 防抖
-  写盘);db.rs:SQLite 连接与结构迁移(v5 = conn_events 补 bytes_in/out 列;
+  写盘;general 含 log_to_file/log_level/log_retain_days[日志归档保留
+  天数,默认 7,0 = 不清理]、usage_quota_gb[月度配额,0 = 不告警]、
+  history_days[历史数据保留,0 = 不清理]等);db.rs:SQLite 连接与结构迁移(v5 = conn_events 补 bytes_in/out 列;
   v6 = lan_devices 局域网设备表;v7 = profiles 配置档表 + rules.profile_id;
   v8 = rules.hit_count 规则命中计数列;v9 = conn_events.remote_ip6
   IPv6 远端列[16 字节大端 BLOB,等长 memcmp 字典序即数值序,v6 行的
@@ -138,6 +140,13 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   fmt_local[Win32 SystemTime]、parse_ip_prefix、fmt_duration;page.rs:
   ViewMode/Range/Rows/PageState[视图/筛选/排序/结果/清空,筛选防抖
   300ms,汇总活跃合并缓存]))
+- src/logging/ - 日志基础设施(mod.rs:tracing 三通道[控制台/文件
+  logs/latest.log/内存层 window_layer],ToggleableWriter 动态开关,
+  文件开关由关转开时轮转旧文件为 {时间戳}.log;cleanup_old_logs 按
+  保留天数清理轮转归档[跳过 latest.log 只删 .log,文件年龄一律按
+  修改时间——NTFS 同名新文件继承创建时间不可靠;返回删除个数],
+  local_day 本地日期 YYYYMMDD 供每日清理翻转判定;设置-日志页
+  "保留历史日志"默认 7 天,App 层启动与每天 0 点过后各清一次);
 - src/net/ - 网络信息(geoip.rs:GeoIP 归属定位(assets/geoip.bin 编译期内嵌,
   首用解析一次;v4/v6 双族区间表 LEB128 delta 编码二分查询[v6 为 u128,
   NWGI v3];城市级粒度:中国含港澳台到地级市、外国按城市名匹配 GeoNames,

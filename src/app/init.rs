@@ -190,6 +190,7 @@ impl NetOwlApp {
             hotkey_report_rx,
             hotkey_synced,
             hits_flush_at: Instant::now(),
+            log_cleanup_day: 0,
             should_exit: false,
             elevated,
             window_visible: !minimized,

@@ -72,6 +72,40 @@ pub(super) fn section(
             ui.add_space(theme::sp::SM);
             setting_row(
                 ui,
+                &i18n.t("settings-log-retain"),
+                &i18n.t("settings-log-retain-hint"),
+                |ui| {
+                    // 0 = 不自动清理,显示 "-" 与采样端口 0 值同口径;
+                    // 清理由 App 层每日 0 点后与启动各跑一次(按修改时间)
+                    let before = config.general.log_retain_days;
+                    *changed |= ui
+                        .add(
+                            egui::DragValue::new(&mut config.general.log_retain_days)
+                                .range(0..=365)
+                                .custom_formatter(|v, _| {
+                                    if v < 1.0 {
+                                        "-".to_owned()
+                                    } else {
+                                        format!(
+                                            "{} {}",
+                                            v as u32,
+                                            i18n.t("settings-log-retain-unit")
+                                        )
+                                    }
+                                }),
+                        )
+                        .changed();
+                    if config.general.log_retain_days != before {
+                        tracing::debug!(
+                            "[Settings] 日志归档保留期 -> {} 天",
+                            config.general.log_retain_days
+                        );
+                    }
+                },
+            );
+            ui.add_space(theme::sp::SM);
+            setting_row(
+                ui,
                 &i18n.t("settings-log-view"),
                 &i18n.t("settings-log-view-hint"),
                 |ui| {

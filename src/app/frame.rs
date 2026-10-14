@@ -99,6 +99,22 @@ impl NetOwlApp {
             ctx.request_repaint();
         }
     }
+
+    /// 日志归档自动清理:本地日期翻转时清一次(启动必清,之后每天
+    /// 0 点过后再清);保留天数 0 = 不清理。清理本身按文件修改时间
+    /// 计(NTFS 同名新文件继承创建时间,创建时间不可靠)
+    fn poll_log_cleanup(&mut self) {
+        let today = crate::logging::local_day();
+        if self.log_cleanup_day == today {
+            return;
+        }
+        self.log_cleanup_day = today;
+        let days = self.config.general.log_retain_days;
+        let removed = crate::logging::cleanup_old_logs(u64::from(days));
+        if removed > 0 {
+            tracing::info!("[Log] 自动清理 {removed} 个超过 {days} 天的日志归档");
+        }
+    }
     /// 自建右键菜单浮层:开/关判定 + 绘制 + 动作入队。菜单是
     /// Foreground Area 浮层,与表格行 rect 不相交——点击不经表格
     /// hit-test(context_menu"按住跨帧重排点击错位"的根除),右键也
@@ -351,6 +367,9 @@ impl eframe::App for NetOwlApp {
                 tracing::warn!("[Rules] 命中计数落盘失败: {e}");
             }
         }
+        // 日志归档自动清理:启动时一次,之后每天 0 点过后(本地日期
+        // 翻转)一次;保留 0 天 = 不清理
+        self.poll_log_cleanup();
         // 关机/注销落库钩子:首帧安装一次,内部防重复(winit 不处理
         // ENDSESSION,关机时唯一能把活跃连接落库的路径)
         shutdown_hook::install(

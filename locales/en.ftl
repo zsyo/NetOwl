@@ -169,6 +169,9 @@ ball-menu-close = Close Floating Widget
 
 settings-log = Logging
 settings-log-level = Log level
+settings-log-retain = Retain log files
+settings-log-retain-hint = Auto-delete rotated log archives older than this many days (latest.log is kept); 0 disables cleanup
+settings-log-retain-unit = days
 settings-log-level-hint = Applies immediately to console and file; the log window has its own shown level
 settings-log-file-on = Write to log file
 settings-log-file-hint = Write to the logs directory next to the exe, old files rotate by timestamp

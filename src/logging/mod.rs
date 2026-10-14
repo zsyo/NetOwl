@@ -174,6 +174,61 @@ pub fn flush() {
     }
 }
 
+/// 清理 logs/ 下超过 retain_days 的轮转归档,返回删除个数。
+/// retain_days = 0 表示不清理(直接返回)。latest.log 与当前正在
+/// 写的文件不动,只删 .log 归档。文件年龄一律按**修改时间**计:
+/// NTFS 上新创建的同名文件会继承旧文件的创建时间(用户态无法
+/// 重置),创建时间不可靠(wallwarp 同款口径)
+pub fn cleanup_old_logs(retain_days: u64) -> usize {
+    if retain_days == 0 {
+        return 0;
+    }
+    let mut removed = 0usize;
+    let max_age = std::time::Duration::from_secs(retain_days * 24 * 60 * 60);
+    let now = std::time::SystemTime::now();
+    let entries = match std::fs::read_dir(paths::LOGS_DIR) {
+        Ok(e) => e,
+        Err(e) => {
+            tracing::warn!("[Log] 读取日志目录 {} 失败: {e}", paths::LOGS_DIR);
+            return 0;
+        }
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        // 跳过当前日志与非 .log 文件(轮转归档名为 {时间戳}.log)
+        let is_archive = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n != "latest.log" && n.ends_with(".log"));
+        if !is_archive {
+            continue;
+        }
+        let expired = std::fs::metadata(&path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| now.duration_since(t).ok())
+            .is_some_and(|age| age > max_age);
+        if !expired {
+            continue;
+        }
+        match std::fs::remove_file(&path) {
+            Ok(()) => removed += 1,
+            Err(e) => tracing::warn!("[Log] 删除过期日志归档 {} 失败: {e}", path.display()),
+        }
+    }
+    removed
+}
+
+/// 本地日期 "YYYYMMDD"(日志归档每日清理的日期翻转判定;
+/// 0 = 未记录过,启动时必触发一次清理)
+pub(crate) fn local_day() -> u32 {
+    let st = unsafe { GetLocalTime() };
+    u32::from(st.wYear) * 10000 + u32::from(st.wMonth) * 100 + u32::from(st.wDay)
+}
+
 fn file_writer_cell() -> &'static Mutex<Option<NonBlocking>> {
     FILE_WRITER.get_or_init(|| Mutex::new(None))
 }

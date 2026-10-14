@@ -97,13 +97,20 @@ pub(super) fn section(ui: &mut egui::Ui, config: &mut Config, i18n: &I18n, chang
                 &i18n.t("settings-quota"),
                 &i18n.t("settings-quota-hint"),
                 |ui| {
-                    // 0 = 不启用;达到 80%/100% 阈值时右下角告警
+                    // 0 = 不启用(显示 "-" 与端口 0 值同口径);达到
+                    // 80%/100% 阈值时右下角告警
                     let before = config.general.usage_quota_gb;
                     *changed |= ui
                         .add(
                             egui::DragValue::new(&mut config.general.usage_quota_gb)
                                 .range(0..=1024)
-                                .suffix(format!(" {}", i18n.t("settings-quota-unit"))),
+                                .custom_formatter(|v, _| {
+                                    if v < 1.0 {
+                                        "-".to_owned()
+                                    } else {
+                                        format!("{} {}", v as u32, i18n.t("settings-quota-unit"))
+                                    }
+                                }),
                         )
                         .changed();
                     if config.general.usage_quota_gb != before {
@@ -120,13 +127,23 @@ pub(super) fn section(ui: &mut egui::Ui, config: &mut Config, i18n: &I18n, chang
                 &i18n.t("settings-history-days"),
                 &i18n.t("settings-history-days-hint"),
                 |ui| {
-                    // 0 = 不自动清理
+                    // 0 = 不自动清理(显示 "-" 与端口 0 值同口径)
                     let before = config.general.history_days;
                     *changed |= ui
                         .add(
                             egui::DragValue::new(&mut config.general.history_days)
                                 .range(0..=365)
-                                .suffix(format!(" {}", i18n.t("settings-history-days-unit"))),
+                                .custom_formatter(|v, _| {
+                                    if v < 1.0 {
+                                        "-".to_owned()
+                                    } else {
+                                        format!(
+                                            "{} {}",
+                                            v as u32,
+                                            i18n.t("settings-history-days-unit")
+                                        )
+                                    }
+                                }),
                         )
                         .changed();
                     if config.general.history_days != before {

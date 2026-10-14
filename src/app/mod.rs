@@ -253,6 +253,9 @@ pub struct NetOwlApp {
     hotkey_synced: String,
     /// 命中计数上次落盘时刻(30s 批量)
     hits_flush_at: Instant,
+    /// 日志归档上次清理的本地日期(YYYYMMDD;0 = 未清理过,启动
+    /// 必触发一次;日期翻转即新一天 0 点过后,再清一次)
+    log_cleanup_day: u32,
     should_exit: bool,
     /// 是否以管理员令牌运行(启动时判定;ETW/WFP 可用性与右键"结束连接")
     elevated: bool,
