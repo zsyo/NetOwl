@@ -251,9 +251,9 @@ history-range-24h = Last 24 hours
 history-range-7d = Last 7 days
 history-range-month = This month
 history-filter-process = Process…
-history-filter = Filter
+filter-noise = Filter
 history-filter-remote = Remote IP…
-history-filter-proto-all = All protocols
+filter-proto-all = All protocols
 history-refresh = Refresh
 history-export = Export CSV
 history-db-size = Database {$size}
@@ -418,7 +418,6 @@ settings-quota-hint = Alert at 80% and 100% of the quota; "-" = disabled
 settings-quota-unit = GB
 
 listen-search = Search process or port
-proto-all = All
 
 menu-view-history = View history
 inspector-open-conns = View in connections

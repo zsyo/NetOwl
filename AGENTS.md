@@ -222,7 +222,9 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   rows.rs:行渲染[行悬停高亮 Order::Background 垫底、进程
   两行列/协议徽章/rDNS 域名两行列/速率与累计数字列右对齐/规则求值动作
   徽章];group.rs:分组头行[图标+名称+连接数徽章+组累计,整行可点折叠,
-  预计算 HeaderData];toolbar.rs:视图切换/噪音过滤/分组/协议筛选/搜索
+  预计算 HeaderData];toolbar.rs:视图切换/搜索/协议筛选下拉(ComboBox
+  收起态,与历史页同型)/噪音过滤下拉(widgets::noise_filter,与历史页
+  共用:前置对钩勾选、激活时按钮 accent 高亮、菜单点击不关)/按进程分组
   [Ctrl+F 聚焦、焦点在框内 Esc 清空];menu.rs:行右键菜单[结束连接=SetTcpEntry DELETE_TCB,仅 TCP 行且
   提权可用,非提权禁用带提示/定位程序/复制远端地址/复制进程路径];
   sort.rs:表头排序);
@@ -248,8 +250,9 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   history/:历史页(mod.rs:show 入口与四视图分发 + 超容提醒卡[warn 低透明
   底 + 警示图标,勾选不再提醒=一票否决持久化,手动清空还原];toolbar.rs:
   四视图 segmented 切换/时间范围/进程远端协议筛选[300ms 防抖]/导出按钮/
-  噪音过滤下拉[隐藏本地/局域网可勾选,激活时按钮 accent 高亮,菜单点击不
-  关]/库大小置于清理菜单首行;detail.rs:明细 8 列[行右键删该条];
+  噪音过滤下拉[widgets::noise_filter,与连接页共用:前置对钩勾选、
+  激活时按钮 accent 高亮、菜单点击不关]/库大小置于清理菜单首行;
+  detail.rs:明细 8 列[行右键删该条];
   aggregate.rs:聚合 9 列表头可排序[行右键删该组];summary.rs:进程汇总
   [按进程聚合字节总量/次数/时长,默认上传降序,数字含活跃连接实时字节——
   活跃合并缓存按秒失效不写回查询缓存;汇总行整行点击下钻明细并按进程名

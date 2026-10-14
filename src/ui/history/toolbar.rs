@@ -3,11 +3,7 @@
 //! 手动清理菜单(库大小置于菜单首行)。
 
 use eframe::egui;
-use egui::{
-    CornerRadius, RichText,
-    containers::PopupCloseBehavior,
-    containers::menu::{MenuButton, MenuConfig},
-};
+use egui::{CornerRadius, RichText, containers::menu::MenuButton};
 use rusqlite::Connection as Db;
 
 use super::export;
@@ -124,55 +120,18 @@ pub(super) fn toolbar(
                 }
             });
 
-        // 噪音过滤下拉(config 持久化,连接页与历史页共享):英文文案
-        // 长,行内平铺两个 checkbox 会把右组库大小+清理挤出叠印(最小
-        // 窗口 1440 下英文总宽约 1350 > 可用 1198),收进漏斗下拉;
-        // 勾选项点击后菜单保持(CloseOnClickOutside),可连续勾两项
-        let noise_on = config.general.hide_local || config.general.hide_lan;
-        let mut filter_button = egui::Button::new(
-            RichText::new(format!(
-                "{}  {}  {}",
-                icons::FUNNEL,
-                i18n.t("history-filter"),
-                icons::CARET_DOWN_FILL
-            ))
-            .size(theme::font::BODY),
-        )
-        .corner_radius(CornerRadius::same(theme::RADIUS_SM));
-        if noise_on {
-            filter_button = filter_button.fill(theme::c().accent_soft);
+        // 噪音过滤下拉(与连接页共用的 widgets::noise_filter):英文
+        // 文案长,行内平铺两个 checkbox 会把右组库大小+清理挤出叠印
+        // (最小窗口 1440 下英文总宽约 1350 > 可用 1198),收进漏斗下拉
+        if widgets::noise_filter::noise_filter(
+            ui,
+            i18n,
+            &mut config.general.hide_local,
+            &mut config.general.hide_lan,
+        ) {
+            state.dirty = true;
+            *config_changed = true;
         }
-        MenuButton::from_button(filter_button)
-            .config(MenuConfig::new().close_behavior(PopupCloseBehavior::CloseOnClickOutside))
-            .ui(ui, |ui| {
-                ui.with_layout(
-                    egui::Layout::top_down(egui::Align::LEFT).with_cross_justify(true),
-                    |ui| {
-                        if ui
-                            .selectable_label(
-                                config.general.hide_local,
-                                RichText::new(i18n.t("filter-hide-local")).size(theme::font::BODY),
-                            )
-                            .clicked()
-                        {
-                            config.general.hide_local = !config.general.hide_local;
-                            state.dirty = true;
-                            *config_changed = true;
-                        }
-                        if ui
-                            .selectable_label(
-                                config.general.hide_lan,
-                                RichText::new(i18n.t("filter-hide-lan")).size(theme::font::BODY),
-                            )
-                            .clicked()
-                        {
-                            config.general.hide_lan = !config.general.hide_lan;
-                            state.dirty = true;
-                            *config_changed = true;
-                        }
-                    },
-                );
-            });
 
         if ui
             .button(RichText::new(i18n.t("history-refresh")).size(theme::font::BODY))
@@ -252,7 +211,7 @@ fn purge_choices(i18n: &I18n) -> Vec<(u32, String)> {
 
 fn proto_name(i18n: &I18n, proto: Option<Protocol>) -> String {
     match proto {
-        None => i18n.t("history-filter-proto-all"),
+        None => i18n.t("filter-proto-all"),
         Some(p) => p.as_str().to_owned(),
     }
 }

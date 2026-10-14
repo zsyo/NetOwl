@@ -9,6 +9,7 @@ pub mod button;
 pub mod card;
 pub mod header;
 pub mod menu;
+pub mod noise_filter;
 pub mod process;
 pub mod search_box;
 pub mod segmented;

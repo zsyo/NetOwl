@@ -268,9 +268,9 @@ history-range-24h = 最近 24 小时
 history-range-7d = 最近 7 天
 history-range-month = 本月
 history-filter-process = 进程名…
-history-filter = 筛选
+filter-noise = 筛选
 history-filter-remote = 远端 IP…
-history-filter-proto-all = 全部协议
+filter-proto-all = 全部协议
 history-refresh = 刷新
 history-export = 导出 CSV
 history-db-size = 历史库 {$size}
@@ -419,7 +419,6 @@ settings-quota-hint = 当月用量达到配额 80% 与 100% 时提醒,- = 不启
 settings-quota-unit = GB
 
 listen-search = 搜索进程或端口
-proto-all = 全部
 
 menu-view-history = 查看历史记录
 inspector-open-conns = 在连接页查看

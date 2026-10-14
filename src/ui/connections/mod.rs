@@ -151,14 +151,18 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     // 随连接数线性增长(每行含规则求值与十余次文本布局)
     let mut flat: Vec<FlatRow> = Vec::with_capacity(shown.len() + 8);
     if *conn_grouped {
-        // 按进程分组:shown 排序后同进程相邻,聚合保持首现顺序;
-        // 组头行点击折叠/展开(状态键 = 进程名,会话态)
+        // 按进程分组:按进程名合并全部连接(不能只合并连续同名行——
+        // shown 按用户排序键排列,默认快照序下同进程连接可能被拆断,
+        // 连续合并会产生同名分组头,组头 interact 的 ID(进程名)相撞),
+        // 组序保持首现顺序;组头行点击折叠/展开(状态键 = 进程名,会话态)
+        let mut index: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
         let mut groups: Vec<(String, Vec<&Connection>)> = Vec::new();
         for c in &shown {
-            match groups.last_mut() {
-                Some((name, list)) if *name == c.process => list.push(c),
-                _ => groups.push((c.process.clone(), vec![c])),
-            }
+            let idx = *index.entry(c.process.as_str()).or_insert_with(|| {
+                groups.push((c.process.clone(), Vec::new()));
+                groups.len() - 1
+            });
+            groups[idx].1.push(c);
         }
         for (name, group) in groups {
             let (up, down) = group
