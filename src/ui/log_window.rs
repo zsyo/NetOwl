@@ -137,20 +137,36 @@ pub fn show(ctx: &egui::Context, state: &mut PageState, i18n: &I18n) {
     });
 }
 
+/// 工具栏标签:占位 + painter 直绘,文字垂直居中于工具栏行。直接
+/// ui.label 时其分配 rect 比同行交互控件(interact_size 26)高约
+/// 4px 且文字贴在分配区顶部,与控件文字错位——水平行 placer 对
+/// 非交互矮件与交互控件的 frame 填充口径不一致(实测标签 rect
+/// 中心 19 vs 控件 23,行中心 23),按表单标签既定定案直绘对齐
+fn toolbar_label(ui: &mut egui::Ui, text: &str) {
+    let w = crate::ui::text_width(ui, text, theme::font::BODY);
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(w, TOOLBAR_ROW_H), egui::Sense::hover());
+    ui.painter().text(
+        rect.left_center(),
+        egui::Align2::LEFT_CENTER,
+        text,
+        egui::FontId::proportional(theme::font::BODY),
+        theme::c().text_dim,
+    );
+}
+
 /// 顶栏:展示级别下拉、自动滚动、过滤输入、清空按钮
 fn toolbar(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n) {
     ui.horizontal(|ui| {
         // 行高抬升只作用于本工具栏行(style_mut 泄漏到整页会改变
         // 后续所有布局的最小交互高度)
         ui.style_mut().spacing.interact_size.y = TOOLBAR_ROW_H;
-        ui.label(theme::dim_text(
-            &i18n.t("log-window-level"),
-            theme::font::BODY,
-        ));
+        toolbar_label(ui, &i18n.t("log-window-level"));
         let before = state.shown_level;
         egui::ComboBox::from_id_salt("log-window-level")
             .width(110.0)
-            .selected_text(i18n.t(level_key(state.shown_level)))
+            .selected_text(
+                RichText::new(i18n.t(level_key(state.shown_level))).size(theme::font::BODY),
+            )
             .show_ui(ui, |ui| {
                 for level in LogLevel::ALL {
                     if ui
@@ -168,14 +184,14 @@ fn toolbar(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n) {
             logging::window_layer::set_shown_level(Some(state.shown_level));
         }
         ui.add_space(8.0);
-        ui.checkbox(&mut state.auto_scroll, i18n.t("log-window-autoscroll"));
+        ui.checkbox(
+            &mut state.auto_scroll,
+            RichText::new(i18n.t("log-window-autoscroll")).size(theme::font::BODY),
+        );
         ui.add_space(8.0);
-        let clear = ui.button(i18n.t("log-window-clear"));
+        let clear = ui.button(RichText::new(i18n.t("log-window-clear")).size(theme::font::BODY));
         ui.add_space(8.0);
-        ui.label(theme::dim_text(
-            &i18n.t("log-window-filter"),
-            theme::font::BODY,
-        ));
+        toolbar_label(ui, &i18n.t("log-window-filter"));
         crate::ui::widgets::search_box::search_box(
             ui,
             &mut state.filter,
