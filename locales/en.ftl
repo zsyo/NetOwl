@@ -251,6 +251,7 @@ history-range-24h = Last 24 hours
 history-range-7d = Last 7 days
 history-range-month = This month
 history-filter-process = Process…
+history-filter = Filter
 history-filter-remote = Remote IP…
 history-filter-proto-all = All protocols
 history-refresh = Refresh

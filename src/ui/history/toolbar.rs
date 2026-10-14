@@ -1,8 +1,13 @@
 //! 历史页工具栏:四视图切换、时间档位与进程/远端/协议筛选(防抖)、
-//! 刷新与 CSV 导出按钮、本地/局域网噪音过滤开关、库大小与手动清理菜单。
+//! 噪音过滤下拉(隐藏本地/局域网)、刷新与 CSV 导出按钮、库大小与
+//! 手动清理菜单(库大小置于菜单首行)。
 
 use eframe::egui;
-use egui::{CornerRadius, RichText, containers::menu::MenuButton};
+use egui::{
+    CornerRadius, RichText,
+    containers::PopupCloseBehavior,
+    containers::menu::{MenuButton, MenuConfig},
+};
 use rusqlite::Connection as Db;
 
 use super::export;
@@ -91,13 +96,13 @@ pub(super) fn toolbar(
             ui,
             &mut state.process,
             i18n.t("history-filter-process"),
-            110.0,
+            100.0,
         );
         let remote = widgets::search_box::search_box(
             ui,
             &mut state.remote,
             i18n.t("history-filter-remote"),
-            110.0,
+            100.0,
         );
 
         // 协议
@@ -117,6 +122,56 @@ pub(super) fn toolbar(
                         state.dirty = true;
                     }
                 }
+            });
+
+        // 噪音过滤下拉(config 持久化,连接页与历史页共享):英文文案
+        // 长,行内平铺两个 checkbox 会把右组库大小+清理挤出叠印(最小
+        // 窗口 1440 下英文总宽约 1350 > 可用 1198),收进漏斗下拉;
+        // 勾选项点击后菜单保持(CloseOnClickOutside),可连续勾两项
+        let noise_on = config.general.hide_local || config.general.hide_lan;
+        let mut filter_button = egui::Button::new(
+            RichText::new(format!(
+                "{}  {}  {}",
+                icons::FUNNEL,
+                i18n.t("history-filter"),
+                icons::CARET_DOWN_FILL
+            ))
+            .size(theme::font::BODY),
+        )
+        .corner_radius(CornerRadius::same(theme::RADIUS_SM));
+        if noise_on {
+            filter_button = filter_button.fill(theme::c().accent_soft);
+        }
+        MenuButton::from_button(filter_button)
+            .config(MenuConfig::new().close_behavior(PopupCloseBehavior::CloseOnClickOutside))
+            .ui(ui, |ui| {
+                ui.with_layout(
+                    egui::Layout::top_down(egui::Align::LEFT).with_cross_justify(true),
+                    |ui| {
+                        if ui
+                            .selectable_label(
+                                config.general.hide_local,
+                                RichText::new(i18n.t("filter-hide-local")).size(theme::font::BODY),
+                            )
+                            .clicked()
+                        {
+                            config.general.hide_local = !config.general.hide_local;
+                            state.dirty = true;
+                            *config_changed = true;
+                        }
+                        if ui
+                            .selectable_label(
+                                config.general.hide_lan,
+                                RichText::new(i18n.t("filter-hide-lan")).size(theme::font::BODY),
+                            )
+                            .clicked()
+                        {
+                            config.general.hide_lan = !config.general.hide_lan;
+                            state.dirty = true;
+                            *config_changed = true;
+                        }
+                    },
+                );
             });
 
         if ui
@@ -139,28 +194,10 @@ pub(super) fn toolbar(
             state.dirty = true;
         }
 
-        // 本地/局域网远端噪音过滤(config 持久化,连接页与历史页共享)
-        let hide_local_text = RichText::new(i18n.t("filter-hide-local")).size(theme::font::BODY);
-        if ui
-            .checkbox(&mut config.general.hide_local, hide_local_text)
-            .changed()
-        {
-            state.dirty = true;
-            *config_changed = true;
-        }
-        let hide_lan_text = RichText::new(i18n.t("filter-hide-lan")).size(theme::font::BODY);
-        if ui
-            .checkbox(&mut config.general.hide_lan, hide_lan_text)
-            .changed()
-        {
-            state.dirty = true;
-            *config_changed = true;
-        }
-
-        // 库大小与手动清理(右对齐):点击弹出档位菜单
+        // 手动清理(右对齐):点击弹出档位菜单;库大小置于菜单首行——
+        // 行内平铺该标签在英文下会把右组挤出叠印,而它是清理决策的
+        // 上下文信息,随菜单展示更合适
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let size = i18n.t_with_args("history-db-size", &[("size", fmt_bytes(state.db_size))]);
-            ui.label(theme::dim_text(&size, theme::font::SM));
             let purge_button =
                 egui::Button::new(RichText::new(i18n.t("history-purge")).size(theme::font::BODY))
                     .fill(theme::c().accent_soft)
@@ -169,6 +206,10 @@ pub(super) fn toolbar(
                 ui.with_layout(
                     egui::Layout::top_down(egui::Align::LEFT).with_cross_justify(true),
                     |ui| {
+                        let size = i18n
+                            .t_with_args("history-db-size", &[("size", fmt_bytes(state.db_size))]);
+                        ui.label(theme::dim_text(&size, theme::font::SM));
+                        ui.separator();
                         for (days, text) in purge_choices(i18n) {
                             if ui
                                 .selectable_label(

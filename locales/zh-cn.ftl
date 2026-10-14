@@ -268,6 +268,7 @@ history-range-24h = 最近 24 小时
 history-range-7d = 最近 7 天
 history-range-month = 本月
 history-filter-process = 进程名…
+history-filter = 筛选
 history-filter-remote = 远端 IP…
 history-filter-proto-all = 全部协议
 history-refresh = 刷新
