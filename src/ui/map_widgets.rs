@@ -9,6 +9,7 @@ use eframe::egui;
 use egui::{Button, Color32, CornerRadius, Frame, Label, Margin, RichText, Stroke};
 
 use crate::model::fmt_bytes;
+use crate::ui::TOOLBAR_ROW_H;
 use crate::ui::icons;
 use crate::ui::map_panel::{MapPanelState, ProcGroup, RankSort};
 use crate::ui::text_width;
@@ -37,12 +38,18 @@ pub(crate) fn rank_header(
     ui.add_space(theme::sp::SM);
     let mut picked = None;
     ui.horizontal(|ui| {
-        ui.label(
-            RichText::new(text.to_owned())
-                .size(theme::font::SM)
-                .strong()
-                .color(theme::c().text_dim),
-        );
+        // 标题样式对齐子页面标签(accent 色 + 加粗;字号保持 SM——
+        // 排序控件占宽约 208,放大字号会挤压标题导致截断)。定高容器
+        // + 垂直居中:裸 Label 在水平行内的分配比交互控件(排序控件)
+        // 高数 px,文字与排序控件基线错位(日志窗工具栏同款问题)
+        let w = text_width(ui, text, theme::font::SM);
+        ui.allocate_ui(egui::vec2(w, TOOLBAR_ROW_H), |ui| {
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                ui.add(Label::new(
+                    theme::accent_text(text, theme::font::SM).strong(),
+                ));
+            });
+        });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let items = [
                 ("map-rank-total", icons::ARROW_DOWN_UP),
@@ -125,7 +132,7 @@ fn traffic_card(ui: &mut egui::Ui, w: f32, glyph: &str, label: &str, value: &str
 }
 
 /// Top 进程行:图标 + 名称(点击选中联动进程详情,Truncate 自适应)+
-/// 右侧下载/上传分色字节(上传超过下载时以警示色提示)+
+/// 右侧下载/上传分色字节(方向箭头 + 数值,与域名排行一致)+
 /// 下方流量占比条(相对当前排序键的第一名,占比由调用方传入)
 pub(crate) fn proc_rank_row(
     ui: &mut egui::Ui,
@@ -147,8 +154,10 @@ pub(crate) fn proc_rank_row(
     let out_sum: u64 = g.conns.iter().map(|c| c.bytes_out).sum();
     let in_text = fmt_bytes(in_sum);
     let out_text = fmt_bytes(out_sum);
-    let in_w = text_width(ui, &in_text, theme::font::XS);
-    let out_w = text_width(ui, &out_text, theme::font::XS);
+    // 速率对宽 = 数值 + 方向箭头(箭头与域名排行的 rate_pair 一致)
+    let arrow_w = text_width(ui, icons::ARROW_DOWN, theme::font::XS);
+    let in_w = text_width(ui, &in_text, theme::font::XS) + arrow_w;
+    let out_w = text_width(ui, &out_text, theme::font::XS) + arrow_w;
     ui.horizontal(|ui| {
         ui.style_mut().spacing.item_spacing.x = 4.0;
         let tex = path.and_then(|p| icon_tex.get(p)).and_then(|t| t.as_ref());
@@ -183,32 +192,19 @@ pub(crate) fn proc_rank_row(
                 panels.process = Some(g.name.clone());
             }
         });
-        // 右侧区从右往左排:上传、下载;上传占优视为可疑(可能是
-        // 未经用户预期的外发流量),用警示色代替常规方向色
-        let out_color = if out_sum > in_sum {
-            theme::c().status_warn
-        } else {
-            theme::c().outbound
-        };
+        // 右侧区从右往左排:上传、下载;方向色与全局口径统一(下载
+        // inbound 绿、上传 outbound 蓝),箭头避免仅靠颜色区分方向
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.style_mut().spacing.item_spacing.x = 6.0;
-            ui.label(
-                RichText::new(&out_text)
-                    .size(theme::font::XS)
-                    .color(out_color),
-            );
-            ui.label(
-                RichText::new(&in_text)
-                    .size(theme::font::XS)
-                    .color(theme::c().inbound),
-            );
+            ui.style_mut().spacing.item_spacing.x = 3.0;
+            rate_pair(ui, &out_text, theme::c().outbound, icons::ARROW_UP);
+            rate_pair(ui, &in_text, theme::c().inbound, icons::ARROW_DOWN);
         });
     });
     rank_bar(ui, bar_ratio);
 }
 
 /// 排行的域名行:名称(Truncate 自适应)+ 右侧下载/上传分色字节
-/// (上传超过下载时以警示色提示)+ 流量占比条(由调用方传入)
+/// (方向箭头 + 数值,方向色与全局口径统一)+ 流量占比条(由调用方传入)
 pub(crate) fn bytes_row(
     ui: &mut egui::Ui,
     title: &str,
@@ -234,14 +230,10 @@ pub(crate) fn bytes_row(
                 .truncate(),
             );
         });
-        let out_color = if bytes_out > bytes_in {
-            theme::c().status_warn
-        } else {
-            theme::c().outbound
-        };
+        // 下载 inbound 绿、上传 outbound 蓝(与连接列表/速率卡等同口径)
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.style_mut().spacing.item_spacing.x = 3.0;
-            rate_pair(ui, &out_text, out_color, icons::ARROW_UP);
+            rate_pair(ui, &out_text, theme::c().outbound, icons::ARROW_UP);
             rate_pair(ui, &in_text, theme::c().inbound, icons::ARROW_DOWN);
         });
     });
