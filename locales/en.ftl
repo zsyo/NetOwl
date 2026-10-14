@@ -125,7 +125,7 @@ filter-hide-lan = Hide LAN
 
 settings-history-days = Auto-clean history
 settings-history-days-unit = days
-settings-history-days-hint = Delete history older than this many days; 0 disables auto-clean
+settings-history-days-hint = Delete history older than this many days; "-" disables auto-clean
 
 settings-ask = New connection prompts
 settings-silent = Global silent mode
@@ -170,7 +170,7 @@ ball-menu-close = Close Floating Widget
 settings-log = Logging
 settings-log-level = Log level
 settings-log-retain = Retain log files
-settings-log-retain-hint = Auto-delete rotated log archives older than this many days (latest.log is kept); 0 disables cleanup
+settings-log-retain-hint = Auto-delete rotated log archives older than this many days (latest.log is kept); "-" disables cleanup
 settings-log-retain-unit = days
 settings-log-level-hint = Applies immediately to console and file; the log window has its own shown level
 settings-log-file-on = Write to log file
@@ -412,7 +412,7 @@ settings-quality-wait = Pending
 settings-quality-noreply = No reply
 quality-alert-toast = Custom target "{$name}" unresponsive for {$n} rounds
 settings-quota = Monthly data quota
-settings-quota-hint = Alert at 80% and 100% of the quota; 0 = disabled
+settings-quota-hint = Alert at 80% and 100% of the quota; "-" = disabled
 settings-quota-unit = GB
 
 listen-search = Search process or port

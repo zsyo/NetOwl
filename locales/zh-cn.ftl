@@ -125,7 +125,7 @@ filter-hide-lan = 隐藏局域网
 
 settings-history-days = 历史自动清理
 settings-history-days-unit = 天
-settings-history-days-hint = 自动删除超过该天数的历史数据,0 表示不自动清理
+settings-history-days-hint = 自动删除超过该天数的历史数据,- 表示不自动清理
 
 settings-ask = 新连接询问
 settings-silent = 全局静默模式
@@ -170,7 +170,7 @@ ball-menu-close = 关闭悬浮窗
 settings-log = 运行日志
 settings-log-level = 日志级别
 settings-log-retain = 保留历史日志
-settings-log-retain-hint = 自动删除超过该天数的日志归档文件(latest.log 不动),0 表示不自动清理
+settings-log-retain-hint = 自动删除超过该天数的日志归档文件(latest.log 不动),- 表示不自动清理
 settings-log-retain-unit = 天
 settings-log-level-hint = 立即生效,作用于控制台与日志文件;浏览窗口内可独立调整显示级别
 settings-log-file-on = 写入日志文件
@@ -413,7 +413,7 @@ settings-quality-wait = 待采样
 settings-quality-noreply = 无响应
 quality-alert-toast = 自定义目标「{$name}」连续 {$n} 轮无响应
 settings-quota = 月度流量配额
-settings-quota-hint = 当月用量达到配额 80% 与 100% 时提醒,0 = 不启用
+settings-quota-hint = 当月用量达到配额 80% 与 100% 时提醒,- = 不启用
 settings-quota-unit = GB
 
 listen-search = 搜索进程或端口
