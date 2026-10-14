@@ -45,5 +45,9 @@ impl NetOwlApp {
             self.config.floating_ball.enabled = false;
             self.mark_config_dirty();
         }
+        if ball.open_log {
+            // 与托盘"打开实时日志"同路径(共用方法含主窗口恢复)
+            self.open_log_window(ui.ctx());
+        }
     }
 }

@@ -204,6 +204,10 @@ pub fn show(
                 cfg.auto_hide_edge = !cfg.auto_hide_edge;
                 outcome.config_touched = true;
             }
+            MenuAction::OpenLog => {
+                outcome.open_log = true;
+                state.menu_open = false;
+            }
             MenuAction::Close => {
                 outcome.close = true;
                 state.menu_open = false;

@@ -103,6 +103,8 @@ pub struct BallOutcome {
     pub config_touched: bool,
     /// 菜单"关闭悬浮窗":app 层置 enabled = false
     pub close: bool,
+    /// 菜单"打开实时日志":app 层开日志窗口(与托盘菜单同路径)
+    pub open_log: bool,
 }
 
 /// 悬浮窗交互状态;持久化位置以 config.floating_ball 为唯一来源,

@@ -11,7 +11,7 @@ use crate::ui::{icons, theme};
 
 /// 菜单窗口尺寸(逻辑点)
 pub(super) const MENU_W: f32 = 176.0;
-pub(super) const MENU_H: f32 = 168.0;
+pub(super) const MENU_H: f32 = 194.0;
 /// 菜单行高
 const ROW_H: f32 = 26.0;
 
@@ -22,6 +22,8 @@ pub(super) enum MenuAction {
     Show(Page),
     ToggleTopmost,
     ToggleAutoHide,
+    /// 打开实时日志窗口(同托盘菜单项)
+    OpenLog,
     /// 关闭悬浮窗
     Close,
 }
@@ -81,6 +83,17 @@ pub(super) fn menu_body(
     cy = group_separator(ui, rect, cy);
     cy += theme::sp::XS;
 
+    // 打开实时日志(仿托盘菜单,与设置同组)
+    if item_row(
+        ui,
+        egui::Id::new("ball-menu-log"),
+        row_rect(cy),
+        i18n.t("ball-menu-log"),
+        None,
+    ) {
+        *action = Some(MenuAction::OpenLog);
+    }
+    cy += ROW_H;
     // 设置 / 关闭悬浮窗
     if item_row(
         ui,

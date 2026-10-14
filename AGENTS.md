@@ -47,7 +47,7 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   结果回收(后台线程+mpsc,完成即重绘);ask_flow.rs:询问编排——入队检测、
   超时默认拒绝、决策落地[永久落库/仅本次临时规则]、临时规则生命周期
   (连接消失即删);ball.rs:悬浮球交互结果落地(位置记忆/唤出主窗口/
-  开关闭合);init.rs:NetOwlApp::new 构造(托盘创建、历史库/规则档、
+  开关闭合/打开实时日志);init.rs:NetOwlApp::new 构造(托盘创建、历史库/规则档、
   ETW 启动、logo 纹理、全字段初始化);
   ask/:新连接询问引擎(mod.rs:ASK_TIMEOUT + re-export;item.rs:AskItem
   身份快照[remote_display/pending_block_spec/to_rule]、Scope/Decision、

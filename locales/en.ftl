@@ -164,6 +164,7 @@ ball-empty = No active traffic
 ball-menu-show = Show Window
 ball-menu-topmost = Keep on Top
 ball-menu-auto-hide = Auto-hide at Edge
+ball-menu-log = Open Live Log
 ball-menu-settings = Settings
 ball-menu-close = Close Floating Widget
 

@@ -35,16 +35,7 @@ impl NetOwlApp {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
                 }
                 tray::CMD_LOG_OPEN => {
-                    // 日志窗口 viewport 在首帧预建;全隐身状态(主窗口
-                    // 隐藏且悬浮窗关闭)下首帧只跑 logic 不跑 ui,
-                    // viewport 建不出来——先恢复主窗口驱动首帧
-                    if !ui::log_window::is_created(&self.log_window) {
-                        self.window_visible = true;
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-                    }
-                    ui::log_window::open(&mut self.log_window);
+                    self.open_log_window(ctx);
                 }
                 tray::CMD_ASK_TOGGLE => {
                     // CheckMenuItem 点击时 muda 已翻转原生勾选,写回 config
@@ -89,6 +80,19 @@ impl NetOwlApp {
                 _ => {}
             }
         }
+    }
+
+    /// 打开实时日志窗口(托盘菜单与悬浮窗右键菜单共用):日志窗口
+    /// viewport 在首帧预建,全隐身状态(主窗口隐藏且悬浮窗关闭)下首帧
+    /// 只跑 logic 不跑 ui,viewport 建不出来——先恢复主窗口驱动首帧
+    pub(super) fn open_log_window(&mut self, ctx: &egui::Context) {
+        if !ui::log_window::is_created(&self.log_window) {
+            self.window_visible = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        }
+        ui::log_window::open(&mut self.log_window);
     }
 
     /// 托盘图标常驻:配置开关变化时写注册表 IsPromoted;失败(托盘项未注册、

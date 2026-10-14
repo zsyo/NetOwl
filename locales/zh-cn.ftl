@@ -164,6 +164,7 @@ ball-empty = 暂无活跃流量
 ball-menu-show = 显示窗口
 ball-menu-topmost = 窗口置顶显示
 ball-menu-auto-hide = 贴边自动隐藏
+ball-menu-log = 打开实时日志
 ball-menu-settings = 设置
 ball-menu-close = 关闭悬浮窗
 
