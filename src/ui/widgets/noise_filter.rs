@@ -114,9 +114,12 @@ fn check_item(ui: &mut egui::Ui, checked: bool, text: String) -> bool {
     let row_w = ITEM_PAD + CHECK_COL_W + text_w + ITEM_PAD;
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(row_w, ROW_H), egui::Sense::click());
     let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+    // 悬停高亮画 resp.rect(整行宽):allocate_exact_size 返回的 rect
+    // 只是内容宽(在被 justified 拉宽的交互行内左对齐),画它会让高亮
+    // 随文字长度变化(两项一长一短)
     if resp.hovered() {
         ui.painter().rect_filled(
-            rect,
+            resp.rect,
             egui::CornerRadius::same(theme::RADIUS_SM),
             theme::c().hover_bg,
         );
