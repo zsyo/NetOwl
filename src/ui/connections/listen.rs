@@ -18,9 +18,12 @@ pub(super) fn listen_table(ui: &mut egui::Ui, ctx: &mut UiCtx) {
         default_icon_tex,
         conn_search,
         conn_proto,
+        conn_row_hover,
         row_hits,
         ..
     } = ctx;
+    // &mut UiCtx 解构出的引用字段带两层 &mut,借类型注解 coerce 回单层
+    let conn_row_hover: &mut widgets::table::RowHover = conn_row_hover;
     let needle = conn_search.trim().to_lowercase();
     let rows: Vec<&ListenEntry> = listens
         .iter()
@@ -72,16 +75,11 @@ pub(super) fn listen_table(ui: &mut egui::Ui, ctx: &mut UiCtx) {
         |ui, row_range| {
             egui::Grid::new("listen_rows")
                 .num_columns(4)
-                .striped(true)
+                .striped(false)
                 .spacing([0.0, widgets::table::ROW_SPACING_Y])
                 .show(ui, |ui| {
-                    for i in row_range {
-                        let l = rows[i];
-                        let row_rect = egui::Rect::from_min_max(
-                            egui::pos2(table_left, ui.cursor().top()),
-                            egui::pos2(table_right, ui.cursor().top() + widgets::table::ROW_H),
-                        )
-                        .expand2(egui::vec2(0.0, widgets::table::ROW_SPACING_Y * 0.5));
+                    for idx in row_range {
+                        let l = rows[idx];
                         listen_row(
                             ui,
                             l,
@@ -90,17 +88,20 @@ pub(super) fn listen_table(ui: &mut egui::Ui, ctx: &mut UiCtx) {
                             flex_w,
                             L_PROTO_W,
                             L_PID_W,
+                            conn_row_hover,
                             row_hits,
-                            row_rect,
+                            table_left,
+                            table_right,
+                            idx,
                         );
-                        ui.end_row();
                     }
                 });
         },
     );
 }
 
-/// 单行渲染:进程(图标+名+路径)/ 协议徽章 / 本地地址:端口 / PID
+/// 单行渲染(行悬停垫底 + 斑马纹):进程(图标+名)/ 协议徽章 /
+/// 本地地址:端口 / PID
 #[allow(clippy::too_many_arguments)]
 fn listen_row(
     ui: &mut egui::Ui,
@@ -110,9 +111,20 @@ fn listen_row(
     flex_w: f32,
     proto_w: f32,
     pid_w: f32,
+    row_hover: &mut widgets::table::RowHover,
     row_hits: &mut Vec<RowHit>,
-    row_rect: egui::Rect,
+    table_left: f32,
+    table_right: f32,
+    idx: usize,
 ) {
+    let row_top = ui.cursor().top();
+    row_hover.begin(ui, table_left, table_right, row_top, idx);
+    // 行整格区域(含行间距半高,与悬停垫底同域):右键热区注册用
+    let row_rect = egui::Rect::from_min_max(
+        egui::pos2(table_left, row_top),
+        egui::pos2(table_right, row_top + widgets::table::ROW_H),
+    )
+    .expand2(egui::vec2(0.0, widgets::table::ROW_SPACING_Y * 0.5));
     widgets::table::fixed_cell(ui, flex_w, widgets::table::ROW_H, |ui| {
         ui.horizontal(|ui| {
             let tex = l
@@ -166,4 +178,6 @@ fn listen_row(
         &[flex_w, proto_w, flex_w, pid_w],
         RowCtx::Listen(l.clone()),
     );
+    ui.end_row();
+    row_hover.end(ui, row_top);
 }
