@@ -153,6 +153,8 @@ pub struct UiCtx<'a> {
     pub row_hits: &'a mut Vec<RowHit>,
     /// 规则页行悬停辅助(跨帧行高)
     pub rules_row_hover: &'a mut widgets::table::RowHover,
+    /// 局域网页行悬停辅助(跨帧行高)
+    pub lan_row_hover: &'a mut widgets::table::RowHover,
     /// 进程图标纹理(键 = 映像路径);None 表示已提取且无图标
     pub icon_tex: &'a HashMap<String, Option<egui::TextureHandle>>,
     /// Windows 默认"应用程序"图标纹理(无路径/提取失败进程的兜底)

@@ -125,6 +125,7 @@ impl NetOwlApp {
             conn_row_hover: &mut self.conn_row_hover,
             row_hits: &mut self.row_hits,
             rules_row_hover: &mut self.rules_row_hover,
+            lan_row_hover: &mut self.lan_row_hover,
             log_window: &mut self.log_window,
             icon_tex: &self.icon_tex,
             default_icon_tex: self.default_icon_tex.as_ref(),

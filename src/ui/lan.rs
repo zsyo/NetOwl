@@ -3,6 +3,8 @@
 //! 反查与 MAC 厂商识别。
 //!
 //! 设备量小(几十台量级),不虚拟化:表头固定在滚动区外,行整体滚动。
+//! 行悬停高亮与斑马纹走 widgets::table::RowHover(与连接/规则/历史页
+//! 同一范式:行首垫底,行末测量行高),悬停底色画在内容之前才不遮文字
 
 use eframe::egui;
 use egui::{Label, RichText};
@@ -16,6 +18,7 @@ pub(super) fn lan_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     let devices = ctx.lan_devices;
     let i18n = &mut ctx.i18n;
     let row_hits = &mut ctx.row_hits;
+    let row_hover: &mut widgets::table::RowHover = ctx.lan_row_hover;
     widgets::header::page_header(ui, &i18n.t("lan-title"), &i18n.t("lan-subtitle"));
     ui.add_space(theme::sp::SM);
 
@@ -65,11 +68,12 @@ pub(super) fn lan_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
             let table_right = ui.max_rect().right();
             egui::Grid::new("lan_grid")
                 .num_columns(5)
-                .striped(true)
+                .striped(false)
                 .spacing([0.0, widgets::table::ROW_SPACING_Y])
                 .show(ui, |ui| {
-                    for d in devices {
+                    for (idx, d) in devices.iter().enumerate() {
                         let row_top = ui.cursor().top();
+                        row_hover.begin(ui, table_left, table_right, row_top, idx);
                         let row_rect = egui::Rect::from_min_max(
                             egui::pos2(table_left, row_top),
                             egui::pos2(table_right, row_top + widgets::table::ROW_H),
@@ -133,17 +137,6 @@ pub(super) fn lan_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                                 }
                             });
                         });
-                        // 整行 interact 注册在全部单元格之后(同其他
-                        // 表格:Label 可选文本抢 click,平手取最后注册者),
-                        // 右键全区域可弹;悬停垫底与斑马纹之上
-                        let row_resp = ui.interact(
-                            row_rect,
-                            egui::Id::new(("lan_row", &d.mac)),
-                            egui::Sense::click(),
-                        );
-                        if row_resp.hovered() {
-                            ui.painter().rect_filled(row_rect, 0.0, theme::c().hover_bg);
-                        }
                         // 右键热区注册(复制 IP / MAC)
                         RowHit::push(
                             row_hits,
@@ -152,6 +145,7 @@ pub(super) fn lan_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                             RowCtx::Lan(d.clone()),
                         );
                         ui.end_row();
+                        row_hover.end(ui, row_top);
                     }
                 });
         });

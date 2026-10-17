@@ -226,9 +226,10 @@ pub struct NetOwlApp {
     update_rx: Option<Receiver<Result<Option<ReleaseInfo>, String>>>,
     /// 检查更新:最近一次结果(None = 尚未检查;渠道切换时清空)
     update_result: Option<Result<Option<ReleaseInfo>, String>>,
-    /// 表格行悬停辅助(连接/规则页,跨帧行高供行首垫底判定)
+    /// 表格行悬停辅助(连接/规则/局域网页,跨帧行高供行首垫底判定)
     conn_row_hover: ui::widgets::table::RowHover,
     rules_row_hover: ui::widgets::table::RowHover,
+    lan_row_hover: ui::widgets::table::RowHover,
     /// 日志浏览窗口状态(内存层日志展示,参照 wallwarp)
     log_window: ui::log_window::PageState,
     /// 上一轮 ETW 字节快照(速率差值基准,键 = conn.id)

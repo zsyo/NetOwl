@@ -188,6 +188,7 @@ impl NetOwlApp {
             update_result: None,
             conn_row_hover: Default::default(),
             rules_row_hover: Default::default(),
+            lan_row_hover: Default::default(),
             log_window: crate::ui::log_window::PageState::new(),
             conn_prev_bytes: HashMap::new(),
             asker: Asker::new(),
