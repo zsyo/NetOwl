@@ -14,9 +14,11 @@ use crate::ui::{theme, widgets};
 
 /// 行底色(虚拟化表格手动斑马):行首调用,悬停高亮优先于奇数行条纹;
 /// 色块上下各含半个行距,与 Grid striped 的观感一致,判定区同样含行距;
-/// 返回判定区矩形供调用方做整行交互(如汇总行点击下钻)
+/// 返回判定区矩形供调用方做整行交互(如汇总行点击下钻)。悬停判定走
+/// `lock`:右键菜单打开期间锁定行不随指针移入菜单而消失
 pub(super) fn row_background(
     ui: &egui::Ui,
+    lock: &widgets::table::RowHoverLock,
     left: f32,
     right: f32,
     top: f32,
@@ -24,7 +26,7 @@ pub(super) fn row_background(
 ) -> egui::Rect {
     let rect = egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, top + 22.0))
         .expand2(egui::vec2(0.0, widgets::table::ROW_SPACING_Y * 0.5));
-    let bg = if ui.rect_contains_pointer(rect) {
+    let bg = if lock.hovered(ui, rect) {
         theme::c().hover_bg
     } else if idx % 2 == 1 {
         theme::c().faint

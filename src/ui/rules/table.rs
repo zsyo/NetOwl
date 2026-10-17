@@ -50,6 +50,7 @@ fn header_cell(ui: &mut egui::Ui, w: f32, text: String) -> egui::Response {
 }
 
 /// 规则表(自上而下即优先级从高到低)
+#[allow(clippy::too_many_arguments)]
 pub(super) fn rules_table(
     ui: &mut egui::Ui,
     state: &mut PageState,
@@ -57,6 +58,7 @@ pub(super) fn rules_table(
     db: &Db,
     rules: &mut RuleSet,
     row_hover: &mut widgets::table::RowHover,
+    row_lock: &widgets::table::RowHoverLock,
     count_units: CountUnits,
 ) {
     if rules.rules.is_empty() {
@@ -115,6 +117,7 @@ pub(super) fn rules_table(
                             db,
                             rules,
                             row_hover,
+                            row_lock,
                             rule,
                             i,
                             flex_w,

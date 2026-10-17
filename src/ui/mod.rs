@@ -155,6 +155,8 @@ pub struct UiCtx<'a> {
     pub rules_row_hover: &'a mut widgets::table::RowHover,
     /// 局域网页行悬停辅助(跨帧行高)
     pub lan_row_hover: &'a mut widgets::table::RowHover,
+    /// 右键菜单打开期间的行悬停锁定(各表格只读共用)
+    pub row_lock: &'a widgets::table::RowHoverLock,
     /// 进程图标纹理(键 = 映像路径);None 表示已提取且无图标
     pub icon_tex: &'a HashMap<String, Option<egui::TextureHandle>>,
     /// Windows 默认"应用程序"图标纹理(无路径/提取失败进程的兜底)
@@ -235,6 +237,7 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
             ctx.config,
             ctx.elevated,
             ctx.row_hits,
+            ctx.row_lock,
             ctx.history_frozen,
         ),
         Page::Lan => lan::lan_ui(ui, ctx),
@@ -247,6 +250,7 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
             ctx.rules,
             &ctx.wfp_status,
             ctx.rules_row_hover,
+            ctx.row_lock,
         ),
         Page::Settings => settings::settings_ui(ui, ctx),
     }

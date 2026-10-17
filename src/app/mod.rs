@@ -230,6 +230,8 @@ pub struct NetOwlApp {
     conn_row_hover: ui::widgets::table::RowHover,
     rules_row_hover: ui::widgets::table::RowHover,
     lan_row_hover: ui::widgets::table::RowHover,
+    /// 右键菜单打开期间的行悬停锁定(各表格只读共用)
+    row_lock: ui::widgets::table::RowHoverLock,
     /// 日志浏览窗口状态(内存层日志展示,参照 wallwarp)
     log_window: ui::log_window::PageState,
     /// 上一轮 ETW 字节快照(速率差值基准,键 = conn.id)

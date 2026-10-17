@@ -18,6 +18,7 @@ pub(super) fn table(
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
     default_icon_tex: Option<&egui::TextureHandle>,
     row_hits: &mut Vec<RowHit>,
+    row_lock: &widgets::table::RowHoverLock,
 ) {
     let Rows::Aggregate(rows) = &state.rows else {
         return;
@@ -116,8 +117,14 @@ pub(super) fn table(
                     for r_idx in row_range {
                         let r = &rows[r_idx];
                         let row_top = ui.cursor().top();
-                        let row_rect =
-                            cells::row_background(ui, table_left, table_right, row_top, r_idx);
+                        let row_rect = cells::row_background(
+                            ui,
+                            row_lock,
+                            table_left,
+                            table_right,
+                            row_top,
+                            r_idx,
+                        );
                         widgets::table::fixed_cell(ui, flex_w, 22.0, |ui| {
                             cells::proc_cell(
                                 ui,

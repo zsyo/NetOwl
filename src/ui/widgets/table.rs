@@ -199,6 +199,57 @@ pub const ROW_H: f32 = 22.0;
 /// 两行内容行高(连接页进程/rDNS 列:名称 + 签名/裸 IP)
 pub const ROW_H2: f32 = 36.0;
 
+/// 右键菜单打开期间的行悬停锁定:菜单浮层锚在指针处、与表格行 rect
+/// 不相交,指针移入菜单点项时原行悬停即消失。App 单例持有、经 UiCtx
+/// 只读下传;开菜单时锁定右击行 rect,指针停在锁定行或位于菜单浮层内
+/// 时该行保持高亮,指针移到其他行则正常切换(指针进入条件对该行成立,
+/// 同一行条件对锁定行不再成立),菜单关闭即解锁
+#[derive(Default)]
+pub struct RowHoverLock {
+    locked: Option<egui::Rect>,
+    menu: Option<egui::Rect>,
+}
+
+impl RowHoverLock {
+    /// 开菜单时锁定右击行(rect 取 RowHit.rect)
+    pub fn lock(&mut self, rect: egui::Rect) {
+        self.locked = Some(rect);
+    }
+
+    /// 每帧同步菜单浮层 rect;None = 菜单本帧未开,锁定一并解除
+    /// (菜单首帧 rect 未建立为 ZERO,过滤后不锁定,次帧起生效)
+    pub fn sync_menu(&mut self, menu: Option<egui::Rect>) {
+        match menu.filter(|r| r.is_positive()) {
+            Some(r) => self.menu = Some(r),
+            None => {
+                self.menu = None;
+                self.locked = None;
+            }
+        }
+    }
+
+    /// 本行是否高亮:指针在行内(常规),或菜单打开期间指针在菜单内且
+    /// 本行即锁定行
+    pub fn hovered(&self, ui: &egui::Ui, rect: egui::Rect) -> bool {
+        if ui.rect_contains_pointer(rect) {
+            return true;
+        }
+        let (Some(locked), Some(menu)) = (self.locked, self.menu) else {
+            return false;
+        };
+        let Some(pos) = ui.input(|i| i.pointer.interact_pos()) else {
+            return false;
+        };
+        same_row(locked, rect) && menu.contains(pos)
+    }
+}
+
+/// 同一行判定:中心距与行高都在 1px 内(行 rect 每帧由同一路径重算,
+/// 浮点确定性下应完全一致,容差仅容忍滚动微差)
+fn same_row(a: egui::Rect, b: egui::Rect) -> bool {
+    (a.center() - b.center()).length_sq() < 1.0 && (a.height() - b.height()).abs() < 1.0
+}
+
 /// 行悬停高亮辅助:跨帧记录实测行高。
 /// 行底色必须画在行内容之前才能垫底(同层内先画者在下,见 ui 层根背景层说明),
 /// 而行高要 end_row 后才确定,故行首用上一帧实测行高判定悬停并垫底;
@@ -213,8 +264,19 @@ pub struct RowHover {
 
 impl RowHover {
     /// 行首调用(读行顶之后、本行单元格之前):奇数列垫斑马底色,指针
-    /// 落在本行再垫悬停底色并在行左缘画 accent 强调竖条(HUD 标识)
-    pub fn begin(&mut self, ui: &egui::Ui, left: f32, right: f32, top: f32, idx: usize) {
+    /// 落在本行再垫悬停底色并在行左缘画 accent 强调竖条(HUD 标识);
+    /// 悬停判定走 `lock`(右键菜单打开期间锁定行不随指针移入菜单而
+    /// 消失,见 RowHoverLock)
+    #[allow(clippy::too_many_arguments)]
+    pub fn begin(
+        &mut self,
+        ui: &egui::Ui,
+        lock: &RowHoverLock,
+        left: f32,
+        right: f32,
+        top: f32,
+        idx: usize,
+    ) {
         if self.row_h <= 0.0 {
             return;
         }
@@ -227,7 +289,7 @@ impl RowHover {
         if idx % 2 == 1 {
             ui.painter().rect_filled(rect, 0.0, p.faint);
         }
-        if ui.rect_contains_pointer(rect) {
+        if lock.hovered(ui, rect) {
             ui.painter().rect_filled(rect, 0.0, p.hover_bg);
             ui.painter().rect_filled(
                 egui::Rect::from_min_max(

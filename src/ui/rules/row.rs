@@ -34,6 +34,7 @@ pub(super) fn rule_row(
     db: &Db,
     rules: &mut RuleSet,
     row_hover: &mut widgets::table::RowHover,
+    row_lock: &widgets::table::RowHoverLock,
     rule: Rule,
     i: usize,
     flex_w: f32,
@@ -43,7 +44,7 @@ pub(super) fn rule_row(
 ) -> RowOps {
     let mut ops = RowOps::default();
     let row_top = ui.cursor().top();
-    row_hover.begin(ui, table_left, table_right, row_top, i);
+    row_hover.begin(ui, row_lock, table_left, table_right, row_top, i);
     let mut enabled = rule.enabled;
     widgets::table::fixed_center_cell(ui, COL_ENABLED, 26.0, |ui| {
         let toggle = widgets::toggle::toggle_switch(

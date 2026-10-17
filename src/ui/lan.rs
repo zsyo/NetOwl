@@ -19,6 +19,7 @@ pub(super) fn lan_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     let i18n = &mut ctx.i18n;
     let row_hits = &mut ctx.row_hits;
     let row_hover: &mut widgets::table::RowHover = ctx.lan_row_hover;
+    let row_lock: &widgets::table::RowHoverLock = ctx.row_lock;
     widgets::header::page_header(ui, &i18n.t("lan-title"), &i18n.t("lan-subtitle"));
     ui.add_space(theme::sp::SM);
 
@@ -73,7 +74,7 @@ pub(super) fn lan_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                 .show(ui, |ui| {
                     for (idx, d) in devices.iter().enumerate() {
                         let row_top = ui.cursor().top();
-                        row_hover.begin(ui, table_left, table_right, row_top, idx);
+                        row_hover.begin(ui, row_lock, table_left, table_right, row_top, idx);
                         let row_rect = egui::Rect::from_min_max(
                             egui::pos2(table_left, row_top),
                             egui::pos2(table_right, row_top + widgets::table::ROW_H),

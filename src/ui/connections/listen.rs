@@ -19,6 +19,7 @@ pub(super) fn listen_table(ui: &mut egui::Ui, ctx: &mut UiCtx) {
         conn_search,
         conn_proto,
         conn_row_hover,
+        row_lock,
         row_hits,
         ..
     } = ctx;
@@ -89,6 +90,7 @@ pub(super) fn listen_table(ui: &mut egui::Ui, ctx: &mut UiCtx) {
                             L_PROTO_W,
                             L_PID_W,
                             conn_row_hover,
+                            row_lock,
                             row_hits,
                             table_left,
                             table_right,
@@ -112,13 +114,14 @@ fn listen_row(
     proto_w: f32,
     pid_w: f32,
     row_hover: &mut widgets::table::RowHover,
+    row_lock: &widgets::table::RowHoverLock,
     row_hits: &mut Vec<RowHit>,
     table_left: f32,
     table_right: f32,
     idx: usize,
 ) {
     let row_top = ui.cursor().top();
-    row_hover.begin(ui, table_left, table_right, row_top, idx);
+    row_hover.begin(ui, row_lock, table_left, table_right, row_top, idx);
     // 行整格区域(含行间距半高,与悬停垫底同域):右键热区注册用
     let row_rect = egui::Rect::from_min_max(
         egui::pos2(table_left, row_top),

@@ -25,6 +25,7 @@ pub(super) fn conn_row(
     conn_rates: &HashMap<u64, (u64, u64)>,
     rules: &mut rules_engine::RuleSet,
     conn_row_hover: &mut widgets::table::RowHover,
+    row_lock: &widgets::table::RowHoverLock,
     row_hits: &mut Vec<RowHit>,
     table_left: f32,
     table_right: f32,
@@ -33,7 +34,7 @@ pub(super) fn conn_row(
 ) {
     use super::{C_ACTION_W, C_LOC_W, C_PROTO_W, C_RATE_W, C_TOTAL_W};
     let row_top = ui.cursor().top();
-    conn_row_hover.begin(ui, table_left, table_right, row_top, idx);
+    conn_row_hover.begin(ui, row_lock, table_left, table_right, row_top, idx);
     // 行整格区域(含行间距半高,与悬停垫底同域):右键热区注册用
     let row_rect = egui::Rect::from_min_max(
         egui::pos2(table_left, row_top),

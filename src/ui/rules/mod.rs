@@ -74,6 +74,7 @@ pub fn show(
     rules: &mut RuleSet,
     wfp_status: &wfp::Status,
     row_hover: &mut widgets::table::RowHover,
+    row_lock: &widgets::table::RowHoverLock,
 ) -> bool {
     let mut changed = false;
     widgets::header::page_header(ui, &i18n.t("rules-title"), &i18n.t("rules-subtitle"));
@@ -154,7 +155,7 @@ pub fn show(
         _ if i18n.current_lang.starts_with("zh") => crate::model::CountUnits::Chinese,
         _ => crate::model::CountUnits::Western,
     };
-    table::rules_table(ui, state, i18n, db, rules, row_hover, units);
+    table::rules_table(ui, state, i18n, db, rules, row_hover, row_lock, units);
     edit::edit_window(ui, state, i18n, db, rules);
     profile_manager::show_modal(
         ui,

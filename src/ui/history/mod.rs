@@ -40,8 +40,10 @@ pub fn show(
     config: &mut Config,
     elevated: bool,
     row_hits: &mut Vec<RowHit>,
+    row_lock: &widgets::table::RowHoverLock,
     frozen: bool,
 ) -> bool {
+    let row_lock: &widgets::table::RowHoverLock = row_lock;
     // 冻结中(右键菜单打开):跳过查询刷新,rows 定格在打开瞬间;
     // 首次进入 rows 为空时仍查一次建立基线(空表冻结无意义)
     if !frozen || matches!(&state.rows, history_query::Rows::Detail(r) if r.is_empty()) {
@@ -80,6 +82,7 @@ pub fn show(
         config,
         elevated,
         row_hits,
+        row_lock,
         frozen,
     );
     confirm::confirm_delete_modal(ui, state, i18n, db);
@@ -146,14 +149,31 @@ fn rows_table(
     config: &Config,
     elevated: bool,
     row_hits: &mut Vec<RowHit>,
+    row_lock: &widgets::table::RowHoverLock,
     frozen: bool,
 ) {
     match &state.rows {
         history_query::Rows::Detail(_) => {
-            detail::table(ui, state, i18n, icon_tex, default_icon_tex, row_hits);
+            detail::table(
+                ui,
+                state,
+                i18n,
+                icon_tex,
+                default_icon_tex,
+                row_hits,
+                row_lock,
+            );
         }
         history_query::Rows::Aggregate(_) => {
-            aggregate::table(ui, state, i18n, icon_tex, default_icon_tex, row_hits);
+            aggregate::table(
+                ui,
+                state,
+                i18n,
+                icon_tex,
+                default_icon_tex,
+                row_hits,
+                row_lock,
+            );
         }
         history_query::Rows::Summary(_) => {
             summary::table(
@@ -165,6 +185,7 @@ fn rows_table(
                 conns,
                 config,
                 row_hits,
+                row_lock,
                 frozen,
             );
         }

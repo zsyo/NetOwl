@@ -43,6 +43,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         focus_conn_search,
         conn_proto,
         conn_row_hover,
+        row_lock,
         row_hits,
         ..
     } = ctx;
@@ -52,6 +53,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     let focus_conn_search: &mut bool = focus_conn_search;
     let conn_proto: &mut Option<Protocol> = conn_proto;
     let conn_row_hover: &mut widgets::table::RowHover = conn_row_hover;
+    let row_lock: &widgets::table::RowHoverLock = row_lock;
     widgets::header::page_header(ui, &i18n.t("conns-title"), &i18n.t("conns-subtitle"));
     ui.add_space(theme::sp::SM);
 
@@ -214,6 +216,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                                     conn_rates,
                                     rules,
                                     conn_row_hover,
+                                    row_lock,
                                     row_hits,
                                     table_left,
                                     table_right,
