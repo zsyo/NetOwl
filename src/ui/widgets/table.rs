@@ -196,10 +196,14 @@ pub const ROW_SPACING_Y: f32 = 9.0;
 /// 标准数据行高(连接/历史/规则/局域网页一致;两行内容格用 36 恒定)
 pub const ROW_H: f32 = 22.0;
 
+/// 两行内容行高(连接页进程/rDNS 列:名称 + 签名/裸 IP)
+pub const ROW_H2: f32 = 36.0;
+
 /// 行悬停高亮辅助:跨帧记录实测行高。
 /// 行底色必须画在行内容之前才能垫底(同层内先画者在下,见 ui 层根背景层说明),
 /// 而行高要 end_row 后才确定,故行首用上一帧实测行高判定悬停并垫底;
 /// 行高由行内最高单元格决定,列表稳态下恒定,首帧(未测量)不高亮。
+/// 色带按整行步进(行高 + 行距)扩张半个行距,与 Grid striped 观感一致。
 /// 斑马纹按调用方传入的绝对行号判定:虚拟化表格(show_rows)里 Grid 的
 /// striped 按可见行重起计数,滚动时条纹会整屏翻转,故斑马纹不交给 Grid
 #[derive(Default)]
@@ -214,8 +218,11 @@ impl RowHover {
         if self.row_h <= 0.0 {
             return;
         }
+        // 色块上下各含半个行距,与 Grid striped 的整行带一致:行内容高
+        // 之外还要覆盖间距,否则两行内容(格高 36)的文本会溢出色带
         let rect =
-            egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, top + self.row_h));
+            egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, top + self.row_h))
+                .expand2(egui::vec2(0.0, ROW_SPACING_Y * 0.5));
         let p = theme::c();
         if idx % 2 == 1 {
             ui.painter().rect_filled(rect, 0.0, p.faint);
@@ -224,7 +231,7 @@ impl RowHover {
             ui.painter().rect_filled(rect, 0.0, p.hover_bg);
             ui.painter().rect_filled(
                 egui::Rect::from_min_max(
-                    egui::pos2(left, top),
+                    egui::pos2(left, top - ROW_SPACING_Y * 0.5),
                     egui::pos2(left + 2.0, rect.bottom()),
                 ),
                 0.0,
