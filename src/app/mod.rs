@@ -100,6 +100,9 @@ const TRAY_TIP_INTERVAL: Duration = Duration::from_secs(1);
 /// 当日用量(本地时区)查库间隔:浮窗"今日总量"= 落库值 + 活跃连接
 /// 实时字节,秒级 SUM 全表开销不值当,分钟级即可
 const TODAY_BYTES_INTERVAL: Duration = Duration::from_secs(60);
+/// 进入设置页时字体表重扫的最小间隔:反复在别的页与设置页之间切换不
+/// 重复读注册表;重启不受限(启动时必扫一次并记录时刻)
+const FONT_CATALOG_REFRESH_INTERVAL: Duration = Duration::from_secs(5 * 60);
 /// 自定义质量目标连续无响应的告警阈值(轮 = 采样周期)
 const QUALITY_ALERT_FAILS: usize = 5;
 
@@ -312,9 +315,12 @@ pub struct NetOwlApp {
     lan: LanState,
     /// 新监听端口提醒(监听快照会话内基线 diff)
     listen_watch: ListenWatch,
-    /// 系统已安装字体表(启动枚举一次,设置页"界面字体"下拉数据源;
-    /// 运行期新安装的字体需重启才进列表)
+    /// 系统已安装字体表(设置页"界面字体"下拉数据源;启动枚举一次,
+    /// 运行期进入设置页且距上次枚举超过 5 分钟才重扫)
     font_catalog: Vec<crate::platform::fonts::FontEntry>,
+    /// 字体表上次枚举时刻:进入设置页时隔 FONT_CATALOG_REFRESH_INTERVAL
+    /// 以上才重扫,避免反复切页频繁读注册表(重启重新计时,不受该限制)
+    font_catalog_at: Instant,
     /// 已成功应用的界面字体名(空 = 默认微软雅黑):与 config 比对检测切换,
     /// 启动时记为解析后的配置值(解析不到也不改写配置)
     applied_font: String,

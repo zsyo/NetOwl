@@ -7,7 +7,10 @@ use std::time::Instant;
 
 use eframe::egui;
 
-use super::{CONFIG_SAVE_DEBOUNCE, FRAME_STATS_INTERVAL, HITS_FLUSH_INTERVAL, NetOwlApp};
+use super::{
+    CONFIG_SAVE_DEBOUNCE, FONT_CATALOG_REFRESH_INTERVAL, FRAME_STATS_INTERVAL, HITS_FLUSH_INTERVAL,
+    NetOwlApp,
+};
 use crate::collector;
 use crate::platform::{shutdown_hook, single_instance};
 use crate::storage::history_query;
@@ -457,6 +460,13 @@ impl eframe::App for NetOwlApp {
             tracing::trace!("[Frame] 页面 {:?} -> {:?}", self.last_page, self.page);
             if self.page == Page::Settings {
                 self.i18n.refresh_languages();
+                // 字体表重扫:距上次枚举不足 5 分钟不读注册表,避免反复
+                // 切页频繁枚举;重启重新计时(启动时已扫一次并记时刻)
+                if self.font_catalog_at.elapsed() >= FONT_CATALOG_REFRESH_INTERVAL {
+                    self.font_catalog = crate::platform::fonts::installed_fonts();
+                    self.font_catalog_at = Instant::now();
+                    tracing::debug!("[App] 字体表重扫:{} 项", self.font_catalog.len());
+                }
             }
             if self.page == Page::History {
                 self.history.dirty = true;

@@ -31,9 +31,12 @@ impl NetOwlApp {
         autostart_on: bool,
     ) -> Self {
         // 界面字体:枚举系统字体表,按配置显示名解析路径;解析不到(字体
-        // 已卸载等)回退默认(微软雅黑)并告警,不改写配置——字体装回后重启
-        // 即生效。applied_font 一律记配置值本身(含解析不到的名字):否则
-        // sync_font 每帧都比对不一致,反复弹 toast 并无谓改写配置
+        // 已卸载等)回退默认(微软雅黑)并告警,不改写配置——字体装回后进
+        // 设置页重扫即生效(5 分钟间隔)。applied_font 一律记配置值本身
+        // (含解析不到的名字):否则 sync_font 每帧都比对不一致,反复弹
+        // toast 并无谓改写配置。启动必扫一次并记录时刻,运行期重扫受
+        // FONT_CATALOG_REFRESH_INTERVAL 间隔限制
+        let font_catalog_at = Instant::now();
         let font_catalog = crate::platform::fonts::installed_fonts();
         let configured_font = config.general.font.clone();
         let font_path = resolve_font_path(&font_catalog, &configured_font);
@@ -235,6 +238,7 @@ impl NetOwlApp {
             lan: LanState::new(),
             listen_watch: ListenWatch::new(),
             font_catalog,
+            font_catalog_at,
             applied_font,
             font_filter: String::new(),
             _tray,
