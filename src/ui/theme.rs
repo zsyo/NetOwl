@@ -130,8 +130,8 @@ pub fn set_ui_font(path: Option<&str>, ctx: &egui::Context) -> Result<(), String
 
 /// 组装字体定义:界面字体(可选)与微软雅黑依次挂 proportional 首位,汉字在
 /// 所选字体缺字形时回退雅黑;Consolas 挂 monospace 首位(等宽列对齐);
-/// Bootstrap Icons 挂两族链尾。系统字体(雅黑/Consolas)缺失按规范显式
-/// 报错,不做静默降级
+/// Bootstrap Icons 挂两族链首(图标码点优先由它解析)。系统字体
+/// (雅黑/Consolas)缺失按规范显式报错,不做静默降级
 fn build_fonts(ui_font: Option<&str>) -> Result<FontDefinitions, String> {
     let msyh = std::fs::read("C:/Windows/Fonts/msyh.ttc")
         .map_err(|e| format!("读取 C:/Windows/Fonts/msyh.ttc(微软雅黑)失败: {e}"))?;
@@ -170,8 +170,11 @@ fn build_fonts(ui_font: Option<&str>) -> Result<FontDefinitions, String> {
         .get_mut(&egui::FontFamily::Monospace)
         .expect("default monospace family")
         .insert(0, "consolas".to_owned());
-    // 图标字体:全私用区码点,正常文本不涉及;挂链尾兜底,由
-    // ui::icons 的码点常量按名引用(码点对照 cmap 验证,注释即契约)
+    // 图标字体:cmap 实测仅覆盖 U+F101-U+F91E 私用区(2079 字形),无
+    // 正常文本码点,故挂两族链首——图标码点必须由它解析:用户所选界面
+    // 字体若含同码点字形(Nerd Font 等 PUA 字体常见),挂链尾会被它抢先,
+    // 图标渲染成别的符号。正常文本无该码点字形,自动回退后续字体。
+    // 由 ui::icons 的码点常量按名引用(码点对照 cmap 验证,注释即契约)
     fonts.font_data.insert(
         "bootstrap-icons".to_owned(),
         Arc::new(FontData::from_static(include_bytes!(
@@ -183,7 +186,7 @@ fn build_fonts(ui_font: Option<&str>) -> Result<FontDefinitions, String> {
             .families
             .get_mut(&family)
             .expect("default family")
-            .push("bootstrap-icons".to_owned());
+            .insert(0, "bootstrap-icons".to_owned());
     }
     Ok(fonts)
 }
@@ -281,7 +284,8 @@ pub fn dim_text(text: &str, size: f32) -> egui::RichText {
 mod tests {
     use super::*;
 
-    /// 默认(无界面字体):proportional 首位是雅黑,链尾是图标字体
+    /// 默认(无界面字体):两族链首是图标字体(图标码点不被用户字体抢),
+    /// proportional 次位是雅黑,monospace 次位是 Consolas
     #[test]
     fn build_fonts_default_chain() {
         let fonts = build_fonts(None).expect("默认字体定义应可组装");
@@ -289,14 +293,14 @@ mod tests {
             .families
             .get(&egui::FontFamily::Proportional)
             .expect("proportional family");
-        assert_eq!(prop.first().map(String::as_str), Some("msyh"));
-        assert_eq!(prop.last().map(String::as_str), Some("bootstrap-icons"));
+        assert_eq!(prop.first().map(String::as_str), Some("bootstrap-icons"));
+        assert_eq!(prop.get(1).map(String::as_str), Some("msyh"));
         let mono = fonts
             .families
             .get(&egui::FontFamily::Monospace)
             .expect("monospace family");
-        assert_eq!(mono.first().map(String::as_str), Some("consolas"));
-        assert_eq!(mono.last().map(String::as_str), Some("bootstrap-icons"));
+        assert_eq!(mono.first().map(String::as_str), Some("bootstrap-icons"));
+        assert_eq!(mono.get(1).map(String::as_str), Some("consolas"));
     }
 
     /// 指定界面字体:ui-font 在雅黑之前(漢字才有回退),雅黑仍在链中
@@ -312,8 +316,9 @@ mod tests {
             .families
             .get(&egui::FontFamily::Proportional)
             .expect("proportional family");
-        assert_eq!(prop.first().map(String::as_str), Some("ui-font"));
-        assert_eq!(prop.get(1).map(String::as_str), Some("msyh"));
+        assert_eq!(prop.first().map(String::as_str), Some("bootstrap-icons"));
+        assert_eq!(prop.get(1).map(String::as_str), Some("ui-font"));
+        assert_eq!(prop.get(2).map(String::as_str), Some("msyh"));
         assert!(fonts.font_data.contains_key("ui-font"));
     }
 
