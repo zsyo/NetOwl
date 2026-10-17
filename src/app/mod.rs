@@ -312,6 +312,14 @@ pub struct NetOwlApp {
     lan: LanState,
     /// 新监听端口提醒(监听快照会话内基线 diff)
     listen_watch: ListenWatch,
+    /// 系统已安装字体表(启动枚举一次,设置页"界面字体"下拉数据源;
+    /// 运行期新安装的字体需重启才进列表)
+    font_catalog: Vec<crate::platform::fonts::FontEntry>,
+    /// 已成功应用的界面字体名(空 = 默认微软雅黑):与 config 比对检测切换,
+    /// 启动时记为解析后的配置值(解析不到也不改写配置)
+    applied_font: String,
+    /// 字体下拉搜索词(会话态,离开设置页清空)
+    font_filter: String,
     /// 托盘句柄保活,drop 时移除托盘图标
     _tray: Tray,
 }

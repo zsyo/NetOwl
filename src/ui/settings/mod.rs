@@ -26,6 +26,8 @@ pub(super) fn settings_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         update_result,
         hotkey_capture,
         quality,
+        fonts,
+        font_filter,
         ..
     } = ctx;
     // &mut UiCtx 解构出的引用字段带两层 &mut,借类型注解 coerce 回单层
@@ -36,6 +38,8 @@ pub(super) fn settings_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     let update_result: &mut Option<Result<Option<ReleaseInfo>, String>> = update_result;
     let quality = *quality;
     let update_checking = *update_checking;
+    let fonts: &[crate::platform::fonts::FontEntry] = fonts;
+    let font_filter: &mut String = font_filter;
     widgets::header::page_header(ui, &i18n.t("settings-title"), "");
     ui.add_space(theme::sp::MD);
 
@@ -46,7 +50,15 @@ pub(super) fn settings_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         .auto_shrink(false)
         .show(ui, |ui| {
             // ---- 常规:语言 / 主题 / 悬浮球 / 托盘常驻 / 自启动 ----
-            general::section(ui, config, i18n, hotkey_capture, &mut changed);
+            general::section(
+                ui,
+                config,
+                i18n,
+                hotkey_capture,
+                fonts,
+                font_filter,
+                &mut changed,
+            );
             ui.add_space(theme::sp::MD);
 
             // ---- 监控:数据源 / 质量采样 / 保留期 / 询问 / 静默 ----

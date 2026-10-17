@@ -34,6 +34,55 @@ impl NetOwlApp {
         }
     }
 
+    /// 界面字体下发:设置页改了 config.general.font 而尚未应用时,按显示名
+    /// 在字体表解析路径并热切换(空名 = 默认微软雅黑)。字体不在系统字体表
+    /// 或文件读不到时 toast 明示,并把配置回退为已应用值,不持久化无效字体
+    pub(super) fn sync_font(&mut self, ctx: &egui::Context) {
+        if self.config.general.font == self.applied_font {
+            return;
+        }
+        let want = self.config.general.font.clone();
+        let path = if want.is_empty() {
+            None
+        } else {
+            match self.font_catalog.iter().find(|e| e.name == want) {
+                Some(e) => Some(e.path.clone()),
+                None => {
+                    let text = self
+                        .i18n
+                        .t_with_args("toast-font-missing", &[("name", want.clone())]);
+                    crate::ui::toast::push(
+                        &mut self.toasts,
+                        crate::ui::toast::ToastKind::Warn,
+                        text,
+                    );
+                    tracing::warn!("[App] 界面字体 {want} 未在系统字体表中找到,保持原字体");
+                    self.config.general.font = self.applied_font.clone();
+                    self.mark_config_dirty();
+                    return;
+                }
+            }
+        };
+        let shown = if want.is_empty() {
+            self.i18n.t("font-default")
+        } else {
+            want.clone()
+        };
+        match theme::set_ui_font(path.as_deref(), ctx) {
+            Ok(()) => {
+                tracing::info!("[App] 界面字体 -> {shown}");
+                self.applied_font = want;
+                self.mark_config_dirty();
+            }
+            Err(e) => {
+                let text = self.i18n.t_with_args("toast-font-failed", &[("error", e)]);
+                crate::ui::toast::push(&mut self.toasts, crate::ui::toast::ToastKind::Warn, text);
+                self.config.general.font = self.applied_font.clone();
+                self.mark_config_dirty();
+            }
+        }
+    }
+
     pub(super) fn mark_config_dirty(&mut self) {
         self.config_dirty = true;
         self.config_dirty_since = Instant::now();
@@ -412,6 +461,11 @@ impl eframe::App for NetOwlApp {
             if self.page == Page::History {
                 self.history.dirty = true;
             }
+            // 离开设置页清空字体下拉搜索词:下次进入是全新列表,
+            // 残留的过滤词会让列表看起来"缺字体"
+            if self.last_page == Page::Settings {
+                self.font_filter.clear();
+            }
             // 选中快照与范围随切页清空(旧页 Label 已不在场,保留会
             // 让新页右键菜单误显"复制选中文本"——跨页污染根治)
             self.selected_text = None;
@@ -422,6 +476,7 @@ impl eframe::App for NetOwlApp {
 
         self.sync_language_to_config();
         self.sync_theme_to_config();
+        self.sync_font(ctx);
         self.restore_window_geometry(ctx);
         self.capture_window_geometry(ctx);
 

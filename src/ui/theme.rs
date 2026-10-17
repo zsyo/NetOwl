@@ -113,31 +113,54 @@ pub fn apply_theme_str(s: &str, ctx: &egui::Context) {
     set_theme(s != "light", ctx);
 }
 
-/// 安装字体与视觉样式(启动时按配置主题)
-pub fn install(ctx: &egui::Context, theme: &str) {
-    install_fonts(ctx);
+/// 安装字体与视觉样式(启动时按配置主题与界面字体)
+pub fn install(ctx: &egui::Context, theme: &str, ui_font: Option<&str>) {
+    let fonts = build_fonts(ui_font).unwrap_or_else(|e| panic!("NetOwl 加载界面字体失败: {e}"));
+    ctx.set_fonts(fonts);
     apply_theme_str(theme, ctx);
 }
 
-/// 加载 Windows 自带微软雅黑(中文 fallback)与 Consolas(monospace),
-/// 并把内嵌 Bootstrap Icons 挂到两族 fallback 链尾(码点见 ui::icons)。
-/// 系统字体缺失时按规范显式报错,不做静默降级。
-fn install_fonts(ctx: &egui::Context) {
+/// 运行时切换界面字体(设置页调用,下次 pass 生效)。所选字体文件读不到时
+/// 返回 Err,由调用方 toast 明示并回退,不静默吞掉
+pub fn set_ui_font(path: Option<&str>, ctx: &egui::Context) -> Result<(), String> {
+    let fonts = build_fonts(path)?;
+    ctx.set_fonts(fonts);
+    Ok(())
+}
+
+/// 组装字体定义:界面字体(可选)与微软雅黑依次挂 proportional 首位,汉字在
+/// 所选字体缺字形时回退雅黑;Consolas 挂 monospace 首位(等宽列对齐);
+/// Bootstrap Icons 挂两族链尾。系统字体(雅黑/Consolas)缺失按规范显式
+/// 报错,不做静默降级
+fn build_fonts(ui_font: Option<&str>) -> Result<FontDefinitions, String> {
     let msyh = std::fs::read("C:/Windows/Fonts/msyh.ttc")
-        .expect("NetOwl 需要 Windows 自带字体 C:/Windows/Fonts/msyh.ttc(微软雅黑)来渲染界面");
+        .map_err(|e| format!("读取 C:/Windows/Fonts/msyh.ttc(微软雅黑)失败: {e}"))?;
     let consola = std::fs::read("C:/Windows/Fonts/consola.ttf")
-        .expect("NetOwl 需要 Windows 自带字体 C:/Windows/Fonts/consola.ttf(Consolas)");
+        .map_err(|e| format!("读取 C:/Windows/Fonts/consola.ttf(Consolas)失败: {e}"))?;
 
     let mut fonts = FontDefinitions::default();
     fonts
         .font_data
         .insert("msyh".to_owned(), Arc::new(FontData::from_owned(msyh)));
-    // 追加到 proportional 末尾:拉丁字形仍由内置 Inter 渲染,中文回退到雅黑
+    // 雅黑挂 proportional 首位:所选字体缺汉字字形时回退,不全站混排
     fonts
         .families
         .get_mut(&egui::FontFamily::Proportional)
         .expect("default proportional family")
-        .push("msyh".to_owned());
+        .insert(0, "msyh".to_owned());
+    // 界面字体(用户所选)再插到最前:中西文都优先用它渲染。必须在雅黑
+    // 之后插入,否则会被雅黑反超(两次 insert(0) 后者居前)
+    if let Some(path) = ui_font {
+        let data = std::fs::read(path).map_err(|e| format!("读取所选字体 {path} 失败: {e}"))?;
+        fonts
+            .font_data
+            .insert("ui-font".to_owned(), Arc::new(FontData::from_owned(data)));
+        fonts
+            .families
+            .get_mut(&egui::FontFamily::Proportional)
+            .expect("default proportional family")
+            .insert(0, "ui-font".to_owned());
+    }
     fonts.font_data.insert(
         "consolas".to_owned(),
         Arc::new(FontData::from_owned(consola)),
@@ -162,7 +185,7 @@ fn install_fonts(ctx: &egui::Context) {
             .expect("default family")
             .push("bootstrap-icons".to_owned());
     }
-    ctx.set_fonts(fonts);
+    Ok(fonts)
 }
 
 /// 深浅主题定制:背景层级、阴影、控件交互态、圆角与间距
@@ -252,4 +275,53 @@ pub fn accent_text(text: &str, size: f32) -> egui::RichText {
 /// 弱化文本
 pub fn dim_text(text: &str, size: f32) -> egui::RichText {
     egui::RichText::new(text).size(size).color(c().text_dim)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 默认(无界面字体):proportional 首位是雅黑,链尾是图标字体
+    #[test]
+    fn build_fonts_default_chain() {
+        let fonts = build_fonts(None).expect("默认字体定义应可组装");
+        let prop = fonts
+            .families
+            .get(&egui::FontFamily::Proportional)
+            .expect("proportional family");
+        assert_eq!(prop.first().map(String::as_str), Some("msyh"));
+        assert_eq!(prop.last().map(String::as_str), Some("bootstrap-icons"));
+        let mono = fonts
+            .families
+            .get(&egui::FontFamily::Monospace)
+            .expect("monospace family");
+        assert_eq!(mono.first().map(String::as_str), Some("consolas"));
+        assert_eq!(mono.last().map(String::as_str), Some("bootstrap-icons"));
+    }
+
+    /// 指定界面字体:ui-font 在雅黑之前(漢字才有回退),雅黑仍在链中
+    #[test]
+    fn build_fonts_with_ui_font() {
+        let path = crate::platform::fonts::installed_fonts()
+            .into_iter()
+            .find(|e| e.name == "Microsoft YaHei")
+            .expect("应枚举到雅黑")
+            .path;
+        let fonts = build_fonts(Some(&path)).expect("带界面字体的定义应可组装");
+        let prop = fonts
+            .families
+            .get(&egui::FontFamily::Proportional)
+            .expect("proportional family");
+        assert_eq!(prop.first().map(String::as_str), Some("ui-font"));
+        assert_eq!(prop.get(1).map(String::as_str), Some("msyh"));
+        assert!(fonts.font_data.contains_key("ui-font"));
+    }
+
+    /// 字体文件读不到时返回 Err(不做静默兜底)
+    #[test]
+    fn build_fonts_missing_file_errs() {
+        let err = build_fonts(Some("C:/Windows/Fonts/__no_such_font__.ttf"))
+            .expect_err("不存在的字体文件应报错");
+        assert!(err.contains("__no_such_font__"), "错误信息应含路径: {err}");
+    }
 }

@@ -61,6 +61,10 @@ pub struct GeneralConfig {
     /// 界面主题:"dark" / "light"
     #[serde(default)]
     pub theme: String,
+    /// 界面字体显示名(空 = 默认微软雅黑):取值为平台字体枚举表中的名字,
+    /// 启动时解析不到该字体则回退默认并告警,不改写配置
+    #[serde(default)]
+    pub font: String,
     /// 连接数据源:"real"(真实采集)/ "mock"(模拟演示)
     #[serde(default = "default_collector")]
     pub collector: String,
@@ -155,6 +159,7 @@ impl Default for GeneralConfig {
         GeneralConfig {
             language: String::new(),
             theme: String::new(),
+            font: String::new(),
             collector: default_collector(),
             history_days: 0,
             history_remind: true,

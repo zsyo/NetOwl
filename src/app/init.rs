@@ -30,7 +30,18 @@ impl NetOwlApp {
         minimized: bool,
         autostart_on: bool,
     ) -> Self {
-        theme::install(&cc.egui_ctx, &config.general.theme);
+        // 界面字体:枚举系统字体表,按配置显示名解析路径;解析不到(字体
+        // 已卸载等)回退默认(微软雅黑)并告警,不改写配置——字体装回后重启
+        // 即生效。applied_font 一律记配置值本身(含解析不到的名字):否则
+        // sync_font 每帧都比对不一致,反复弹 toast 并无谓改写配置
+        let font_catalog = crate::platform::fonts::installed_fonts();
+        let configured_font = config.general.font.clone();
+        let font_path = resolve_font_path(&font_catalog, &configured_font);
+        if !configured_font.is_empty() && font_path.is_none() {
+            tracing::warn!("[App] 配置的界面字体 {configured_font} 未在系统字体表中找到,回退默认");
+        }
+        let applied_font = configured_font;
+        theme::install(&cc.egui_ctx, &config.general.theme, font_path.as_deref());
         // 静默启动兜底:main.rs 已 with_visible(false),此处再补发一次隐藏,
         // 防 eframe 首帧渲染后自动显示窗口(幂等,窗口不可见时为空操作)
         if minimized {
@@ -223,7 +234,21 @@ impl NetOwlApp {
             ask_ui_visible: false,
             lan: LanState::new(),
             listen_watch: ListenWatch::new(),
+            font_catalog,
+            applied_font,
+            font_filter: String::new(),
             _tray,
         }
     }
+}
+
+/// 按显示名在系统字体表中解析字体文件路径;空名(默认微软雅黑)返回 None
+fn resolve_font_path(catalog: &[crate::platform::fonts::FontEntry], name: &str) -> Option<String> {
+    if name.is_empty() {
+        return None;
+    }
+    catalog
+        .iter()
+        .find(|e| e.name == name)
+        .map(|e| e.path.clone())
 }

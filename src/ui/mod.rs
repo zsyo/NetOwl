@@ -181,6 +181,10 @@ pub struct UiCtx<'a> {
     /// 行内容定格;关闭后恢复)
     pub history_frozen: bool,
     pub local_pos: (f32, f32),
+    /// 系统已安装字体(设置页"界面字体"下拉;启动时枚举一次)
+    pub fonts: &'a [crate::platform::fonts::FontEntry],
+    /// 字体下拉搜索词(会话态;离开设置页由 App 层清空)
+    pub font_filter: &'a mut String,
 }
 
 use crate::rules as rules_engine;

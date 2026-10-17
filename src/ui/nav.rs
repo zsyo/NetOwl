@@ -4,7 +4,7 @@
 use eframe::egui;
 use egui::{Align2, CornerRadius, FontId, RichText, Sense};
 
-use super::{UiCtx, nav_rate::rate_card};
+use super::{UiCtx, nav_rate::rate_card, text_width};
 use crate::collector::CollectorKind;
 use crate::i18n::I18n;
 use crate::model::Connection;
@@ -155,34 +155,63 @@ fn brand_light(ui: &mut egui::Ui) {
 /// 底部状态:监控中(绿点)、连接数、数据源提示
 fn status_rows(ui: &mut egui::Ui, conns: &[Connection], i18n: &I18n, kind: CollectorKind) {
     let p = theme::c();
-    ui.horizontal(|ui| {
+    let gap = ui.spacing().item_spacing.x;
+    let avail = ui.available_width();
+
+    // 监控中:绿点 + 文案,文案水平居中
+    let monitoring = i18n.t("status-monitoring");
+    let monitor_text = text_width(ui, &monitoring, theme::font::SM);
+    centered_row(ui, avail, 14.0, gap, monitor_text, |ui| {
         let (rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), Sense::hover());
         ui.painter().circle_filled(rect.center(), 4.0, p.status_ok);
-        ui.label(theme::dim_text(
-            &i18n.t("status-monitoring"),
-            theme::font::SM,
-        ));
+        ui.label(theme::dim_text(&monitoring, theme::font::SM));
     });
-    ui.horizontal(|ui| {
+
+    // n 条连接:网口图标 + 文案,文案水平居中
+    let conn_text = i18n.t_with_args("status-conn-count", &[("count", conns.len().to_string())]);
+    let conn_icon = text_width(ui, icons::ETHERNET, theme::font::XS);
+    let conn_row = text_width(ui, &conn_text, theme::font::XS);
+    centered_row(ui, avail, conn_icon, gap, conn_row, |ui| {
         ui.label(
             RichText::new(icons::ETHERNET)
                 .size(theme::font::XS)
                 .color(p.text_dim),
         );
-        ui.label(theme::dim_text(
-            &i18n.t_with_args("status-conn-count", &[("count", conns.len().to_string())]),
-            theme::font::XS,
-        ));
+        ui.label(theme::dim_text(&conn_text, theme::font::XS));
     });
+
     // 模拟数据源提示(真实采集时无独立状态行,避免与绿点行重复)
     if kind == CollectorKind::Mock {
-        ui.horizontal(|ui| {
+        let mock_text = i18n.t("status-mock");
+        let mock_icon = text_width(ui, icons::FLASK, theme::font::XS);
+        let mock_row = text_width(ui, &mock_text, theme::font::XS);
+        centered_row(ui, avail, mock_icon, gap, mock_row, |ui| {
             ui.label(
                 RichText::new(icons::FLASK)
                     .size(theme::font::XS)
                     .color(p.status_warn),
             );
-            ui.label(theme::dim_text(&i18n.t("status-mock"), theme::font::XS));
+            ui.label(theme::dim_text(&mock_text, theme::font::XS));
         });
     }
+}
+
+/// 底部状态行:文案在可用宽度内水平居中,行首标记(状态点/图标)按固定间距
+/// 挂在文案左侧。按文案而非整组居中——整组居中时窄行的文案会被行首标记
+/// 挤得比宽行更靠右,两行文案起点看着错开。只补前导空格平移,行高与行间距
+/// 和左对齐时完全一致(horizontal_centered 会按整段剩余高度分配,把状态行
+/// 之间的纵向距离撑开,故不用)
+fn centered_row(
+    ui: &mut egui::Ui,
+    avail_w: f32,
+    mark_w: f32,
+    gap: f32,
+    text_w: f32,
+    add: impl FnOnce(&mut egui::Ui),
+) {
+    let pad = ((avail_w - text_w) / 2.0 - mark_w - gap).max(0.0);
+    ui.horizontal(|ui| {
+        ui.add_space(pad);
+        add(ui);
+    });
 }

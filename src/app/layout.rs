@@ -139,6 +139,8 @@ impl NetOwlApp {
             lan_devices,
             local_pos,
             history_frozen,
+            fonts: &self.font_catalog,
+            font_filter: &mut self.font_filter,
         };
         let mut config_changed = false;
 

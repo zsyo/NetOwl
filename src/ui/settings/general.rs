@@ -14,6 +14,8 @@ pub(super) fn section(
     config: &mut Config,
     i18n: &mut I18n,
     hotkey_capture: &mut HotkeyCapture,
+    ctx_fonts: &[crate::platform::fonts::FontEntry],
+    ctx_font_filter: &mut String,
     changed: &mut bool,
 ) {
     section_card(ui, icons::GEAR, &i18n.t("settings-section-general"), |ui| {
@@ -47,6 +49,15 @@ pub(super) fn section(
                             }
                         }
                     });
+            },
+        );
+        ui.add_space(theme::sp::SM);
+        setting_row(
+            ui,
+            &i18n.t("settings-font"),
+            &i18n.t("settings-font-hint"),
+            |ui| {
+                font_row(ui, config, i18n, ctx_fonts, ctx_font_filter, changed);
             },
         );
         ui.add_space(theme::sp::SM);
@@ -145,6 +156,114 @@ pub(super) fn section(
                 hotkey_row(ui, config, i18n, hotkey_capture, changed);
             },
         );
+    });
+}
+
+/// 界面字体行:标准 ComboBox 下拉(与语言下拉同型同宽),弹窗内顶部
+/// 搜索框 + 滚动字体列表。点击项只写 config 并标脏,实际字体切换由
+/// App 层 sync_font 统一下发(失败可 toast 明示)。首项固定
+/// "默认(微软雅黑)";其余项按搜索词大小写不敏感包含过滤。按钮与
+/// 列表中的长字体名省略显示,悬停气泡给全名;点按钮开合弹窗即清空
+/// 搜索词,每次打开都从完整列表起步
+fn font_row(
+    ui: &mut egui::Ui,
+    config: &mut Config,
+    i18n: &I18n,
+    fonts: &[crate::platform::fonts::FontEntry],
+    filter: &mut String,
+    changed: &mut bool,
+) {
+    use egui::TextWrapMode;
+    use egui::containers::PopupCloseBehavior;
+
+    // 与语言下拉同宽(控件区按 180 宽下拉预留);ComboBox 的 width
+    // 只是下限(combo_box.rs:347),不限可用宽(控件区共 260)时长字体
+    // 名会把按钮撑过 180,故用定宽槽位把可用宽也钉住
+    const ROW_W: f32 = 180.0;
+    let current = if config.general.font.is_empty() {
+        i18n.t("font-default")
+    } else {
+        config.general.font.clone()
+    };
+    ui.allocate_ui(egui::vec2(ROW_W, 0.0), |ui| {
+        let resp = egui::ComboBox::from_id_salt("settings-font-select")
+            .width(ROW_W)
+            // 折叠态长字体名省略(弹窗宽 = 按钮宽)
+            .truncate()
+            // 默认 CloseOnClick 点弹窗内任意处(含搜索框)都会关弹窗
+            .close_behavior(PopupCloseBehavior::CloseOnClickOutside)
+            // 弹窗内容总高上限:搜索框 + 240 高列表,略留余量
+            .height(300.0)
+            .selected_text(current.clone())
+            .show_ui(ui, |ui| {
+                // ComboBox 弹窗默认 Extend 不省略(combo_box.rs:411),
+                // 长字体会顶出弹窗宽;改回 Truncate 省略
+                ui.style_mut().wrap_mode = Some(TextWrapMode::Truncate);
+                // 搜索框:输入即过滤(大小写不敏感包含)
+                let hint = i18n.t("font-search");
+                ui.add(
+                    egui::TextEdit::singleline(filter)
+                        .hint_text(hint)
+                        .desired_width(ui.available_width())
+                        .margin(egui::Margin::symmetric(4, 2)),
+                );
+                ui.add_space(theme::sp::XS);
+                // 列表:定高滚动,避免长列表把弹窗顶出屏幕。
+                // auto_shrink 必须关:滚动区高度只取 min(可用高, 240),
+                // 不随过滤结果长短变化。否则过滤出少量字体时弹窗先变矮,
+                // 清空搜索词后可用高被压扁,列表看着像"数据集缩小"且恢复
+                // 不了——egui Area 的 size 取自内容 min_size(area.rs),
+                // 压扁后是稳定不动点,弹窗再也不长回来
+                let needle = filter.trim().to_lowercase();
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .max_height(240.0)
+                    .show(ui, |ui| {
+                        let default_name = i18n.t("font-default");
+                        let mut items: Vec<(&str, bool)> =
+                            vec![(&default_name, config.general.font.is_empty())];
+                        items.extend(
+                            fonts
+                                .iter()
+                                .filter(|e| {
+                                    needle.is_empty() || e.name.to_lowercase().contains(&needle)
+                                })
+                                .map(|e| (e.name.as_str(), e.name == config.general.font)),
+                        );
+                        for (name, selected) in items {
+                            let label =
+                                RichText::new(name)
+                                    .size(theme::font::BODY)
+                                    .color(if selected {
+                                        theme::c().accent
+                                    } else {
+                                        theme::c().text
+                                    });
+                            let r = ui.selectable_label(selected, label);
+                            if r.clicked() {
+                                let picked = if name == default_name {
+                                    String::new()
+                                } else {
+                                    name.to_owned()
+                                };
+                                if config.general.font != picked {
+                                    config.general.font = picked;
+                                    *changed = true;
+                                }
+                            }
+                            // 长字体名省略后悬停展示全名
+                            r.on_hover_text(name);
+                        }
+                    });
+            });
+        // 点按钮开合弹窗即清空搜索词:开弹窗那一帧 popup 走 sizing
+        // pass 不显示,清空对下一帧(首帧可见)生效,不会闪;合上时清掉
+        // 残留,下次打开从完整列表起步
+        if resp.response.clicked() {
+            filter.clear();
+        }
+        // 折叠态悬停气泡:选中字体名被省略时展示全名
+        resp.response.on_hover_text(current);
     });
 }
 
