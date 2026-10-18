@@ -118,16 +118,25 @@ pub fn draw(
     // 单击命中即选中端点(双击复位视图不算选中)。节点与标签对每个
     // 可见 wrap 副本各画一份
     let mut hovered_place = None;
+    // 重叠节点竞争中当前最近者的距离:初值无穷大保证首个命中即入选
+    let mut hovered_best = f32::INFINITY;
     let mut clicked_place = None;
     for (place, (count, bytes)) in &agg {
         let (lon, lat) = geoip::place_pos(*place);
         let pos = proj.project(lon, lat);
         let r = 4.0 + 2.2 * (*count as f32).sqrt();
-        let hovered = hover_pos.is_some_and(|h| wrap_dist(h, pos, cycle_px) < r + 8.0);
+        let hover_dist = hover_pos.map(|h| wrap_dist(h, pos, cycle_px));
+        let hovered = hover_dist.is_some_and(|d| d < r + 8.0);
         if hovered {
-            hovered_place = Some(*place);
-            if resp.clicked() && !resp.double_clicked() {
-                clicked_place = Some(*place);
+            // 屏幕上重叠的多个节点(agg 为 HashMap,遍历顺序不定):
+            // 悬停卡片与点击选中取离光标最近者,否则会落到任意一个上
+            let d = hover_dist.unwrap_or(f32::INFINITY);
+            if d < hovered_best {
+                hovered_best = d;
+                hovered_place = Some(*place);
+                if resp.clicked() && !resp.double_clicked() {
+                    clicked_place = Some(*place);
+                }
             }
         }
         let is_sel = selected == Some(*place);
@@ -144,6 +153,8 @@ pub fn draw(
         let inner_alpha = 0.35 + 0.3 * (0.5 + 0.5 * (t * 2.0 + phase).sin());
         let outer_alpha = 0.30 + 0.3 * (0.5 + 0.5 * (-t * 1.3 + phase + 1.2).sin());
         let (k0, k1) = proj.visible_cycles(pos.x, rect);
+        // 标签对全部 wrap 副本相同,移出副本循环避免每副本重查一遍 i18n
+        let label = geoip::place_label(*place, i18n);
         for k in k0..=k1 {
             let pos = pos + Vec2::new(k as f32 * cycle_px, 0.0);
             painter.circle_stroke(
@@ -182,7 +193,7 @@ pub fn draw(
             painter.text(
                 pos + Vec2::new(0.0, r + 13.0),
                 Align2::CENTER_CENTER,
-                geoip::place_label(*place, i18n),
+                label.as_str(),
                 FontId::proportional(11.0),
                 if dim {
                     theme::c().text_dim.gamma_multiply(0.5)

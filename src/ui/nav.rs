@@ -67,10 +67,12 @@ pub fn nav_ui(
     ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
         // 会话累计 = 当前活跃连接字节总和(程序启动起算,重启归零;
         // 完结连接的字节转入历史库,由历史页统计)
-        let totals = (
-            ctx.conns.iter().map(|c| c.bytes_in).sum::<u64>(),
-            ctx.conns.iter().map(|c| c.bytes_out).sum::<u64>(),
-        );
+        // 单次遍历同时累计收发两路(连接数上百时两次全量求和是可省的
+        // 帧开销)
+        let totals = ctx
+            .conns
+            .iter()
+            .fold((0u64, 0u64), |(i, o), c| (i + c.bytes_in, o + c.bytes_out));
         rate_card(ui, ctx.i18n, ctx.rates, ctx.rate_hist, totals);
         ui.add_space(theme::sp::MD);
         status_rows(ui, ctx.conns, ctx.i18n, collector_kind);

@@ -295,6 +295,7 @@ rules-subtitle = Rules are evaluated top-down by priority; the first enabled mat
 ask-title = New Connection
 ask-question = A program wants to connect to
 ask-timeout-hint = Auto-deny in {$n} s
+ask-rule-save-failed = Failed to save the rule, this decision has no effect: {$process}
 ask-always-hint = "Always" options are saved to the Rules page; the connection stays blocked while asking
 ask-allow = Allow
 ask-deny = Deny

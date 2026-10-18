@@ -84,18 +84,26 @@ fn draw_spaced_upper(painter: &egui::Painter, center: Pos2, text: &str, size: f3
             .rect
             .width()
     };
-    let chars: Vec<char> = upper.chars().collect();
+    // 每字符只测宽一次:测宽与绘制共用同一份 (字, 宽)。layout_no_wrap
+    // 虽有 galley memo 缓存,每次调用仍要重建 LayoutJob 与 String 键,
+    // 逐字符两轮调用在每帧可见标签上是可省的分配量
+    let chars: Vec<(char, f32)> = upper
+        .chars()
+        .map(|c| {
+            let s = c.to_string();
+            (c, width(&s))
+        })
+        .collect();
     // 空串(数据源存在无名要素)时 chars.len()-1 下溢:release 回绕成
     // usize::MAX,标签被画到无穷远;saturating_sub 兜底并提前返回
     if chars.is_empty() {
         return;
     }
-    let total: f32 = chars.iter().map(|c| width(&c.to_string())).sum::<f32>()
-        + SPACING * (chars.len() - 1) as f32;
+    let total: f32 =
+        chars.iter().map(|(_, w)| *w).sum::<f32>() + SPACING * (chars.len() - 1) as f32;
     let mut x = center.x - total * 0.5;
-    for c in chars {
+    for (c, cw) in chars {
         let s = c.to_string();
-        let cw = width(&s);
         painter.text(
             Pos2::new(x, center.y),
             Align2::LEFT_CENTER,

@@ -225,6 +225,7 @@ log-window-no-match = 无匹配日志
 ask-title = 新连接
 ask-question = 有程序要连接到
 ask-timeout-hint = {$n} 秒后自动拒绝
+ask-rule-save-failed = 规则保存失败,该决策未生效:{$process}
 ask-always-hint = 永久选项写入规则页,可随时修改;询问期间该连接保持阻断
 ask-allow = 允许
 ask-deny = 拒绝

@@ -151,9 +151,14 @@ unsafe extern "system" fn on_event(record: *mut EVENT_RECORD) {
             return;
         }
         let agg = &*(r.UserContext as *const Mutex<Agg>);
-        let Ok(mut g) = agg.try_lock() else {
-            LOCK_MISSED.fetch_add(1, Ordering::Relaxed);
-            return;
+        let mut g = match agg.try_lock() {
+            Ok(g) => g,
+            Err(_) => {
+                // 快照持锁期间事件到达:退化为阻塞等待而不是丢弃
+                // (丢弃事件等于流量丢账;持锁方只做表遍历,耗时微秒级)
+                LOCK_MISSED.fetch_add(1, Ordering::Relaxed);
+                agg.lock().unwrap_or_else(|e| e.into_inner())
+            }
         };
         super::decode::handle_event(&mut g, r);
     }

@@ -21,10 +21,14 @@ const IF_FLAG_FILTER_INTERFACE: u8 = 0x02;
 /// 基线间隔上限:超过该间隔(读表连续失败后恢复)只重建基线不计算速率
 const MAX_BASELINE_GAP_SECS: f32 = 10.0;
 
+/// 单个接口的采样行:(InterfaceIndex, 下行字节, 上行字节)
+type IfRow = (u32, u64, u64);
+
 /// 总速率采样器:poll() 按传入间隔节流,返回最近一次采样差值(字节/秒)
 pub struct Sampler {
-    /// 上次采样:(下行字节和, 上行字节和, 时刻);None 表示仅建立基线
-    last: Option<(u64, u64, Instant)>,
+    /// 上次采样:各接口 (InterfaceIndex, 下行字节, 上行字节) 与时刻;
+    /// None 表示仅建立基线。按索引逐接口对账而非只记总和
+    last: Option<(Vec<IfRow>, Instant)>,
     /// 上次读表尝试时刻(成功/失败都记):读表失败也要按同一间隔退避,
     /// 否则失败期间节流判据失效,每帧重读 GetIfTable2
     last_attempt: Option<Instant>,
@@ -60,7 +64,7 @@ impl Sampler {
             return None;
         }
         self.last_attempt = Some(now);
-        let Some((in_octets, out_octets)) = interface_octets() else {
+        let Some(rows) = interface_rows() else {
             if !self.read_failed {
                 self.read_failed = true;
                 tracing::debug!("[Traffic] GetIfTable2 读表失败,总速率沿用旧值(基线重建)");
@@ -69,39 +73,63 @@ impl Sampler {
             return None;
         };
         self.read_failed = false;
-        if let Some((last_in, last_out, at)) = self.last.replace((in_octets, out_octets, now)) {
+        if let Some((last_rows, at)) = self.last.replace((rows.clone(), now)) {
             let dt = now.duration_since(at);
-            // 计数器归零(网卡重连/驱动重置/接口被移除):saturating_sub 恒 0
-            // 而 dt 仍正常,速率会凭空掉一格 0,与读表失败同样只重建基线
-            let reset = in_octets < last_in || out_octets < last_out;
-            // 间隔异常长(读表连续失败后恢复)同理:差值除以巨大 dt 得到的
+            // 接口集合变化(VPN/虚拟网卡上下线)时无从逐接口对账,只重建基线
+            let stable = last_rows.len() == rows.len()
+                && rows
+                    .iter()
+                    .all(|(idx, ..)| last_rows.iter().any(|(j, ..)| j == idx));
+            // 间隔异常长(读表连续失败后恢复):差值除以巨大 dt 得到的
             // 低速率没有意义
             let ok_interval = dt > Duration::ZERO && dt.as_secs_f32() <= MAX_BASELINE_GAP_SECS;
-            if !reset && ok_interval {
-                let down = in_octets.saturating_sub(last_in);
-                let up = out_octets.saturating_sub(last_out);
-                // 整数运算(u128 中间值防大计数器溢出):f32 仅 24 位尾数,
-                // 10Gbps(约 1.25e9 B/s)量级量化粒度约 64 B/s,走势有台阶
-                let ns = dt.as_nanos();
-                self.rates = (
-                    ((down as u128 * 1_000_000_000) / ns) as u64,
-                    ((up as u128 * 1_000_000_000) / ns) as u64,
-                );
-                return Some(self.rates);
+            if stable && ok_interval {
+                // 逐接口求差再求和。只记总和时,单个接口计数器归零(网卡
+                // 重连/驱动重置)会被其他接口的增量掩盖,该档差值变成
+                // 虚假速率并沿 rate_hist 停留一整轮
+                let mut down = 0u64;
+                let mut up = 0u64;
+                let mut reset = false;
+                for (idx, in_octets, out_octets) in &rows {
+                    // stable 已保证索引必在上一轮出现过
+                    let Some((_, last_in, last_out)) = last_rows.iter().find(|(j, ..)| j == idx)
+                    else {
+                        reset = true;
+                        break;
+                    };
+                    // 该接口计数器归零:这一档不计,不污染其余接口增量
+                    if in_octets < last_in || out_octets < last_out {
+                        reset = true;
+                        break;
+                    }
+                    down += in_octets - last_in;
+                    up += out_octets - last_out;
+                }
+                if !reset {
+                    // 整数运算(u128 中间值防大计数器溢出):f32 仅 24 位尾数,
+                    // 10Gbps(约 1.25e9 B/s)量级量化粒度约 64 B/s,走势有台阶
+                    let ns = dt.as_nanos();
+                    self.rates = (
+                        ((down as u128 * 1_000_000_000) / ns) as u64,
+                        ((up as u128 * 1_000_000_000) / ns) as u64,
+                    );
+                    return Some(self.rates);
+                }
             }
         }
         None
     }
 }
 
-/// 全部接口的收发字节和(排除回环与隧道);查询失败返回 None
-fn interface_octets() -> Option<(u64, u64)> {
+/// 全部接口的收发字节(排除回环与隧道);查询失败返回 None。每行带
+/// InterfaceIndex:调用方按索引逐接口对账
+fn interface_rows() -> Option<Vec<IfRow>> {
     unsafe {
         let mut table = std::ptr::null_mut::<MIB_IF_TABLE2>();
         if GetIfTable2(&mut table) != ERROR_SUCCESS {
             return None;
         }
-        let (mut total_in, mut total_out) = (0u64, 0u64);
+        let mut out = Vec::new();
         // ANY_SIZE 惯用法:行数组容量由 NumEntries 给出
         let rows =
             std::slice::from_raw_parts((*table).Table.as_ptr(), (*table).NumEntries as usize);
@@ -112,10 +140,9 @@ fn interface_octets() -> Option<(u64, u64)> {
             {
                 continue;
             }
-            total_in += row.InOctets;
-            total_out += row.OutOctets;
+            out.push((row.InterfaceIndex, row.InOctets, row.OutOctets));
         }
         FreeMibTable(table.cast());
-        Some((total_in, total_out))
+        Some(out)
     }
 }

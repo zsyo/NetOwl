@@ -60,6 +60,16 @@ impl NetOwlApp {
             Scope::Target | Scope::Process => {
                 if let Err(e) = self.rules.insert(&self.history_db, rule) {
                     tracing::warn!("[Ask] 决策规则落库失败({}): {e}", item.process);
+                    // 规则不存在即决策未生效:弹窗已关、连接不拦也不记,
+                    // 必须显式告知,不能只留一行日志
+                    crate::ui::toast::push(
+                        &mut self.toasts,
+                        crate::ui::toast::ToastKind::Warn,
+                        self.i18n.t_with_args(
+                            "ask-rule-save-failed",
+                            &[("process", item.process.clone())],
+                        ),
+                    );
                 }
             }
         }

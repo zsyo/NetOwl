@@ -407,8 +407,10 @@ impl eframe::App for NetOwlApp {
             tracing::debug!("[Sel] 快照定格 {} 字符", text.chars().count());
             self.selected_text = Some(text);
         }
-        self.handle_tray_commands(ctx);
+        // 校准必须先于托盘命令:可见性命令当帧只改跟踪状态,OS 窗口状态
+        // 要到下一帧才更新,后校准会把刚置的目标态按旧状态读回去
         self.calibrate_window_visible();
+        self.handle_tray_commands(ctx);
         self.sync_tray_pinned();
         self.sync_autostart();
         self.poll_ball_data();
