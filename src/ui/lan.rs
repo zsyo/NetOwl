@@ -65,6 +65,9 @@ pub(super) fn lan_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     egui::ScrollArea::vertical()
         .auto_shrink(false)
         .show(ui, |ui| {
+            // 首行色带上沿的半个行距扩张会被滚动区视口裁掉(见
+            // widgets::table::row_area_top_pad),预留出来保持与其余行同高
+            ui.add_space(widgets::table::row_area_top_pad());
             let table_left = ui.max_rect().left();
             let table_right = ui.max_rect().right();
             egui::Grid::new("lan_grid")

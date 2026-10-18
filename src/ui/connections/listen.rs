@@ -74,6 +74,9 @@ pub(super) fn listen_table(ui: &mut egui::Ui, ctx: &mut UiCtx) {
         widgets::table::ROW_H,
         rows.len(),
         |ui, row_range| {
+            // 首行色带上沿的半个行距扩张会被滚动区视口裁掉(见
+            // widgets::table::row_area_top_pad),预留出来保持与其余行同高
+            ui.add_space(widgets::table::row_area_top_pad());
             egui::Grid::new("listen_rows")
                 .num_columns(4)
                 .striped(false)

@@ -154,6 +154,9 @@ pub(super) fn table(
         22.0,
         merged.len(),
         |ui, row_range| {
+            // 首行色带上沿的半个行距扩张会被滚动区视口裁掉(见
+            // widgets::table::row_area_top_pad),预留出来保持与其余行同高
+            ui.add_space(widgets::table::row_area_top_pad());
             let table_left = ui.max_rect().left();
             let table_right = ui.max_rect().right();
             egui::Grid::new("history_summary_rows")
