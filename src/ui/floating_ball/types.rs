@@ -23,9 +23,12 @@ pub(super) const STRIP_W: f32 = 14.0;
 pub(super) const BALL_WIN_W: f32 = BAR_W + STRIP_W;
 pub(super) const BALL_WIN_H: f32 = BAR_H;
 /// 浮窗尺寸(逻辑点;头部一行 + 上/下榜各 TOP_N 行 + 分隔线与按钮
-/// 紧跟内容流式排布,实测满布局内容约 302,底部留少量余量)
+/// 紧跟内容流式排布,高度 = 满布局内容 + 上下内边距 + 少量余量,
+/// 多余留白只落在气泡底部)
 pub(super) const HOVER_W: f32 = 264.0;
-pub(super) const HOVER_H: f32 = 332.0;
+/// 满布局内容实测 324(eframe 0.37 + 微软雅黑行高),加内边距 24 与余量 6;
+/// 改动榜单行数/字号/字体后需重新实测并调整此值
+pub(super) const HOVER_H: f32 = 354.0;
 /// 浮窗与球的间距
 pub(super) const BUBBLE_GAP: f32 = 8.0;
 /// 全显态鼠标停止移动后弹出浮窗的静默时长(移动即重置,滑过不弹)
