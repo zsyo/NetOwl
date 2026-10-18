@@ -76,8 +76,8 @@ jobs:
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # 全部资源(底图/GeoIP/图标字体/词条)编译期内嵌,产物仅 exe;
-      # release 构建嵌入 UAC/DPI manifest(build.rs 按 PROFILE 判定)
+      # 全部资源(底图/GeoIP/图标字体/词条)编译期内嵌,词条同时以 locales
+      # 目录外置随包分发;release 构建嵌入 UAC/DPI manifest(build.rs 按 PROFILE 判定)
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
 
@@ -90,7 +90,7 @@ jobs:
 
       - name: Create portable zip
         # 命名与本地 tools/package_release.ps1 对齐:netowl_{v}_windows_{arch}-portable.zip;
-        # 仅装 exe:图标/底图编译期内嵌,locales 目录缺失时运行时内嵌兜底
+        # 装 exe + locales 词条目录:图标/底图编译期内嵌,词条外置便于用户增删语言
         shell: pwsh
         run: |
           $version = "${{ steps.version.outputs.version }}"
@@ -104,6 +104,15 @@ jobs:
               exit 1
           }
           Copy-Item -Path $exe -Destination "$portableDir/"
+
+          # 词条外置:locales 整个目录进包,用户增删语言无需重新构建;
+          # 缺失或为空直接失败,不静默产出一个没有词条的便携包
+          $ftl = Get-ChildItem -Path "locales" -Filter "*.ftl" -File -ErrorAction SilentlyContinue
+          if (-not $ftl) {
+              Write-Error "No locales/*.ftl found!"
+              exit 1
+          }
+          Copy-Item -Path "locales" -Destination "$portableDir/" -Recurse
 
           Compress-Archive -Path "$portableDir/*" -DestinationPath "$portableDir.zip"
 
