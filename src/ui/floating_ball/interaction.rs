@@ -27,7 +27,7 @@ pub(super) fn cursor_over_windows(
     };
     let cur = egui::pos2(x as f32, y as f32);
     let over = |id: &str| {
-        ctx.input_for(egui::ViewportId(egui::Id::new(id)), |i| {
+        ctx.input_for(egui::ViewportId(egui::Id::unique(id)), |i| {
             i.viewport().outer_rect
         })
         .is_some_and(|r| r.contains(cur))

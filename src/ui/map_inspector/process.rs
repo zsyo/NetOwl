@@ -143,7 +143,7 @@ pub(super) fn view(
             true,
             36.0,
             20.0,
-            egui::Id::new(("inspector-block-toggle", name.to_owned())),
+            egui::Id::unique(("inspector-block-toggle", name.to_owned())),
         );
         if resp.changed() {
             match (on, existing) {

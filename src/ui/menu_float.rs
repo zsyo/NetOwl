@@ -125,7 +125,7 @@ pub fn show(
     elevated: bool,
 ) -> (Vec<MenuAction>, egui::Rect) {
     let mut actions = Vec::new();
-    let resp = egui::Area::new(egui::Id::new("menu_float"))
+    let resp = egui::Area::new(egui::Id::unique("menu_float"))
         .order(egui::Order::Foreground)
         .fixed_pos(menu.pos)
         .constrain(true)

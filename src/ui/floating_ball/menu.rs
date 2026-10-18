@@ -48,7 +48,7 @@ pub(super) fn menu_body(
     // 显示窗口
     if item_row(
         ui,
-        egui::Id::new("ball-menu-show"),
+        egui::Id::unique("ball-menu-show"),
         row_rect(cy),
         i18n.t("ball-menu-show"),
         None,
@@ -62,7 +62,7 @@ pub(super) fn menu_body(
     // 开关组:窗口置顶显示 / 贴边自动隐藏
     if item_row(
         ui,
-        egui::Id::new("ball-menu-topmost"),
+        egui::Id::unique("ball-menu-topmost"),
         row_rect(cy),
         i18n.t("ball-menu-topmost"),
         Some(cfg.always_on_top),
@@ -72,7 +72,7 @@ pub(super) fn menu_body(
     cy += ROW_H;
     if item_row(
         ui,
-        egui::Id::new("ball-menu-auto-hide"),
+        egui::Id::unique("ball-menu-auto-hide"),
         row_rect(cy),
         i18n.t("ball-menu-auto-hide"),
         Some(cfg.auto_hide_edge),
@@ -86,7 +86,7 @@ pub(super) fn menu_body(
     // 打开实时日志(仿托盘菜单,与设置同组)
     if item_row(
         ui,
-        egui::Id::new("ball-menu-log"),
+        egui::Id::unique("ball-menu-log"),
         row_rect(cy),
         i18n.t("ball-menu-log"),
         None,
@@ -97,7 +97,7 @@ pub(super) fn menu_body(
     // 设置 / 关闭悬浮窗
     if item_row(
         ui,
-        egui::Id::new("ball-menu-settings"),
+        egui::Id::unique("ball-menu-settings"),
         row_rect(cy),
         i18n.t("ball-menu-settings"),
         None,
@@ -107,7 +107,7 @@ pub(super) fn menu_body(
     cy += ROW_H;
     if item_row(
         ui,
-        egui::Id::new("ball-menu-close"),
+        egui::Id::unique("ball-menu-close"),
         row_rect(cy),
         i18n.t("ball-menu-close"),
         None,

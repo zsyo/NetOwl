@@ -118,7 +118,7 @@ pub(super) fn group_header(
     // 整行点击区:行内格均为 hover 感知,click 命中唯一落在本件
     ui.interact(
         row_rect,
-        egui::Id::new(("conn_group_header", &data.name)),
+        egui::Id::unique(("conn_group_header", &data.name)),
         egui::Sense::click(),
     )
     .clicked()

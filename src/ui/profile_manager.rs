@@ -66,7 +66,7 @@ pub fn show_modal(
     }
     let rows = state.rows.clone().unwrap_or_default();
 
-    let modal = egui::Modal::new(egui::Id::new("profile-manager")).show(ui.ctx(), |ui| {
+    let modal = egui::Modal::new(egui::Id::unique("profile-manager")).show(ui.ctx(), |ui| {
         ui.set_width(420.0);
         ui.add_space(theme::sp::XS);
         ui.label(

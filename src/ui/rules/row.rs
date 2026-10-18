@@ -50,7 +50,7 @@ pub(super) fn rule_row(
         let toggle = widgets::toggle::toggle_switch(
             ui,
             &mut enabled,
-            egui::Id::new(("rule-enabled-toggle", rule.id)),
+            egui::Id::unique(("rule-enabled-toggle", rule.id)),
         );
         if toggle.changed()
             && let Err(e) = rules.set_enabled(db, rule.id, enabled)

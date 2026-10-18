@@ -48,7 +48,7 @@ impl PageState {
 
 /// 窗口 viewport id(首帧预建常驻,运行中不再新建)
 fn log_viewport_id() -> egui::ViewportId {
-    egui::ViewportId(egui::Id::new("netowl-log-window"))
+    egui::ViewportId(egui::Id::unique("netowl-log-window"))
 }
 
 /// viewport 是否已创建:全隐身状态(主窗口隐藏且悬浮窗关闭)下首帧

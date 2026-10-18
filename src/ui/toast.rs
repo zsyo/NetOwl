@@ -144,7 +144,7 @@ fn draw_one(
         ToastKind::Success => (icons::CHECK_CIRCLE, p.status_ok),
     };
     let text = t.text.clone();
-    egui::Area::new(egui::Id::new((id_prefix, i)))
+    egui::Area::new(egui::Id::unique((id_prefix, i)))
         .order(egui::Order::Foreground)
         .anchor(anchor, base - egui::vec2(0.0, i as f32 * STACK_STEP))
         .show(ctx, |ui| {

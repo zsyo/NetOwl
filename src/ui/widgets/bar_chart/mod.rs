@@ -73,7 +73,7 @@ pub fn bar_chart(ui: &mut egui::Ui, bars: &[UsageBar], size: Vec2) {
 
         // 粘性跟随:上一帧停在右端时,本帧把视口推到最右(数据增长跟随);
         // 用户拖离右端后停止强制(show 后按实际偏移更新标志)
-        let stick_id = egui::Id::new("usage-bar-stick");
+        let stick_id = egui::Id::unique("usage-bar-stick");
         let mut stick = ui
             .ctx()
             .data_mut(|d| *d.get_temp_mut_or_insert_with(stick_id, || true));
@@ -96,7 +96,7 @@ pub fn bar_chart(ui: &mut egui::Ui, bars: &[UsageBar], size: Vec2) {
             };
             draw_content(ui, bars, slot, origin_x, content_rect, p);
         });
-        let offset = out.state.offset.x;
+        let offset = out.state.clamped_offset().x;
         stick = offset >= max_offset - STICK_EPS;
         ui.ctx().data_mut(|d| d.insert_temp(stick_id, stick));
 

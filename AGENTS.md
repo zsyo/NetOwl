@@ -4,13 +4,13 @@
 - 项目名称: NetOwl
 - 项目类型: 网络连接监控工具(Windows 平台的 Little Snitch 复刻,首期定位只读监控+流量地图)
 - 开发语言: Rust
-- GUI 框架: egui/eframe 0.36(glow 后端),即时模式,纯 Rust 自绘渲染,不依赖 webview
+- GUI 框架: egui/eframe 0.37(glow 后端),即时模式,纯 Rust 自绘渲染,不依赖 webview
 - 支持平台: 前期仅 Windows 10+;macOS/Linux 为后续扩展目标,架构需为此预留边界
 - 核心功能: 流量地图(本机节点为中心,连接动画可视化)、连接列表;拦截与规则引擎为后续里程碑
 - 许可: GPLv3(仓库根 LICENSE)
 
 ## 选型记录(勿轻易重议)
-- egui/eframe 0.36:即时模式 painter 可直接绘制节点/连线/动画,同一库覆盖表单式 UI(连接、规则)与画布式 UI(地图);MIT/Apache 双许可
+- egui/eframe 0.37:即时模式 painter 可直接绘制节点/连线/动画,同一库覆盖表单式 UI(连接、规则)与画布式 UI(地图);MIT/Apache 双许可
 - 否决项: iced 0.14(Elm 架构清晰但 canvas 自定义绘制样板多)、slint 1.16(地图仍需嵌 canvas,社区较小)、xilem(实验性)、floem(生态小)、Tauri(webview,违背"非 web"硬性要求)、native-windows-gui(Win32 控件做不出流量地图)
 - 渲染后端用 glow 而非默认 wgpu:编译更快、依赖更少,Windows 上 OpenGL 足够
 

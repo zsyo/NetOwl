@@ -208,7 +208,7 @@ pub(super) fn table(
                         // 按空名精确过滤),不再整行无交互
                         let mut resp = ui.interact(
                             row_rect,
-                            egui::Id::new(("history_summary_row", r_idx)),
+                            egui::Id::unique(("history_summary_row", r_idx)),
                             egui::Sense::click(),
                         );
                         if !r.process.is_empty() && resp.clicked() {

@@ -112,7 +112,7 @@ pub(super) fn section(
                 *changed |= widgets::toggle::toggle_switch(
                     ui,
                     &mut config.floating_ball.enabled,
-                    egui::Id::new("settings-ball-toggle"),
+                    egui::Id::unique("settings-ball-toggle"),
                 )
                 .changed();
             },
@@ -127,7 +127,7 @@ pub(super) fn section(
                 *changed |= widgets::toggle::toggle_switch(
                     ui,
                     &mut config.general.tray_pinned,
-                    egui::Id::new("settings-tray-toggle"),
+                    egui::Id::unique("settings-tray-toggle"),
                 )
                 .changed();
             },
@@ -142,7 +142,7 @@ pub(super) fn section(
                 *changed |= widgets::toggle::toggle_switch(
                     ui,
                     &mut config.general.autostart,
-                    egui::Id::new("settings-autostart-toggle"),
+                    egui::Id::unique("settings-autostart-toggle"),
                 )
                 .changed();
             },

@@ -16,8 +16,10 @@ strip = true
 
 [dependencies]
 # egui/eframe: 即时模式自绘 GUI,painter 可直接绘制流量地图动画(选型理由见 AGENTS.md);
-# glow 后端比默认 wgpu 编译更快、依赖更少,Windows 上足够
-eframe = { version = "0.36.2", default-features = false, features = ["accesskit", "default_fonts", "glow", "links"] }
+# glow 后端比默认 wgpu 编译更快、依赖更少,Windows 上足够;
+# clipboard 特性自 0.37 起改为可选,本项目的复制选中文本/复制远端地址
+# 依赖 ctx.copy_text 与 Event::Copy,default-features = false 下须显式列出
+eframe = { version = "0.37.0", default-features = false, features = ["accesskit", "clipboard", "default_fonts", "glow", "links"] }
 fluent-bundle = "0.16"
 # 仅用于解码内嵌的应用图标 PNG(assets 经 include_bytes! 编译期内嵌,发布产物不携带 assets);
 # 选 png 而非 image:只为解码 RGBA PNG,image 即使关默认特性也拖带更多模块
@@ -65,7 +67,7 @@ windows = { version = "0.62.2", features = [
 # 配置持久化(serde + config.toml,参照 wallwarp 实际实现)
 serde = { version = "1.0.229", features = ["derive"] }
 # 规则导入导出的 JSON 序列化(serde 生态标准实现)
-serde_json = "1.0.152"
+serde_json = "1.0.154"
 # 规则导入导出的文件选择对话框(egui 生态标准方案,仅在此功能使用)
 rfd = "0.17"
 sys-locale = "0.3.2"

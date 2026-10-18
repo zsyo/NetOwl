@@ -32,7 +32,7 @@ pub fn header_grid(
     cols: &[(&'static str, f32, bool)],
     t: &dyn Fn(&str) -> String,
 ) {
-    egui::Grid::new(egui::Id::new(id))
+    egui::Grid::new(egui::Id::unique(id))
         .num_columns(cols.len())
         .spacing([0.0, 0.0])
         .show(ui, |ui| {
@@ -54,7 +54,7 @@ pub fn sort_header_grid<S: Copy + PartialEq>(
     mut on_click: impl FnMut(S),
     t: &dyn Fn(&str) -> String,
 ) {
-    egui::Grid::new(egui::Id::new(id))
+    egui::Grid::new(egui::Id::unique(id))
         .num_columns(cols.len())
         .spacing([0.0, 0.0])
         .show(ui, |ui| {

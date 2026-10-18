@@ -88,7 +88,7 @@ fn nav_item(
     let p = theme::c();
     let selected = *page == target;
     let t = ui.ctx().animate_value_with_time(
-        egui::Id::new(("nav-item", target)),
+        egui::Id::unique(("nav-item", target)),
         if selected { 1.0 } else { 0.0 },
         NAV_ANIM_SECS,
     );

@@ -119,7 +119,7 @@ pub fn show(
         panel_builder = panel_builder.with_always_on_top();
     }
     ctx.show_viewport_immediate(
-        egui::ViewportId(egui::Id::new(PANEL_VIEWPORT_ID)),
+        egui::ViewportId(egui::Id::unique(PANEL_VIEWPORT_ID)),
         panel_builder,
         |ui, _class| body::panel_body(ui, data, i18n, &mut outcome.show_main),
     );
@@ -140,7 +140,7 @@ pub fn show(
         menu_builder = menu_builder.with_always_on_top();
     }
     ctx.show_viewport_immediate(
-        egui::ViewportId(egui::Id::new(MENU_VIEWPORT_ID)),
+        egui::ViewportId(egui::Id::unique(MENU_VIEWPORT_ID)),
         menu_builder,
         |ui, _class| menu::menu_body(ui, cfg, i18n, &mut menu_action),
     );
@@ -162,7 +162,7 @@ pub fn show(
         ball_builder = ball_builder.with_always_on_top();
     }
     ctx.show_viewport_immediate(
-        egui::ViewportId(egui::Id::new(BALL_VIEWPORT_ID)),
+        egui::ViewportId(egui::Id::unique(BALL_VIEWPORT_ID)),
         ball_builder,
         |ui, _class| {
             body::ball_body(
@@ -195,7 +195,7 @@ pub fn show(
                 };
                 for id in [BALL_VIEWPORT_ID, PANEL_VIEWPORT_ID, MENU_VIEWPORT_ID] {
                     ctx.send_viewport_cmd_to(
-                        egui::ViewportId(egui::Id::new(id)),
+                        egui::ViewportId(egui::Id::unique(id)),
                         egui::ViewportCommand::WindowLevel(level),
                     );
                 }

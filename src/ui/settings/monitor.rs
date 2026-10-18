@@ -58,7 +58,7 @@ pub(super) fn section(ui: &mut egui::Ui, config: &mut Config, i18n: &I18n, chang
                     *changed |= widgets::toggle::toggle_switch(
                         ui,
                         &mut config.general.lan_notify,
-                        egui::Id::new("settings-lan-notify-toggle"),
+                        egui::Id::unique("settings-lan-notify-toggle"),
                     )
                     .changed();
                 },
@@ -72,7 +72,7 @@ pub(super) fn section(ui: &mut egui::Ui, config: &mut Config, i18n: &I18n, chang
                     *changed |= widgets::toggle::toggle_switch(
                         ui,
                         &mut config.general.listen_notify,
-                        egui::Id::new("settings-listen-notify-toggle"),
+                        egui::Id::unique("settings-listen-notify-toggle"),
                     )
                     .changed();
                 },
@@ -86,7 +86,7 @@ pub(super) fn section(ui: &mut egui::Ui, config: &mut Config, i18n: &I18n, chang
                     *changed |= widgets::toggle::toggle_switch(
                         ui,
                         &mut config.general.quality_monitor,
-                        egui::Id::new("settings-quality-toggle"),
+                        egui::Id::unique("settings-quality-toggle"),
                     )
                     .changed();
                 },
@@ -164,7 +164,7 @@ pub(super) fn section(ui: &mut egui::Ui, config: &mut Config, i18n: &I18n, chang
                     *changed |= widgets::toggle::toggle_switch(
                         ui,
                         &mut config.general.ask_connections,
-                        egui::Id::new("settings-ask-toggle"),
+                        egui::Id::unique("settings-ask-toggle"),
                     )
                     .changed();
                 },
@@ -240,7 +240,7 @@ pub(super) fn targets_section(
                             [300.0, 24.0],
                             egui::TextEdit::singleline(&mut t.ip)
                                 .hint_text("1.2.3.4")
-                                .vertical_align(egui::Align::Center),
+                                .align(egui::Align2::LEFT_CENTER),
                         )
                         .changed();
                     let v = &ui.style().visuals;
@@ -265,7 +265,7 @@ pub(super) fn targets_section(
                             [120.0, 24.0],
                             egui::TextEdit::singleline(&mut t.label)
                                 .hint_text(i18n.t("settings-quality-label-hint"))
-                                .vertical_align(egui::Align::Center),
+                                .align(egui::Align2::LEFT_CENTER),
                         )
                         .changed();
                     if widgets::button::icon_btn(

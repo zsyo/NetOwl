@@ -21,7 +21,7 @@ pub(super) fn confirm_delete_modal(
     };
     let mut confirmed = false;
     let mut cancelled = false;
-    let modal = egui::Modal::new(egui::Id::new("history_delete_confirm")).show(ui.ctx(), |ui| {
+    let modal = egui::Modal::new(egui::Id::unique("history_delete_confirm")).show(ui.ctx(), |ui| {
         ui.set_width(340.0);
         ui.add_space(theme::sp::XS);
         ui.label(

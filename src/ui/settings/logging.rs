@@ -31,7 +31,7 @@ pub(super) fn section(
                     if widgets::toggle::toggle_switch(
                         ui,
                         &mut config.general.log_to_file,
-                        egui::Id::new("settings-log-file-toggle"),
+                        egui::Id::unique("settings-log-file-toggle"),
                     )
                     .changed()
                     {

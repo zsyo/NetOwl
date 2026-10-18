@@ -144,7 +144,7 @@ fn block_action(
                 true,
                 SWITCH_W,
                 SWITCH_H,
-                egui::Id::new(("conn-block-toggle", c.id)),
+                egui::Id::unique(("conn-block-toggle", c.id)),
             );
             if resp.changed()
                 && !on
@@ -167,7 +167,7 @@ fn block_action(
                 true,
                 SWITCH_W,
                 SWITCH_H,
-                egui::Id::new(("conn-block-toggle", c.id)),
+                egui::Id::unique(("conn-block-toggle", c.id)),
             );
             if resp.changed()
                 && !on
@@ -186,7 +186,7 @@ fn block_action(
                 false,
                 SWITCH_W,
                 SWITCH_H,
-                egui::Id::new(("conn-block-toggle", c.id)),
+                egui::Id::unique(("conn-block-toggle", c.id)),
             )
             .on_hover_text(i18n.t("map-blocked-by-process"));
         }
@@ -198,7 +198,7 @@ fn block_action(
                 true,
                 SWITCH_W,
                 SWITCH_H,
-                egui::Id::new(("conn-block-toggle", c.id)),
+                egui::Id::unique(("conn-block-toggle", c.id)),
             );
             if resp.changed()
                 && on

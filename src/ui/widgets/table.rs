@@ -133,7 +133,7 @@ pub fn header_sort_cell(
     let (rect, _) = ui.allocate_exact_size(egui::vec2(w, row_h), egui::Sense::click());
     let resp = ui.interact(
         rect,
-        ui.id().with(("sort-header-cell", text)),
+        ui.scope_id().with(("sort-header-cell", text)),
         egui::Sense::click(),
     );
 

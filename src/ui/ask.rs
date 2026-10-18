@@ -33,7 +33,7 @@ pub fn show(
     let want_visible = asker.active.is_some();
     if *applied != want_visible {
         ctx.send_viewport_cmd_to(
-            egui::ViewportId(egui::Id::new("netowl-ask")),
+            egui::ViewportId(egui::Id::unique("netowl-ask")),
             egui::ViewportCommand::Visible(want_visible),
         );
         *applied = want_visible;
@@ -53,7 +53,7 @@ pub fn show(
         .with_visible(want_visible);
 
     ctx.show_viewport_immediate(
-        egui::ViewportId(egui::Id::new("netowl-ask")),
+        egui::ViewportId(egui::Id::unique("netowl-ask")),
         builder,
         |ui, _class| {
             // 预建态(无待询问项)只维持窗口存在,不渲染内容

@@ -147,7 +147,7 @@ pub(super) fn group_row(
             true,
             SWITCH_W,
             SWITCH_H,
-            egui::Id::new(("proc-block-toggle", g.name.clone())),
+            egui::Id::unique(("proc-block-toggle", g.name.clone())),
         );
         if resp.changed() {
             match (on, existing) {
