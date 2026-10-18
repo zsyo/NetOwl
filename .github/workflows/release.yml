@@ -4,6 +4,8 @@ name: Release
 # 并创建 GitHub Release;也可手动触发仅构建与打包演练(不创建 Release)。
 # 发布前 Cargo.toml 的 version 应与 tag 对齐(如 tag v0.1.0 ↔ version = "0.1.0");
 # tag 版本号含 '-' 预发布段(如 v0.2.0-beta.1,SemVer)时 Release 标记为预发布。
+# Release 更新说明:annotated tag 的 message 作为正文上半,其下叠加按提交记录
+# 自动生成的变更列表(含 Full Changelog 跳转);轻量 tag 无 message 时仅自动生成。
 
 on:
   push:
@@ -153,6 +155,31 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        # 仅为读取 annotated tag 的 message 提供 git 仓库,tag 对象在下一步显式浅拉取
+        uses: actions/checkout@v7
+
+      - name: Read tag message
+        id: tagmsg
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ github.ref_name }}"
+          git fetch --quiet --depth=1 origin "+refs/tags/${tag}:refs/tags/${tag}"
+          # 只有 annotated tag 有 message;轻量 tag 直接指向 commit,
+          # for-each-ref 的 %(contents) 会退化成该 commit 的提交说明,不能当发布说明用
+          if [ "$(git cat-file -t "refs/tags/${tag}")" = "tag" ]; then
+            msg=$(git for-each-ref --format='%(contents)' "refs/tags/${tag}")
+          else
+            msg=""
+          fi
+          if [ -n "${msg//[[:space:]]/}" ]; then
+            printf '%s\n' "$msg" > release-notes.md
+            echo "source=tag-message" >> "$GITHUB_OUTPUT"
+          else
+            echo "source=none" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Download artifacts
         uses: actions/download-artifact@v8
         with:
@@ -166,4 +193,7 @@ jobs:
           draft: false
           # tag 版本号含 '-' 预发布段(如 v0.2.0-beta.1)时标记为预发布
           prerelease: ${{ needs.build.outputs.prerelease == 'true' }}
+          # annotated tag 的 message 作为正文上半,下方叠加自动生成的变更列表
+          # (含 Full Changelog 跳转);轻量 tag 无 message 时仅自动生成
+          body_path: ${{ steps.tagmsg.outputs.source == 'tag-message' && 'release-notes.md' || '' }}
           generate_release_notes: true

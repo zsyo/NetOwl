@@ -517,6 +517,11 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   Utilities 等,无 Network);identifier com.zephyr.netowl 为占位域名,可再改
 - 发布产物不携带 assets(图标/底图编译期内嵌),locales 词条外置,
   目录缺失时运行时用内嵌兜底
+- GitHub Release(.github/workflows/release.yml):推送 v* tag 自动构建并创建,
+  更新说明 = annotated tag 的 message 上半 + 按提交记录自动生成的变更列表下半
+  (含 Full Changelog 跳转);轻量 tag 无 message 时仅自动生成。release job 的
+  Read tag message 步浅拉取单条 tag refspec,以 git cat-file -t 判定 annotated
+  后取 message 写 release-notes.md,经 body_path 传给 softprops/action-gh-release
 
 ## 验证规范
 - 每次改动 cargo build 通过;界面改动 cargo run 冒烟确认无 panic
