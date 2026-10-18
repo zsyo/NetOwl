@@ -21,22 +21,23 @@ The app ships with built-in update checks (Settings → About), on both stable a
 
 ### Real-time monitoring
 
-- **Traffic map** — live process connections on a world map: arc links, animated inbound/outbound particles, pulsing nodes aggregated by connection count, auto-centered on your machine at startup, wheel zoom / drag / double-click reset, hover for endpoint details, click to sync with the side panel
+- **Traffic map** — live process connections on a world map: arc links, animated inbound/outbound particles, pulsing nodes aggregated by connection count, auto-centered on your machine at startup, wheel zoom / drag / double-click reset, hover for endpoint details, click to sync with the side panel; nodes are tinted by network quality (latency / packet loss) and endpoint details include the carrier
 - **Connection list** — active connections: process (icon / signature state), protocol, remote address with rDNS hostname, GeoIP location, live rates and total bytes; sortable columns, text search (Ctrl+F to focus), protocol filter, collapsible grouping by process, context menu (close connection / locate binary / copy / view history)
 - **Port listening** — TCP LISTEN and UDP bound endpoints in one view, switchable on the same page as the connection list, searchable by process/path; a toast fires when a new listening port appears
-- **Per-connection byte accounting** — ETW kernel network events (TCP/UDP send/receive bytes, short-lived connection capture), no driver required
-- **Floating ball** — an edge-docked always-on indicator of total up/down rates (bar-level tiers), expandable into a per-process rate ranking with today's totals, draggable with position memory
+- **Per-connection byte accounting** — ETW kernel network events (TCP/UDP send/receive bytes, short-lived connection capture, IPv4/IPv6 dual-stack), no driver required
+- **Network quality** — ICMP probes against custom targets (IPv4/IPv6), EMA-smoothed latency and packet loss, health-tinted map nodes, an alert when a target stops responding
+- **Floating ball** — an edge-docked always-on indicator of total up/down rates (bar-level tiers), expandable into a per-process rate ranking with today's totals, draggable with position memory, right-click opens the live log window
 
 ### Blocking & prompting
 
 - **New-connection prompt** — public connections that match no rule raise a prompt (allow/deny), scoped to this connection only / this target / the whole program; timeout defaults to deny
-- **Rule engine** — matching on action (allow/block) × direction × protocol × process × remote (CIDR or domain) × port, priority-ordered, enable toggle and reordering, SQLite persistence, multiple profiles, JSON import/export; hit counters persist across restarts so dead rules stand out
-- **WFP blocking** — enabled rules are translated into Windows Filtering Platform filters that take real effect (processes matched by image path); a dynamic session self-destructs on exit, leaving no residual blocking
+- **Rule engine** — matching on action (allow/block) × direction × protocol × process × remote (CIDR or domain) × port, priority-ordered, enable toggle and reordering, SQLite persistence, multiple profiles, JSON import/export; hit counters persist across restarts so dead rules stand out; domain conditions are resolved in-app and expanded into per-IP filters for in-kernel blocking
+- **WFP blocking** — enabled rules are translated into Windows Filtering Platform filters that take real effect (processes matched by image path, IPv4/IPv6 dual-stack); a dynamic session self-destructs on exit, leaving no residual blocking
 - **Silent mode** — three states: off (follow the prompt switch) / allow (silent permit) / deny (block-everything fallback), reachable from both Settings and the tray
 
 ### History & statistics
 
-- **Connection history** — each closed connection is persisted to SQLite as a whole row (including transfer bytes); the process summary view merges live connections in real time
+- **Connection history** — each closed connection is persisted to SQLite as a whole row (including transfer bytes, IPv4/IPv6 dual-stack); the process summary view merges live connections in real time
 - **Four query views** — detail / aggregate (process × protocol × remote) / process summary / usage (daily or hourly bucketed bar chart), time range and multi-condition filters, CSV export (UTF-8 BOM)
 - **Usage quota** — monthly traffic quota (accumulated on the local-timezone month boundary) with toasts at 80%/100%
 - **Auto cleanup** — retention-based deletion that reclaims disk space, plus an over-quota reminder
@@ -47,8 +48,8 @@ The app ships with built-in update checks (Settings → About), on both stable a
 - **Global hotkey** — click the field and press any combo (Win/Ctrl/Alt/Shift freely combined) to summon the main window back to the traffic map from anywhere
 - **LAN devices** — same-subnet devices discovered from the ARP cache, new-device badge, online state, toast on new-device join
 - **Update check** — About section in Settings, stable and preview channels, one-click jump to the release page
-- **Logging** — leveled logs (latest.log file / live log window) with key paths and failure reasons traceable
-- **Also** — city-level GeoIP (down to prefecture-level cities in China), rDNS hostname lookup, English & Simplified Chinese UI, cold-HUD dark/light themes, number formatting (Chinese 万/亿 or international K/M/B, following the UI language or set manually), single-instance activation, best-effort flush of live connections at system shutdown
+- **Logging** — leveled logs (latest.log file / live log window) with retention-based archive cleanup, key paths and failure reasons traceable
+- **Also** — IPv6 end to end (collection / ETW / GeoIP / rules / history database), city-level GeoIP (down to prefecture-level cities in China) with carrier/ISP annotation, rDNS hostname lookup, English & Simplified Chinese UI, selectable UI font, cold-HUD dark/light themes, number formatting (Chinese 万/亿 or international K/M/B, following the UI language or set manually), custom context menus (copy cell / copy selected text), single-instance activation, best-effort flush of live connections at system shutdown
 
 ## Build & Run
 
@@ -78,13 +79,13 @@ The artifact lands at `target/release/netowl_<version>_x64-setup.exe`: per-user 
 Two offline datasets are embedded; the app **never calls a map or IP-database API at runtime** (public-IP probing and rDNS aside, both optional):
 
 - **Map basemap** `assets/mapdata.bin`: China administrative divisions ([Alibaba Cloud DataV GeoAtlas](https://datav.aliyun.com/area/svgconfig/) static GeoJSON, no API key; province borders, the South China Sea boundary drawn as the **ten-segment line**, Hong Kong/Macao/Taiwan shown as provincial-level divisions) + world borders/oceans/lakes ([Natural Earth](https://www.naturalearthdata.com/), Public Domain, 110m/50m simplified tiers). Layered rendering: the world layer draws first and the China layer covers it, hiding NE border geometry that mis-extends into China. DataV data is GCJ-02, with an inherent <0.02 degree offset against NE's WGS-84 — below visual notice. DataV is officially positioned for use within Alibaba Cloud products; confirm the terms before third-party distribution or commercial use.
-- **GeoIP database** `assets/geoip.bin` (~2.7 MB, 496k entries): [ip2region](https://github.com/lionsoul2014/ip2region) v4 xdb (Apache-2.0) provides the IP-range to location mapping, Chinese city coordinates come from DataV province/city data, and foreign city coordinates plus English names come from [GeoNames](https://www.geonames.org/) cities15000 (Public Domain). City-level granularity: China (incl. HK/Macao/Taiwan) down to prefecture-level cities; foreign matches by city with fallback to province/country.
+- **GeoIP database** `assets/geoip.bin` (~13.5 MB, 496k IPv4 + 591k IPv6 ranges, plus carrier/ISP ranges): [ip2region](https://github.com/lionsoul2014/ip2region) v4/v6 xdb (Apache-2.0) provides the IP-range to location mapping, Chinese city coordinates come from DataV province/city data, and foreign city coordinates plus English names come from [GeoNames](https://www.geonames.org/) cities15000 (Public Domain). City-level granularity: China (incl. HK/Macao/Taiwan) down to prefecture-level cities; foreign matches by city with fallback to province/country. Each IP range also carries a carrier/ISP name, shown directly in endpoint cards and details.
 
 Regeneration steps for both datasets are in the header comments of [tools/build_mapdata.py](tools/build_mapdata.py) and [tools/build_geoip.py](tools/build_geoip.py) (source files go into `tools/cache/`, missing items are downloaded automatically; `tools/cache/` is not committed).
 
 ## Tech Stack
 
-- **GUI**: egui/eframe 0.36 (glow backend, immediate-mode pure-Rust rendering, no webview)
+- **GUI**: egui/eframe 0.37 (glow backend, immediate-mode pure-Rust rendering, no webview)
 - **Blocking**: Windows Filtering Platform (hand-written FFI, dynamic session)
 - **Collection**: IP Helper API (TCP/UDP tables, GetIfTable2, ARP cache) + ETW (Microsoft-Windows-Kernel-Network)
 - **Persistence**: rusqlite (bundled SQLite, WAL)
