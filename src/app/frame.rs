@@ -539,8 +539,7 @@ impl eframe::App for NetOwlApp {
         let ui_t0 = Instant::now();
         // 行悬停锁定随菜单生命周期:菜单本帧未开即解除(三条关闭路径
         // esc/外点/动作统一由下一帧 sync_menu(None) 解锁)
-        self.row_lock
-            .sync_menu(self.menu.as_ref().map(|m| m.rect));
+        self.row_lock.sync_menu(self.menu.as_ref().map(|m| m.rect));
         // 行热区表每帧重建(show_panels 内各行渲染时注册)
         self.row_hits.clear();
         // 页面与重绘判定先行(page 借用持续到帧末,后续不能碰 self)

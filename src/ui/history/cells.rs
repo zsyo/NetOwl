@@ -26,7 +26,8 @@ pub(super) fn row_background(
 ) -> egui::Rect {
     let rect = egui::Rect::from_min_max(egui::pos2(left, top), egui::pos2(right, top + 22.0))
         .expand2(egui::vec2(0.0, widgets::table::ROW_SPACING_Y * 0.5));
-    let bg = if lock.hovered(ui, rect) {
+    let hovered = lock.hovered(ui, rect);
+    let bg = if hovered {
         theme::c().hover_bg
     } else if idx % 2 == 1 {
         theme::c().faint
@@ -34,6 +35,17 @@ pub(super) fn row_background(
         return rect;
     };
     ui.painter().rect_filled(rect, 0.0, bg);
+    if hovered {
+        // 左缘 accent 强调竖条(HUD 标识):与其他页 RowHover 垫底一致
+        ui.painter().rect_filled(
+            egui::Rect::from_min_max(
+                egui::pos2(left, top - widgets::table::ROW_SPACING_Y * 0.5),
+                egui::pos2(left + 2.0, rect.bottom()),
+            ),
+            0.0,
+            theme::c().accent,
+        );
+    }
     rect
 }
 
