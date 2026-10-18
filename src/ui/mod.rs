@@ -35,7 +35,7 @@ use eframe::egui;
 use crate::i18n::I18n;
 use crate::map;
 use crate::map::basemap;
-use crate::model::Connection;
+use crate::model::{Connection, Place};
 use crate::net::quality;
 use crate::net::rdns;
 use crate::rules::wfp;
@@ -121,6 +121,12 @@ pub struct UiCtx<'a> {
     pub rate_hist: &'a [(u64, u64)],
     /// 本次会话累计收发字节(程序启动起算,只增不减):(下行, 上行)
     pub session_bytes: (u64, u64),
+    /// 按归属地的本次会话累计(键 = Place):节点在地图上消失后仍有值,
+    /// Inspector 节点详情流量卡展示
+    pub session_place_bytes: &'a HashMap<Place, (u64, u64)>,
+    /// 按进程映像名的本次会话累计(键 = 进程名):进程退出后仍有值,
+    /// Inspector 进程详情流量卡展示
+    pub session_proc_bytes: &'a HashMap<String, (u64, u64)>,
     /// 每连接实时速率(键 = 连接 id;ETW 字节差值/秒,未提权恒 0)
     pub conn_rates: &'a HashMap<u64, (u64, u64)>,
     /// 连接列表表头排序状态(表头点击切换)

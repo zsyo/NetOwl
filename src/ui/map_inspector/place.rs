@@ -29,6 +29,7 @@ pub(super) fn view(
     config: &Config,
     conns: &[Connection],
     place: Place,
+    session: (u64, u64),
 ) {
     if title_row(
         ui,
@@ -46,12 +47,12 @@ pub(super) fn view(
         &i18n.t_with_args("status-conn-count", &[("count", rows.len().to_string())]),
         theme::font::SM,
     ));
-    traffic_cards(
-        ui,
-        rows.iter().map(|c| c.bytes_in).sum(),
-        rows.iter().map(|c| c.bytes_out).sum(),
-        i18n,
-    );
+    // 本次会话累计(程序启动起算):节点暂时无连接时不归零
+    ui.label(theme::dim_text(
+        &i18n.t("nav-session-total"),
+        theme::font::SM,
+    ));
+    traffic_cards(ui, session.0, session.1, i18n);
     // 运营商:端点各连接中首个可查到的 ISP(数据源无机构信息则不显示)
     if let Some(isp) = rows.iter().find_map(|c| geoip::locate_isp(c.remote_ip)) {
         ui.label(theme::dim_text(

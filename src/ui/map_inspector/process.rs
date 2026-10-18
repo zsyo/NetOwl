@@ -37,6 +37,7 @@ pub(super) fn view(
     history: &mut crate::storage::history_query::PageState,
     conn_search: &mut String,
     nav_request: &mut Option<crate::ui::Page>,
+    session: (u64, u64),
 ) {
     let rows: Vec<&Connection> = conns
         .iter()
@@ -93,12 +94,12 @@ pub(super) fn view(
             }
         });
     });
-    traffic_cards(
-        ui,
-        rows.iter().map(|c| c.bytes_in).sum(),
-        rows.iter().map(|c| c.bytes_out).sum(),
-        i18n,
-    );
+    // 本次会话累计(程序启动起算):进程退出后仍有值
+    ui.label(theme::dim_text(
+        &i18n.t("nav-session-total"),
+        theme::font::SM,
+    ));
+    traffic_cards(ui, session.0, session.1, i18n);
 
     // 进程信息:完整路径可换行;签名取已知状态中优先的一条(语义色圆点)
     if let Some(p) = &path {

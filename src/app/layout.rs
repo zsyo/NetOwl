@@ -109,6 +109,8 @@ impl NetOwlApp {
             rates: self.rates,
             rate_hist: &self.rate_hist,
             session_bytes: self.session_bytes,
+            session_place_bytes: &self.session_place_bytes,
+            session_proc_bytes: &self.session_proc_bytes,
             conn_rates,
             conn_sort: &mut self.conn_sort,
             conn_view: &mut self.conn_view,

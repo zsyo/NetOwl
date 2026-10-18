@@ -38,7 +38,9 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   [UDP 无远端过滤/去重→rDNS→图标→历史→询问→临时规则]、公网 IP 重探
   [启动定位窗口 15s 内首个结果把地图瞬跳到本机中心最大缩放,窗口后不再
   自动定位]、
-  总速率采样、图标纹理缓存(键=映像路径,ColorImage::from_rgba_unmultiplied
+  总速率采样、本次会话累计(全局/节点 Place/进程映像名三维,只增不减,
+  节点与进程从地图消失后条目不淘汰,仅内存重启归零)、
+  图标纹理缓存(键=映像路径,ColorImage::from_rgba_unmultiplied
   建纹理)、WFP 目标集合同步[规则 specs+询问 pending 阻断+静默 deny
   兜底/自身放行];poll_derived.rs:外围任务轮询(与采集无耦合,各自
   节流)——悬浮球数据快照[总速率+进程速率榜 1s,今日总量
@@ -279,7 +281,7 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   collect_groups 分组聚合与 list_panel[搜索/端点过滤条/WFP 状态提示];
   group_row.rs:进程组头行[名称+会话累计上/下行副行+连接数徽章+进程级
   阻断开关]);map_inspector/:右 Inspector(mod.rs:三态切换与 title_row;
-  summary.rs:概览[流量卡+进程/域名排行,各自独立的总量/上传/下载排序
+  summary.rs:概览[本次会话累计流量卡+进程/域名排行,各自独立的总量/上传/下载排序
   切换,上传占优行警示色];place.rs:端点详情;process.rs:进程详情[路径/
   签名/阻断开关/连接明细];行内变长文本统一"固定宽度容器 + Truncate"防
   面板宽度记忆膨胀);map_widgets.rs/map_conn.rs:面板共享小件与连接明细行;

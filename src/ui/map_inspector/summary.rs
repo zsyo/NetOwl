@@ -26,6 +26,7 @@ pub(super) fn view(
     default_icon_tex: Option<&egui::TextureHandle>,
     config: &Config,
     conns: &[Connection],
+    session: (u64, u64),
 ) {
     ui.heading(theme::accent_text(
         &i18n.t("map-inspector-summary"),
@@ -46,12 +47,12 @@ pub(super) fn view(
         ),
         12.0,
     ));
-    traffic_cards(
-        ui,
-        visible.iter().map(|c| c.bytes_in).sum(),
-        visible.iter().map(|c| c.bytes_out).sum(),
-        i18n,
-    );
+    // 本次会话累计(程序启动起算,与导航栏速率卡同源),非活跃连接求和
+    ui.label(theme::dim_text(
+        &i18n.t("nav-session-total"),
+        theme::font::SM,
+    ));
+    traffic_cards(ui, session.0, session.1, i18n);
     if let Some(s) = rank_header(
         ui,
         &i18n.t("map-inspector-top-proc"),

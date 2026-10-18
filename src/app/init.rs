@@ -194,6 +194,8 @@ impl NetOwlApp {
             conn_prev_bytes: HashMap::new(),
             session_bytes: (0, 0),
             session_prev_bytes: HashMap::new(),
+            session_place_bytes: HashMap::new(),
+            session_proc_bytes: HashMap::new(),
             asker: Asker::new(),
             local_probe: local_ip::Probe::new(),
             local_place: None,

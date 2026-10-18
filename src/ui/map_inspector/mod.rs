@@ -43,6 +43,10 @@ pub fn inspector_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
     let history = &mut *ctx.history;
     let conn_search = &mut *ctx.conn_search;
     let nav_request = &mut *ctx.nav_request;
+    // 本次会话累计:概览取全局口径,节点/进程维度按选中键取各自表
+    let session_bytes = ctx.session_bytes;
+    let session_place_bytes = ctx.session_place_bytes;
+    let session_proc_bytes = ctx.session_proc_bytes;
 
     ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
         let process = panels.process.clone();
@@ -62,6 +66,10 @@ pub fn inspector_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
                 history,
                 conn_search,
                 nav_request,
+                session_proc_bytes
+                    .get(name.as_str())
+                    .copied()
+                    .unwrap_or((0, 0)),
             ),
             (Some(place), None) => place::view(
                 ui,
@@ -74,6 +82,7 @@ pub fn inspector_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
                 config,
                 conns,
                 place,
+                session_place_bytes.get(&place).copied().unwrap_or((0, 0)),
             ),
             (None, None) => summary::view(
                 ui,
@@ -84,6 +93,7 @@ pub fn inspector_panel(ui: &mut egui::Ui, ctx: &mut UiCtx) {
                 default_icon_tex,
                 config,
                 conns,
+                session_bytes,
             ),
         }
     });

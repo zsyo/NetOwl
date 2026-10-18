@@ -241,6 +241,13 @@ pub struct NetOwlApp {
     session_bytes: (u64, u64),
     /// 每连接上次计入会话累计的字节(增量累加的差值基准,键 = conn.id)
     session_prev_bytes: HashMap<u64, (u64, u64)>,
+    /// 按归属地的本次会话累计(键 = Place,程序启动起算,只增不减):
+    /// 节点在地图上消失(无连接落在该归属地)后条目仍保留,统计数据
+    /// 不丢失;仅内存,重启归零
+    session_place_bytes: HashMap<Place, (u64, u64)>,
+    /// 按进程映像名的本次会话累计(键 = 进程名,程序启动起算,只增不减):
+    /// 进程退出后条目仍保留,同名进程再现时继续累加;仅内存,重启归零
+    session_proc_bytes: HashMap<String, (u64, u64)>,
     /// 新连接询问(Little Snitch 式弹窗)
     asker: Asker,
     /// 本机公网 IP 探测(公共接口并发,最先成功者胜出)

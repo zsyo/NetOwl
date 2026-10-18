@@ -193,18 +193,43 @@ impl NetOwlApp {
         self.writer.send(events);
     }
 
-    /// 本次会话累计:每轮按"本轮字节 - 上轮字节"增量累加(程序启动起算,
-    /// 只增不减)。连接关闭后行从快照消失,已累加部分保留在累计值里,不随
-    /// 快照收缩而扣减——导航栏"本次会话"是运行期间观测到的总量,不是
-    /// 当前活跃连接的字节和。必须晚于 ETW 合并与 UDP 去重:前者让字节取
-    /// 合并后的真实值,后者避免同一 socket 的多行重复计入
+    /// 本次会话累计(程序启动起算,只增不减,仅内存不落库):每轮按
+    /// "本轮字节 - 上轮字节"增量累加。连接关闭后行从快照消失,已累加部分
+    /// 保留在累计值里,不随快照收缩而扣减——会话总量是运行期间观测到的
+    /// 总量,不是当前活跃连接的字节和。必须晚于 ETW 合并与 UDP 去重:
+    /// 前者让字节取合并后的真实值,后者避免同一 socket 的多行重复计入。
+    /// 三维度同源:全局 = 导航栏速率卡与 Inspector 概览卡,节点按归属地、
+    /// 进程按映像名各计一张表——节点与进程在地图上是动态实体(无连接落在
+    /// 该节点、进程退出即从面板消失),条目不淘汰,统计数据不因实体暂时
+    /// 消失而丢失;程序重启归零
     pub(super) fn poll_session_bytes(&mut self) {
         let prev = std::mem::take(&mut self.session_prev_bytes);
         let mut cur: HashMap<u64, (u64, u64)> = HashMap::with_capacity(self.conns.len());
         for c in &self.conns {
             let (pin, pout) = prev.get(&c.id).copied().unwrap_or((0, 0));
-            self.session_bytes.0 += c.bytes_in.saturating_sub(pin);
-            self.session_bytes.1 += c.bytes_out.saturating_sub(pout);
+            let din = c.bytes_in.saturating_sub(pin);
+            let dout = c.bytes_out.saturating_sub(pout);
+            self.session_bytes.0 += din;
+            self.session_bytes.1 += dout;
+            // 节点/进程维度与地图可见口径一致:本地/局域网远端按配置过滤
+            // (节点必为公网远端,该过滤对节点维度是空操作)
+            if crate::ui::conn_visible(&self.config, c) {
+                if let Some(place) = c.city {
+                    let e = self.session_place_bytes.entry(place).or_insert((0, 0));
+                    e.0 += din;
+                    e.1 += dout;
+                }
+                match self.session_proc_bytes.get_mut(c.process.as_str()) {
+                    Some(e) => {
+                        e.0 += din;
+                        e.1 += dout;
+                    }
+                    None => {
+                        self.session_proc_bytes
+                            .insert(c.process.clone(), (din, dout));
+                    }
+                }
+            }
             cur.insert(c.id, (c.bytes_in, c.bytes_out));
         }
         self.session_prev_bytes = cur;
