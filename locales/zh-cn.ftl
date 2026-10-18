@@ -214,6 +214,7 @@ log-level-trace = 跟踪
 
 log-window-level = 显示级别
 log-window-autoscroll = 自动滚动
+log-window-pin = 窗口置顶
 log-window-filter = 过滤
 log-window-filter-placeholder = 关键字过滤(大小写不敏感)
 log-window-clear = 清空

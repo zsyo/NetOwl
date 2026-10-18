@@ -1,9 +1,10 @@
 //! 日志浏览窗口:独立 viewport 展示内存层日志(参照 wallwarp 同名功能)。
 //! 展示档位独立于控制台与文件层;窗口关闭即停止收集并清空本地缓冲。
-//! 工具栏:展示级别下拉、自动滚动、关键字过滤、清空;日志区按等级着色。
+//! 工具栏:展示级别下拉、自动滚动、关键字过滤、清空,置顶靠右端;日志区按等级着色。
 
 use eframe::egui;
 use egui::RichText;
+use egui::viewport::WindowLevel;
 use tracing::Level;
 
 use crate::i18n::I18n;
@@ -29,6 +30,9 @@ pub struct PageState {
     shown_level: LogLevel,
     filter: String,
     auto_scroll: bool,
+    /// 置顶:本窗 always-on-top(会话态,不持久化;经 builder 的
+    /// window_level 差量下发,切换即生效且不重建窗口)
+    pin_on_top: bool,
 }
 
 impl PageState {
@@ -42,6 +46,7 @@ impl PageState {
             shown_level: LogLevel::Info,
             filter: String::new(),
             auto_scroll: true,
+            pin_on_top: false,
         }
     }
 }
@@ -87,7 +92,8 @@ fn close(state: &mut PageState) {
 /// 不再新建窗口:eframe 0.36 的定时唤醒帧(new_events)未设置
 /// EventLoopGuard,该上下文里新建 immediate viewport 窗口会被静默
 /// 跳过,egui 断言回调未执行直接 panic——与悬浮窗同模式,窗口只在
-/// 首帧创建,显示与否靠 ViewportCommand::Visible 切换
+/// 首帧创建,显示与否靠 ViewportCommand::Visible 切换;builder 属性
+/// 的差量(如置顶的 window_level)运行中仍会正常下发
 pub fn show(ctx: &egui::Context, state: &mut PageState, i18n: &I18n) {
     state.created = true;
     if state.open {
@@ -112,6 +118,11 @@ pub fn show(ctx: &egui::Context, state: &mut PageState, i18n: &I18n) {
     let builder = egui::ViewportBuilder::default()
         .with_title(i18n.t("settings-log"))
         .with_inner_size([780.0, 520.0])
+        .with_window_level(if state.pin_on_top {
+            WindowLevel::AlwaysOnTop
+        } else {
+            WindowLevel::Normal
+        })
         .with_visible(state.open);
     ctx.show_viewport_immediate(log_viewport_id(), builder, |ui, _class| {
         // 预建态(未打开)只维持窗口存在,不渲染内容
@@ -154,8 +165,16 @@ fn toolbar_label(ui: &mut egui::Ui, text: &str) {
     );
 }
 
-/// 顶栏:展示级别下拉、自动滚动、过滤输入、清空按钮
+/// 置顶按钮整宽(文字 + 按钮左右内边距),供顶栏右端预留:搜索框
+/// 只填到预留位之前,按钮紧随其后即落在行尾,与同行控件顶对齐
+/// (interact_size.y 已统一行高)。文案随语言变,取实测而非定值
+fn pin_button_width(ui: &egui::Ui, text: &str) -> f32 {
+    crate::ui::text_width(ui, text, theme::font::BODY) + 2.0 * ui.spacing().button_padding.x
+}
+
+/// 顶栏:展示级别下拉、自动滚动、过滤输入、清空按钮;置顶靠右端
 fn toolbar(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n) {
+    let pin_text = i18n.t("log-window-pin");
     ui.horizontal(|ui| {
         // 行高抬升只作用于本工具栏行(style_mut 泄漏到整页会改变
         // 后续所有布局的最小交互高度)
@@ -192,15 +211,30 @@ fn toolbar(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n) {
         let clear = ui.button(RichText::new(i18n.t("log-window-clear")).size(theme::font::BODY));
         ui.add_space(8.0);
         toolbar_label(ui, &i18n.t("log-window-filter"));
+        let pin_w = pin_button_width(ui, &pin_text);
         crate::ui::widgets::search_box::search_box(
             ui,
             &mut state.filter,
             i18n.t("log-window-filter-placeholder"),
-            ui.available_width() - 90.0,
+            ui.available_width() - pin_w - theme::sp::SM,
         );
         if clear.clicked() {
             state.lines.clear();
             logging::window_layer::clear();
+        }
+        ui.add_space(theme::sp::SM);
+        // 置顶:本窗 always-on-top,经 builder 的 window_level 差量下发
+        // (仅变更帧产生命令,不重建窗口);会话态,与自动滚动/过滤同口径。
+        // 置于行尾:搜索框只填到预留位,本按钮紧随其后落在右端,不挤
+        // 左组空间
+        if ui
+            .add(
+                egui::Button::new(RichText::new(pin_text).size(theme::font::BODY))
+                    .selected(state.pin_on_top),
+            )
+            .clicked()
+        {
+            state.pin_on_top = !state.pin_on_top;
         }
     });
 }

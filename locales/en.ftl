@@ -214,6 +214,7 @@ log-level-trace = Trace
 
 log-window-level = Shown level
 log-window-autoscroll = Auto scroll
+log-window-pin = Always on top
 log-window-filter = Filter
 log-window-filter-placeholder = Keyword filter (case-insensitive)
 log-window-clear = Clear
