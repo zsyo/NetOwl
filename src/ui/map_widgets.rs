@@ -51,16 +51,16 @@ pub(crate) fn rank_header(
             });
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let items = [
-                ("map-rank-total", icons::ARROW_DOWN_UP),
-                ("map-rank-up", icons::ARROW_UP),
-                ("map-rank-down", icons::ARROW_DOWN),
+            // 文案在栈上绑定后再借成 &str:避免中间 Vec<(String, …)>
+            // 与 Vec<(&str, …)> 两次堆分配(本函数每帧两处调用)
+            let total = i18n.t("map-rank-total");
+            let up = i18n.t("map-rank-up");
+            let down = i18n.t("map-rank-down");
+            let view = [
+                (total.as_str(), icons::ARROW_DOWN_UP),
+                (up.as_str(), icons::ARROW_UP),
+                (down.as_str(), icons::ARROW_DOWN),
             ];
-            let texts: Vec<(String, &str)> = items
-                .iter()
-                .map(|(key, glyph)| (i18n.t(key), *glyph))
-                .collect();
-            let view: Vec<(&str, &str)> = texts.iter().map(|(t, g)| (t.as_str(), *g)).collect();
             let idx = match sort {
                 RankSort::Total => 0,
                 RankSort::Out => 1,

@@ -81,6 +81,7 @@ pub(super) fn hover_panel(
                     theme::c().outbound,
                     data.default_icon.as_ref(),
                     data.today.1,
+                    true,
                     i18n,
                 );
                 ui.add_space(theme::sp::SM);
@@ -92,6 +93,7 @@ pub(super) fn hover_panel(
                     theme::c().inbound,
                     data.default_icon.as_ref(),
                     data.today.0,
+                    false,
                     i18n,
                 );
             } else {
@@ -133,6 +135,7 @@ fn section(
     color: egui::Color32,
     default_icon: Option<&egui::TextureHandle>,
     today: u64,
+    up: bool,
     i18n: &I18n,
 ) {
     ui.horizontal(|ui| {
@@ -159,7 +162,7 @@ fn section(
         return;
     }
     for r in rows {
-        proc_row(ui, r, default_icon, glyph, color);
+        proc_row(ui, r, default_icon, glyph, color, up);
     }
 }
 
@@ -180,15 +183,13 @@ fn proc_row(
     default_icon: Option<&egui::TextureHandle>,
     glyph: &str,
     color: egui::Color32,
+    up: bool,
 ) {
     // 速率列预留宽(下行 "↓123MB/s" 也不截断)
     const RATE_COL_W: f32 = 84.0;
-    // 本行展示的速率:上传榜取 up,下载榜取 down(由方向字形色区分)
-    let rate = if color == theme::c().outbound {
-        r.up
-    } else {
-        r.down
-    };
+    // 本行展示的速率由调用方显式给出方向:不能靠颜色相等反推,调色板
+    // 一旦让 inbound/outbound 同色就会静默显示错误方向的数值
+    let rate = if up { r.up } else { r.down };
     ui.horizontal(|ui| {
         let name_w = ui.available_width() - RATE_COL_W;
         ui.allocate_ui(egui::vec2(name_w, 20.0), |ui| {

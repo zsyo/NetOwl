@@ -186,14 +186,26 @@ impl MatchReq {
 /// 视为对端主动连入(入站),否则视为本机出站;UDP 表行无远端语义
 /// 且 ETW 未回填时统一按出站
 pub fn conn_direction(conn: &Connection) -> Direction {
-    if let Some(out) = conn.initiated_out {
-        return if out { Direction::Out } else { Direction::In };
-    }
-    if conn.proto == Protocol::Udp || conn.remote_port < EPHEMERAL_MIN {
+    if conn_direction_for(conn.initiated_out, conn.proto, conn.remote_port) {
         Direction::Out
     } else {
         Direction::In
     }
+}
+
+/// 方向判定的共享口径(供 conn_direction 与询问等待期的临时阻断复用):
+/// ETW 真实方向优先,未知时按远端端口近似——入站连接的远端是发起方,
+/// 其源端口落在临时端口段,故 remote_port >= EPHEMERAL_MIN 视为入站。
+/// UDP 表行无远端语义,一律按出站
+pub(crate) fn conn_direction_for(
+    initiated_out: Option<bool>,
+    proto: Protocol,
+    remote_port: u16,
+) -> bool {
+    if let Some(out) = initiated_out {
+        return out;
+    }
+    !(proto == Protocol::Udp || remote_port < EPHEMERAL_MIN)
 }
 
 /// 网段区间:求值(WFP 条件展开共用)。v4 为主机序 u32 闭区间;

@@ -44,9 +44,14 @@ pub fn verify(path: &str) -> Signing {
         pSignatureSettings: std::ptr::null_mut(),
     };
     let rc = unsafe { run(&mut action, &mut wd) };
-    // VERIFY 会保持验证会话状态,取完结果必须 CLOSE 释放
-    wd.dwStateAction = WTD_STATEACTION_CLOSE;
-    unsafe { run(&mut action, &mut wd) };
+    // VERIFY 成功或返回 trust 类错误(0x800B 段)时状态数据已建立,必须
+    // CLOSE 释放;其余错误(如提供程序加载失败)按 MSDN 建议不应调
+    // CLOSE——此时 hWVTStateData 为 NULL,CLOSE 实为 no-op,加守卫只为
+    // 语义明确
+    if rc == 0 || (rc as u32) >> 16 == 0x800B {
+        wd.dwStateAction = WTD_STATEACTION_CLOSE;
+        unsafe { run(&mut action, &mut wd) };
+    }
 
     const S_OK: i32 = 0;
     // 0x800B0100:主题无签名

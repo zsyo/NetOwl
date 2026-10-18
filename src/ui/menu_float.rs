@@ -17,8 +17,8 @@ use egui::{CornerRadius, Frame, Margin, RichText, Stroke};
 use super::row_hit::{RowCtx, RowHit};
 use crate::i18n::I18n;
 use crate::model::{Connection, ListenEntry, Place, Protocol, fmt_bytes};
-use crate::net::geoip;
 use crate::net::lan::DeviceRow;
+use crate::net::{geoip, rdns};
 use crate::storage::history_query::{self, PendingDelete};
 use crate::ui::theme;
 use crate::ui::widgets;
@@ -123,6 +123,7 @@ pub fn show(
     i18n: &I18n,
     menu: &OpenMenu,
     elevated: bool,
+    rdns: &rdns::Rdns,
 ) -> (Vec<MenuAction>, egui::Rect) {
     let mut actions = Vec::new();
     let resp = egui::Area::new(egui::Id::unique("menu_float"))
@@ -135,7 +136,7 @@ pub fn show(
                 .stroke(Stroke::new(1.0, theme::c().stroke))
                 .corner_radius(CornerRadius::same(theme::RADIUS_MD))
                 .inner_margin(Margin::same(theme::sp::SM as i8))
-                .show(ui, |ui| items(ui, i18n, menu, elevated, &mut actions))
+                .show(ui, |ui| items(ui, i18n, menu, elevated, rdns, &mut actions))
                 .response
         });
     (actions, resp.response.rect)
@@ -149,6 +150,7 @@ fn items(
     i18n: &I18n,
     menu: &OpenMenu,
     elevated: bool,
+    rdns: &rdns::Rdns,
     actions: &mut Vec<MenuAction>,
 ) {
     // 复制选中文本:确有选中快照,且右键位置落在选中范围内
@@ -200,7 +202,9 @@ fn items(
             }
         }
         RowCtx::Listen(l) => {
-            if widgets::menu::menu_item(ui, i18n.t("menu-copy-remote"), true).clicked() {
+            // 监听行没有远端:复制的是本地绑定地址,文案按实际
+            // 语义区分,不与连接行的"复制远端地址"混用
+            if widgets::menu::menu_item(ui, i18n.t("menu-copy-listen"), true).clicked() {
                 actions.push(MenuAction::CopyText(format!(
                     "{}:{}",
                     l.local_addr, l.local_port
@@ -286,7 +290,7 @@ fn items(
     // 复制该单元格内容:命中列有可复制文本才出现(徽章列/无文本列
     // 不出现)。速率列等 App 层数据不出现在 RowCtx,一并不出现
     if let Some(col) = menu.col
-        && let Some(text) = cell_text(&menu.hit, col, i18n)
+        && let Some(text) = cell_text(&menu.hit, col, i18n, rdns)
         && widgets::menu::menu_item(ui, i18n.t("menu-copy-cell"), true).clicked()
     {
         actions.push(MenuAction::CopyText(text));
@@ -295,7 +299,7 @@ fn items(
 
 /// 命中列的单元格文本(与各行渲染显示一致;徽章列/速率列/状态列
 /// 返回 None,菜单不出现"复制该单元格内容"项)
-pub fn cell_text(hit: &RowHit, col: usize, i18n: &I18n) -> Option<String> {
+pub fn cell_text(hit: &RowHit, col: usize, i18n: &I18n, rdns: &rdns::Rdns) -> Option<String> {
     match &hit.ctx {
         RowCtx::Conn(conn) => match col {
             // 进程列:未知进程占位与渲染一致
@@ -308,7 +312,13 @@ pub fn cell_text(hit: &RowHit, col: usize, i18n: &I18n) -> Option<String> {
             } else {
                 conn.process.clone()
             }),
-            2 => Some(conn.remote_display()),
+            // 与行渲染一致:rDNS 域名优先,取完整 PTR 记录(不按
+            // 列的 36 字截断);无 PTR 才退化为裸 ip:port。裸 IP 另
+            // 有"复制远端地址"菜单项,两项不再重复
+            2 => Some(match rdns.lookup(conn.remote_ip) {
+                Some(host) => rdns::display(host, conn.remote_port, usize::MAX),
+                None => conn.remote_display(),
+            }),
             3 => Some(match conn.city {
                 Some(place) => geoip::place_label(place, i18n),
                 None => i18n.t("conn-loc-unknown"),

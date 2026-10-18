@@ -225,7 +225,8 @@ impl NetOwlApp {
             self.menu_frozen = None;
             return;
         }
-        let (actions, rect) = ui::menu_float::show(ui.ctx(), &self.i18n, &menu, self.elevated);
+        let (actions, rect) =
+            ui::menu_float::show(ui.ctx(), &self.i18n, &menu, self.elevated, &self.rdns);
         menu.rect = rect;
         if actions.is_empty() {
             // 无动作:菜单保持打开(rect 已刷新,供下帧外点判定)
@@ -426,15 +427,12 @@ impl eframe::App for NetOwlApp {
         self.poll_log_cleanup();
         // 关机/注销落库钩子:首帧安装一次,内部防重复(winit 不处理
         // ENDSESSION,关机时唯一能把活跃连接落库的路径)
-        shutdown_hook::install(
-            if self.main_hwnd != 0 {
-                self.main_hwnd
-            } else {
-                single_instance::main_hwnd(crate::APP_NAME)
-            },
-            &mut self.tracker,
-            &mut self.writer,
-        );
+        // 未拿到窗口句柄且钩子未装上时才查找:install 对 hwnd=0 只告警不
+        // 置安装态,原写法每帧全局枚举窗口;找到后回写,后续帧走快路径
+        if self.main_hwnd == 0 && !shutdown_hook::installed() {
+            self.main_hwnd = single_instance::main_hwnd(crate::APP_NAME);
+        }
+        shutdown_hook::install(self.main_hwnd, &mut self.tracker, &mut self.writer);
         self.ensure_collector();
         self.poll_local_ip(ctx);
         // 新设备接入通知(设置页可关):基线轮之后的插入事件入 toast 队列

@@ -83,6 +83,9 @@ pub fn open(state: &mut PageState) {
 
 fn close(state: &mut PageState) {
     state.open = false;
+    // 同步已下发可见性:同帧内重开(applied_open 仍为 true)会漏发
+    // Visible(true),窗口保持隐藏
+    state.applied_open = false;
     state.lines.clear();
     state.cursor = 0;
     logging::window_layer::set_shown_level(None);
@@ -118,6 +121,9 @@ pub fn show(ctx: &egui::Context, state: &mut PageState, i18n: &I18n) {
     let builder = egui::ViewportBuilder::default()
         .with_title(i18n.t("settings-log"))
         .with_inner_size([780.0, 520.0])
+        // 工具栏左组(级别下拉/勾选/清空/筛选标签)为固定内容,窄于此宽
+        // 会挤压搜索框与置顶按钮,与主窗口 with_min_inner_size 同口径
+        .with_min_inner_size([640.0, 420.0])
         .with_window_level(if state.pin_on_top {
             WindowLevel::AlwaysOnTop
         } else {
@@ -201,6 +207,11 @@ fn toolbar(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n) {
             });
         if state.shown_level != before {
             logging::window_layer::set_shown_level(Some(state.shown_level));
+            // 档位只影响今后收集的过滤,已收集行仍按旧档混显到被
+            // MAX_LINES 挤出;与清空按钮同口径清掉环形缓冲(序号顺延,
+            // 行游标自动失效,重开只从新行开始)
+            logging::window_layer::clear();
+            state.lines.clear();
         }
         ui.add_space(8.0);
         ui.checkbox(
@@ -216,7 +227,9 @@ fn toolbar(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n) {
             ui,
             &mut state.filter,
             i18n.t("log-window-filter-placeholder"),
-            ui.available_width() - pin_w - theme::sp::SM,
+            // 窗口可拖窄到左组固定内容之下,预留宽度为负会让 TextEdit
+            // 拿到负 desired_width(egui 未定义布局):钳到最小可用宽
+            (ui.available_width() - pin_w - theme::sp::SM).max(80.0),
         );
         if clear.clicked() {
             state.lines.clear();

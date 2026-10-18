@@ -3,8 +3,9 @@
 
 use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
 use windows::Win32::System::Registry::{
-    HKEY, HKEY_CURRENT_USER, KEY_READ, KEY_SET_VALUE, REG_DWORD, RRF_RT_REG_SZ, RegCloseKey,
-    RegDeleteValueW, RegEnumKeyExW, RegGetValueW, RegOpenKeyExW, RegQueryInfoKeyW, RegSetValueExW,
+    HKEY, HKEY_CURRENT_USER, KEY_READ, KEY_SET_VALUE, REG_DWORD, RRF_RT_REG_EXPAND_SZ,
+    RRF_RT_REG_SZ, RegCloseKey, RegDeleteValueW, RegEnumKeyExW, RegGetValueW, RegOpenKeyExW,
+    RegQueryInfoKeyW, RegSetValueExW,
 };
 use windows::core::{HSTRING, PCWSTR, PWSTR};
 
@@ -165,7 +166,7 @@ fn read_string_value(root: HKEY, subkey: &str, value: &str) -> Option<String> {
             root,
             PCWSTR(sk.as_ptr()),
             PCWSTR(vn.as_ptr()),
-            RRF_RT_REG_SZ,
+            RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ,
             None,
             None,
             Some(&mut len),
@@ -179,7 +180,7 @@ fn read_string_value(root: HKEY, subkey: &str, value: &str) -> Option<String> {
             root,
             PCWSTR(sk.as_ptr()),
             PCWSTR(vn.as_ptr()),
-            RRF_RT_REG_SZ,
+            RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ,
             None,
             Some(buf.as_mut_ptr().cast()),
             Some(&mut len),

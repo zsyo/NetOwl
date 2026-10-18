@@ -42,11 +42,17 @@ impl RuleSet {
             applicable.truncate(MAX_WEIGHT - 1);
         }
 
-        // 本轮连接完整路径的小写化预计算(O(conns) 一次),供全部进程规则复用
-        let conn_paths: Vec<(&str, String)> = conns
-            .iter()
-            .filter_map(|c| c.proc_path.as_ref().map(|p| (p.as_str(), p.to_lowercase())))
-            .collect();
+        // 本轮连接完整路径的小写化预计算(O(conns) 一次),供全部进程规则
+        // 复用;无进程条件规则时整段跳过,省下每轮全量路径分配
+        let need_paths = applicable.iter().any(|r| !r.process.is_empty());
+        let conn_paths: Vec<(&str, String)> = if need_paths {
+            conns
+                .iter()
+                .filter_map(|c| c.proc_path.as_ref().map(|p| (p.as_str(), p.to_lowercase())))
+                .collect()
+        } else {
+            Vec::new()
+        };
 
         let mut specs = Vec::new();
         for (rank, r) in applicable.iter().enumerate() {

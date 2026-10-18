@@ -108,8 +108,15 @@ impl PageState {
     /// 外部跳转设置进程筛选并立即重查(清防抖,跨页跳转不经键盘输入)
     pub fn set_process_filter(&mut self, process: String) {
         self.process = process;
-        self.filter_debounce = None;
+        self.refresh_now();
+    }
+
+    /// 离散操作(视图/排序/档位/开关/手动刷新)即时生效:置 dirty 并取消
+    /// 筛选防抖。防抖只为合并连续键盘输入,不该让离散操作也等 300ms
+    /// (防抖期内切视图会短暂渲染上一个视图的数据)
+    pub fn refresh_now(&mut self) {
         self.dirty = true;
+        self.filter_debounce = None;
     }
 
     /// 筛选文本输入中:延迟 FILTER_DEBOUNCE 再重查(合并连续按键)

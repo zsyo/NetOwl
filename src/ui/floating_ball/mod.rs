@@ -121,7 +121,7 @@ pub fn show(
     ctx.show_viewport_immediate(
         egui::ViewportId(egui::Id::unique(PANEL_VIEWPORT_ID)),
         panel_builder,
-        |ui, _class| body::panel_body(ui, data, i18n, &mut outcome.show_main),
+        |ui, _class| body::panel_body(ui, state, data, i18n, &mut outcome.show_main),
     );
 
     // 菜单窗口:自绘右键菜单,不抢焦点(点击菜单项不需要激活)

@@ -62,9 +62,10 @@ impl NetOwlApp {
                     if let Some(e) = self.etw.as_mut() {
                         e.shutdown();
                     }
-                    logging::flush();
+                    // 配置写盘的调试日志要进文件,须在 flush 停写之前
                     self.config.save_to_file();
                     self.config_dirty = false;
+                    logging::flush();
                     self.should_exit = true;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 }

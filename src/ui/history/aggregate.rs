@@ -94,9 +94,6 @@ pub(super) fn table(
         },
         &|k| i18n.t(k),
     );
-    if sort_clicked {
-        state.dirty = true;
-    }
     // 行距对齐:show_rows 按全局 item_spacing.y 计算行步进与内容总高,
     // 而数据 Grid 的实际行距是 ROW_SPACING_Y——不一致会让底部行画到
     // 声明 rect 之外,滚动范围被反测撑大,拖住滚动条时 offset 在两套
@@ -214,4 +211,10 @@ pub(super) fn table(
         },
     );
     cells::truncated_hint(ui, rows.len(), i18n);
+    // 排序点击的重查写回在 rows 借用结束后:rows 借自 state.rows,
+    // 渲染期间取 &mut state 会与借用冲突(重查在下一帧 logic 才执行,
+    // 同帧内早晚写入等价)
+    if sort_clicked {
+        state.refresh_now();
+    }
 }

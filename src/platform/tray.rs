@@ -63,8 +63,11 @@ impl Tray {
     /// 重开托盘菜单:锚点复用最后一次右键弹出的光标位置,菜单在原位
     /// 重现(开关项点击后的保持打开效果);无记录时回退托盘图标定位
     pub fn reopen_menu(&self) {
-        let anchor = MENU_ANCHOR.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some((x, y)) = *anchor {
+        // 锁作用域只取值:TrackPopupMenu 的模态循环会继续派发同线程消息,
+        // tray-icon 的 Click 处理器在窗口过程内再次 lock 同一 Mutex(非重入),
+        // 持锁跨模态循环即自锁冻结 UI
+        let anchor = *MENU_ANCHOR.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((x, y)) = anchor {
             self.show_menu_at(x, y);
         } else {
             self._inner.show_menu();

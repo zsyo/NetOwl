@@ -36,7 +36,7 @@ pub fn collect_proc_rates(
         }
     }
 
-    let mut rows: Vec<ProcRate> = acc
+    let rows: Vec<ProcRate> = acc
         .into_iter()
         .map(|(name, (down, up, path))| ProcRate {
             name: name.to_owned(),
@@ -49,10 +49,19 @@ pub fn collect_proc_rates(
             up,
         })
         .collect();
-    let mut up_rows = rows.clone();
-    up_rows.sort_by(|a, b| b.up.cmp(&a.up).then_with(|| a.name.cmp(&b.name)));
-    up_rows.truncate(TOP_N);
-    rows.sort_by(|a, b| b.down.cmp(&a.down).then_with(|| a.name.cmp(&b.name)));
-    rows.truncate(TOP_N);
-    (up_rows, rows)
+    // 两榜各取前 TOP_N:排引用而不是排所有权,避免整表 clone(ProcRate
+    // 含 name String 与 icon 的 Arc,克隆纯属浪费)
+    let top_by = |rows: Vec<&ProcRate>, down: bool| -> Vec<ProcRate> {
+        let mut rows = rows;
+        if down {
+            rows.sort_by(|a, b| b.down.cmp(&a.down).then_with(|| a.name.cmp(&b.name)));
+        } else {
+            rows.sort_by(|a, b| b.up.cmp(&a.up).then_with(|| a.name.cmp(&b.name)));
+        }
+        rows.truncate(TOP_N);
+        rows.into_iter().cloned().collect()
+    };
+    let up_rows = top_by(rows.iter().collect(), false);
+    let down_rows = top_by(rows.iter().collect(), true);
+    (up_rows, down_rows)
 }

@@ -26,6 +26,8 @@ pub(super) fn toolbar(
     config: &mut Config,
     config_changed: &mut bool,
     conns: &[Connection],
+    frozen: bool,
+    toasts: &mut Vec<crate::ui::toast::Toast>,
 ) {
     ui.horizontal(|ui| {
         // 行高抬升只作用于本工具栏行(style_mut 泄漏到整页会把表格
@@ -51,7 +53,7 @@ pub(super) fn toolbar(
                 2 => ViewMode::Summary,
                 _ => ViewMode::Usage,
             };
-            state.dirty = true;
+            state.refresh_now();
         }
 
         // 时间范围
@@ -82,7 +84,7 @@ pub(super) fn toolbar(
                         .clicked()
                     {
                         state.range = r;
-                        state.dirty = true;
+                        state.refresh_now();
                     }
                 }
             });
@@ -115,7 +117,7 @@ pub(super) fn toolbar(
                         .clicked()
                     {
                         state.proto = p;
-                        state.dirty = true;
+                        state.refresh_now();
                     }
                 }
             });
@@ -129,7 +131,7 @@ pub(super) fn toolbar(
             &mut config.general.hide_local,
             &mut config.general.hide_lan,
         ) {
-            state.dirty = true;
+            state.refresh_now();
             *config_changed = true;
         }
 
@@ -137,20 +139,20 @@ pub(super) fn toolbar(
             .button(RichText::new(i18n.t("history-refresh")).size(theme::font::BODY))
             .clicked()
         {
-            state.dirty = true;
+            state.refresh_now();
         }
         if ui
             .button(RichText::new(i18n.t("history-export")).size(theme::font::BODY))
             .clicked()
         {
-            export::export_csv(state, i18n, conns, config);
+            export::export_csv(state, i18n, conns, config, toasts);
         }
         // 输入中防抖重查(合并连续按键);失焦视为输入结束立即刷新
         if process.changed() || remote.changed() {
             state.defer_refresh();
         }
         if process.lost_focus() || remote.lost_focus() {
-            state.dirty = true;
+            state.refresh_now();
         }
 
         // 手动清理(右对齐):点击弹出档位菜单;库大小置于菜单首行——
@@ -187,8 +189,11 @@ pub(super) fn toolbar(
             });
         });
     });
-    // 筛选文本失焦与开关变更即刷新(逐帧查询代价已由 dirty 门控)
-    state.refresh_if_needed(db, config.general.hide_local, config.general.hide_lan);
+    // 筛选文本失焦与开关变更即刷新(逐帧查询代价已由 dirty 门控);
+    // 冻结期(右键菜单打开)不刷新,rows 定格在打开瞬间
+    if !frozen {
+        state.refresh_if_needed(db, config.general.hide_local, config.general.hide_lan);
+    }
 }
 
 /// 清理菜单档位:(删除天数, 词条文案);0 = 清空全部

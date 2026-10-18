@@ -23,7 +23,9 @@ pub(super) fn conn_row(
     default_icon_tex: Option<&egui::TextureHandle>,
     rdns: &rdns::Rdns,
     conn_rates: &HashMap<u64, (u64, u64)>,
-    rules: &mut rules_engine::RuleSet,
+    // 只读求值:evaluate/blocking_rule 均为 &self,命中计数由 App 层 1s
+    // 节流驱动与渲染解耦——绘制路径不持全局可变状态(数据与绘制分离)
+    rules: &rules_engine::RuleSet,
     conn_row_hover: &mut widgets::table::RowHover,
     row_lock: &widgets::table::RowHoverLock,
     row_hits: &mut Vec<RowHit>,

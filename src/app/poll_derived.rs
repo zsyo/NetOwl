@@ -65,7 +65,10 @@ impl NetOwlApp {
         // 阈值比较全程 saturating:quota_gb 来自配置(极大值时 u64 乘法
         // 溢出,release 回绕成小数导致告警误触发/失效,debug 直接 panic)
         let quota = u64::from(quota_gb).saturating_mul(1 << 30);
-        let want = (total.saturating_mul(100) >= quota / 5 * 4, total >= quota);
+        // 两侧同量纲比较:80% 阈值即 quota 的 4/5。曾写成
+        // `total * 100 >= quota / 5 * 4`(左侧放大 100 倍),等效阈值降到
+        // 0.008 倍配额,且每级只报一次使真实 80% 永不到达
+        let want = (total >= quota / 5 * 4, total >= quota);
         if want.0 && !self.quota_flags.0 {
             let text = self.i18n.t_with_args(
                 "quota-warn-toast",

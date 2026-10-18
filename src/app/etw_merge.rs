@@ -36,7 +36,7 @@ impl NetOwlApp {
 
         let flows = etw.snapshot();
         let finished = etw.take_finished();
-        let by_key: HashMap<(u32, Protocol, u16, IpAddr, u16), &etw::FlowAgg> = flows
+        let by_key: HashMap<(u32, Protocol, IpAddr, u16, IpAddr, u16), &etw::FlowAgg> = flows
             .iter()
             .filter(|f| f.key.proto == Protocol::Tcp)
             .map(|f| (flow_merge_key(&f.key), f))
@@ -47,9 +47,14 @@ impl NetOwlApp {
             for c in &mut self.conns {
                 match c.proto {
                     Protocol::Tcp => {
-                        let Some(f) =
-                            by_key.get(&(c.pid, c.proto, c.local_port, c.remote_ip, c.remote_port))
-                        else {
+                        let Some(f) = by_key.get(&(
+                            c.pid,
+                            c.proto,
+                            c.local_addr,
+                            c.local_port,
+                            c.remote_ip,
+                            c.remote_port,
+                        )) else {
                             continue;
                         };
                         c.bytes_in = f.down_bytes;
@@ -152,9 +157,18 @@ impl NetOwlApp {
     }
 }
 
-/// 表快照连接与 ETW 流的合并键(不含本地 IP)
-fn flow_merge_key(k: &etw::FlowKey) -> (u32, Protocol, u16, IpAddr, u16) {
-    (k.pid, k.proto, k.local_port, k.remote_ip, k.remote_port)
+/// 表快照连接与 ETW 流的合并键。必须含本地 IP:同一进程从多个本地地址
+/// (多网卡/VPN 分流/双栈)访问同一远端时是两条连接,漏掉 local_ip 会让
+/// 两条流在 by_key 中同键互相覆盖,字节随机错配且有一条流永久丢账
+fn flow_merge_key(k: &etw::FlowKey) -> (u32, Protocol, IpAddr, u16, IpAddr, u16) {
+    (
+        k.pid,
+        k.proto,
+        k.local_ip,
+        k.local_port,
+        k.remote_ip,
+        k.remote_port,
+    )
 }
 
 /// 同一 UDP socket 行(PID+本地端口)的 ETW 流归并结果

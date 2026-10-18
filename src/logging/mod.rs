@@ -169,9 +169,17 @@ pub fn set_file_enabled(enable: bool) {
 
 /// 进程退出前调用:落盘文件日志缓冲并停止写线程
 pub fn flush() {
+    // 与 set_file_enabled(false) 同序:先卸写入器停写,再 drop 写线程凭证
+    // 排空缓冲。只 drop WorkerGuard 不够——tracing-appender 的 NonBlocking
+    // 写失败仅累加内部 error_counter 且仍返回 Ok(项目不读该计数器),
+    // 退出后继续打的日志被静默丢弃
+    if let Some(cell) = FILE_WRITER.get() {
+        *cell.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    }
     if let Some(cell) = FILE_GUARD.get() {
         *cell.lock().unwrap_or_else(|e| e.into_inner()) = None;
     }
+    FILE_ENABLED.store(false, Ordering::Release);
 }
 
 /// 清理 logs/ 下超过 retain_days 的轮转归档,返回删除个数。

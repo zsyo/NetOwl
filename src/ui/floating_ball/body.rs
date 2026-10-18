@@ -3,7 +3,7 @@
 
 use eframe::egui;
 
-use super::layout::dock_pos;
+use super::layout::{dock_pos, panel_pos};
 use super::types::{
     BALL_WIN_H, BALL_WIN_W, GEOM_EPSILON, HOVER_H, HOVER_W, Phase, REVEAL, STRIP_W,
 };
@@ -15,6 +15,7 @@ use crate::i18n::I18n;
 /// 尺寸恒定无 resize,隐藏期间照常绘制保证显示瞬间内容就绪
 pub(super) fn panel_body(
     ui: &mut egui::Ui,
+    state: &BallState,
     data: &BallData,
     i18n: &I18n,
     show_main: &mut Option<crate::ui::Page>,
@@ -30,15 +31,24 @@ pub(super) fn panel_body(
             view::hover_panel(ui, rect, data, i18n, show_main);
         });
 
-    // 几何对账:与期望差异超阈值才重发命令(防每帧 SetWindowPos 抖动)
+    // 几何对账:与期望差异超阈值才重发命令(防每帧 SetWindowPos 抖动)。
+    // builder 只在期望值变化时才由 patch 推 OuterPosition,窗口位置被
+    // 外部因素改动(显示器热插拔/DPI 变化/系统还原因最小化移窗)后不会
+    // 自愈,与球窗口对称地补一层位置对账
     let ctx = ui.ctx();
-    if let Some(r) = ctx.input(|i| i.viewport().outer_rect)
-        && ((r.width() - HOVER_W).abs() > GEOM_EPSILON
-            || (r.height() - HOVER_H).abs() > GEOM_EPSILON)
-    {
-        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
-            HOVER_W, HOVER_H,
-        )));
+    if let Some(r) = ctx.input(|i| i.viewport().outer_rect) {
+        if (r.width() - HOVER_W).abs() > GEOM_EPSILON || (r.height() - HOVER_H).abs() > GEOM_EPSILON
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
+                HOVER_W, HOVER_H,
+            )));
+        }
+        let want = panel_pos(state);
+        if (r.left() - want.0).abs() > GEOM_EPSILON || (r.top() - want.1).abs() > GEOM_EPSILON {
+            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
+                want.0, want.1,
+            )));
+        }
     }
 }
 

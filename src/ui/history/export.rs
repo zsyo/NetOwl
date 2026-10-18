@@ -41,6 +41,7 @@ pub(super) fn export_csv(
     i18n: &I18n,
     conns: &[Connection],
     config: &Config,
+    toasts: &mut Vec<crate::ui::toast::Toast>,
 ) {
     let Some(path) = rfd::FileDialog::new()
         .add_filter("CSV", &["csv"])
@@ -174,8 +175,24 @@ pub(super) fn export_csv(
         );
         text.push('\n');
     }
+    // 保存对话框已关闭,失败只进日志用户无从知晓:成功/失败均走 toast
+    // (与字体加载失败、热键注册失败同一条用户可见通道)
     match std::fs::write(&path, text) {
-        Ok(()) => tracing::info!("[History] 已导出 CSV 到 {}", path.display()),
-        Err(e) => tracing::warn!("[History] 导出失败 {}: {e}", path.display()),
+        Ok(()) => {
+            tracing::info!("[History] 已导出 CSV 到 {}", path.display());
+            crate::ui::toast::push(
+                toasts,
+                crate::ui::toast::ToastKind::Success,
+                i18n.t_with_args("history-export-ok", &[("path", path.display().to_string())]),
+            );
+        }
+        Err(e) => {
+            tracing::warn!("[History] 导出失败 {}: {e}", path.display());
+            crate::ui::toast::push(
+                toasts,
+                crate::ui::toast::ToastKind::Warn,
+                i18n.t_with_args("history-export-failed", &[("error", e.to_string())]),
+            );
+        }
     }
 }

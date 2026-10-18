@@ -66,7 +66,11 @@ impl LanState {
             }
             None => Vec::new(),
         };
-        self.devices = self.load_view(db, &entries, now);
+        // 视图加载失败(查询/开事务失败)时 load_view 返回空表:保留上一轮
+        // 视图,不让整页因一次读库失败闪空
+        if let Some(view) = self.load_view(db, &entries, now) {
+            self.devices = view;
+        }
         fresh
     }
 
@@ -129,13 +133,14 @@ impl LanState {
         Some(fresh)
     }
 
-    /// 读全表组装视图:本轮 ARP 可见 = 在线;first_seen 24h 内 = 新设备
+    /// 读全表组装视图:本轮 ARP 可见 = 在线;first_seen 24h 内 = 新设备。
+    /// 查询/事务失败返回 None(调用方保留上一轮视图)
     fn load_view(
         &self,
         db: &rusqlite::Connection,
         entries: &[lan::ArpEntry],
         now: u64,
-    ) -> Vec<DeviceRow> {
+    ) -> Option<Vec<DeviceRow>> {
         let online: HashSet<&String> = entries.iter().map(|(_, mac)| mac).collect();
         let result = (|| -> rusqlite::Result<Vec<DeviceRow>> {
             let mut stmt = db.prepare(
@@ -163,10 +168,10 @@ impl LanState {
                 .collect())
         })();
         match result {
-            Ok(v) => v,
+            Ok(v) => Some(v),
             Err(e) => {
                 tracing::warn!("[Lan] 设备视图读取失败: {e}");
-                Vec::new()
+                None
             }
         }
     }

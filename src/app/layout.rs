@@ -130,6 +130,7 @@ impl NetOwlApp {
             log_window: &mut self.log_window,
             icon_tex: &self.icon_tex,
             default_icon_tex: self.default_icon_tex.as_ref(),
+            toasts: &mut self.toasts,
             history: &mut self.history,
             history_db: &self.history_db,
             rules: &mut self.rules,

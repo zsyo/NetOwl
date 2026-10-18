@@ -73,20 +73,29 @@ impl RuleSet {
     }
 
     /// 命中计数落盘(30s 批量 + 退出时):仅当前档的持久规则,无变更
-    /// 零写入;任一条失败即整体返回 Err,dirty 保留待下轮重试
+    /// 零写入;任一条失败即整体返回 Err,dirty 保留待下轮重试。
+    /// 整批一个 SAVEPOINT:逐条 execute 在 WAL 下每条一次隐式提交,
+    /// 会与历史写线程争 WAL 写锁(见 move_rule 同款写法)
     pub fn flush_hits(&mut self, db: &crate::storage::history::Db) -> rusqlite::Result<()> {
         if !self.hit_dirty {
             return Ok(());
         }
+        db.execute_batch("SAVEPOINT flush_hits")?;
         for r in &self.rules {
             if r.id <= 0 {
                 continue;
             }
-            db.execute(
+            let res = db.execute(
                 "UPDATE rules SET hit_count = ?1 WHERE id = ?2",
                 params![r.hit_count as i64, r.id],
-            )?;
+            );
+            if let Err(e) = res {
+                let _ = db.execute_batch("ROLLBACK TO flush_hits");
+                let _ = db.execute_batch("RELEASE flush_hits");
+                return Err(e);
+            }
         }
+        db.execute_batch("RELEASE flush_hits")?;
         self.hit_dirty = false;
         Ok(())
     }

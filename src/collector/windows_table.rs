@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use super::icon::IconImage;
 use super::query::{
     ConnKey, query_process_names, query_process_path, query_tcp_split, query_tcp6_split, query_udp,
-    query_udp6,
+    query_udp_bound, query_udp6, query_udp6_bound,
 };
 use super::{Collector, CollectorKind, IconState};
 use crate::model::{Connection, ListenEntry, Place, Signing};
@@ -46,8 +46,9 @@ pub struct TableCollector {
     /// 签名校验回报通道(发送端克隆给每个查询线程)
     pub(super) sig_tx: Sender<(u32, Signing)>,
     pub(super) sig_rx: Receiver<(u32, Signing)>,
-    /// 已派发未返回签名结果的 PID
-    pub(super) sig_pending: HashSet<u32>,
+    /// 已派发未返回签名结果的 PID(值为派发时刻,超时未回允许重派,
+    /// 见 table_backfill::collect_signatures)
+    pub(super) sig_pending: HashMap<u32, Instant>,
     /// 映像路径 -> 图标状态(常驻缓存:连接关闭后进程再现时图标即取即用)
     pub(super) icons: HashMap<String, IconState>,
     /// 图标提取回报通道(发送端克隆给每个提取线程)
@@ -71,7 +72,7 @@ impl TableCollector {
             proc_metas: HashMap::new(),
             sig_tx,
             sig_rx,
-            sig_pending: HashSet::new(),
+            sig_pending: HashMap::new(),
             icons: HashMap::new(),
             icon_tx,
             icon_rx,
@@ -106,6 +107,11 @@ impl TableCollector {
                 return;
             }
         };
+        // 监听条目单独查 GetUdpTable2:该档位带 SpecificPortBind 标志,
+        // 可排除已 connect 的出向 socket(GetExtendedUdpTable 无此字段,
+        // 会把每个 DNS/QUIC 出向 socket 也算成监听端口)
+        let udp_bound = query_udp_bound().unwrap_or_default();
+        let udp6_bound = query_udp6_bound().unwrap_or_default();
         let udp6 = match query_udp6() {
             Ok(rows) => rows,
             Err(e) => {
@@ -129,14 +135,17 @@ impl TableCollector {
         // 监听条目:TCP LISTEN 行 + UDP 绑定行(进程元数据与连接共用缓存)。
         // 系统表按 socket 逐行列出,UDP 多 socket 绑同一地址端口(mDNS 等
         // SO_REUSEADDR 场景,单进程可开数十个)对监听视图是重复信息,按
-        // (进程, 协议, 绑定地址, 端口) 折叠为一行;TCP LISTEN 本身无重复
-        let mut listening = Vec::with_capacity(listen.len() + udp_count);
-        let mut seen_listen = HashSet::with_capacity(listen.len() + udp_count);
+        // (进程, 协议, 绑定地址, 端口) 折叠为一行;TCP LISTEN 本身无重复。
+        // UDP 侧取 GetUdpTable2 的 SpecificPortBind 清零行:仅本地绑定
+        // 才算监听,已 connect 的出向 socket(远端已指定)不算
+        let mut listening = Vec::with_capacity(listen.len() + udp_bound.len() + udp6_bound.len());
+        let mut seen_listen =
+            HashSet::with_capacity(listen.len() + udp_bound.len() + udp6_bound.len());
         for key in listen
             .iter()
             .chain(listen6.iter())
-            .chain(udp.iter())
-            .chain(udp6.iter())
+            .chain(udp_bound.iter())
+            .chain(udp6_bound.iter())
         {
             if !seen_listen.insert((key.pid, key.proto, key.local_addr, key.local_port)) {
                 continue;

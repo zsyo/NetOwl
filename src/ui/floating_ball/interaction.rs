@@ -25,12 +25,19 @@ pub(super) fn cursor_over_windows(
     let Some((x, y)) = monitor::cursor_pos_physical() else {
         return false;
     };
-    let cur = egui::pos2(x as f32, y as f32);
+    // 光标是物理像素,outer_rect 是 ui 逻辑点:按各 viewport 自己的
+    // pixels_per_point(zoom x 原生缩放)换算后再比较,否则非 100% DPI 下
+    // 矩形只有物理空间的 1/scale,命中判定恒假(浮窗打不开、菜单开帧即关)。
+    // 多屏混 DPI 下三个窗口可能在不同缩放比的显示器上,必须逐窗口换算
+    // input_for 全程持 Context 写锁,闭包内不能再走 ctx.read 路径(zoom_factor
+    // 即 read):缩放因子须在锁外取,否则同线程重入 RwLock 触发死锁 panic
+    let zoom = ctx.zoom_factor();
     let over = |id: &str| {
         ctx.input_for(egui::ViewportId(egui::Id::unique(id)), |i| {
-            i.viewport().outer_rect
+            let ppp = zoom * i.viewport().native_pixels_per_point.unwrap_or(1.0);
+            let cur = egui::pos2(x as f32 / ppp, y as f32 / ppp);
+            i.viewport().outer_rect.is_some_and(|r| r.contains(cur))
         })
-        .is_some_and(|r| r.contains(cur))
     };
     over(BALL_VIEWPORT_ID)
         || (panel_visible && over(PANEL_VIEWPORT_ID))
@@ -64,6 +71,13 @@ pub(super) fn handle_input(
     // 鼠标帧间位移:全显态"二次移动并停止"弹出浮窗的移动依据
     // (2px/帧;静默窗期间不采样,见 REVEAL_GRACE)
     let moved = ui.input(|i| i.pointer.delta()).length() > 2.0;
+
+    // 按下后指针移出窗口再松手时,释放事件送不到球窗口(with_active(false)
+    // 不参与 egui 指针捕获链),press_pos 永久残留会卡住收回与菜单自动
+    // 关闭;用系统按键状态兜底清零(与菜单外按下检测同源)
+    if state.press_pos.is_some() && !monitor::primary_button_down() {
+        state.press_pos = None;
+    }
 
     // 系统拖动结束:StartDrag 的 OS 模态循环期间不产帧,恢复渲染即松手;
     // 按当前窗口实际位置重新贴边并回到收起态

@@ -42,6 +42,7 @@ pub fn show(
     row_hits: &mut Vec<RowHit>,
     row_lock: &widgets::table::RowHoverLock,
     frozen: bool,
+    toasts: &mut Vec<crate::ui::toast::Toast>,
 ) -> bool {
     let row_lock: &widgets::table::RowHoverLock = row_lock;
     // 冻结中(右键菜单打开):跳过查询刷新,rows 定格在打开瞬间;
@@ -69,6 +70,8 @@ pub fn show(
         config,
         &mut config_changed,
         conns,
+        frozen,
+        toasts,
     );
     ui.add_space(theme::sp::SM);
 

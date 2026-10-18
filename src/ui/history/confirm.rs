@@ -77,7 +77,7 @@ pub(super) fn confirm_delete_modal(
         };
         match result {
             Ok(n) => {
-                state.dirty = true;
+                state.refresh_now();
                 tracing::info!("[History] 已删除 {n} 条历史记录");
             }
             Err(e) => tracing::warn!("[History] 删除历史记录失败: {e}"),

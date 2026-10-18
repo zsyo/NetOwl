@@ -27,7 +27,10 @@ pub struct IconImage {
 }
 
 /// 提取映像文件的关联图标;SHGetFileInfoW 失败再试 ExtractIconExW
-/// (个别 exe 的关联图标查询失败但资源可直读),仍失败返回 None
+/// (个别 exe 的关联图标查询失败但资源可直读),仍失败返回 None。
+/// 返回 None 分两种:该文件确实无彩色图标(老式单色 mask 图标,事实
+/// 性占位),与提取失败(句柄异常等,可重试)——本层不区分,由调用方
+/// (table_backfill)按需决定是否缓存
 pub fn extract(path: &str) -> Option<IconImage> {
     via_shgetfileinfo(path).or_else(|| via_extract_icon(path))
 }
@@ -93,15 +96,21 @@ fn via_extract_icon(path: &str) -> Option<IconImage> {
     }
 }
 
-/// HICON -> 32bpp RGBA(非预乘);GetIconInfo 成功后位图句柄由调用方释放
+/// HICON -> 32bpp RGBA(非预乘);GetIconInfo 成功后位图句柄由调用方释放。
+/// 无色位图的老式单色图标(hbmColor 无效、仅 hbmMask)不写缓存:
+/// read_rgba 对 mask 位图只会得到全黑轮廓,占位即可,不必让它永久缓存
 unsafe fn hicon_to_rgba(
     hicon: windows::Win32::UI::WindowsAndMessaging::HICON,
 ) -> Option<IconImage> {
     unsafe {
         let mut info = ICONINFO::default();
         GetIconInfo(hicon, &mut info).ok()?;
-        let bitmap = hbitmap_size(info.hbmColor);
-        let img = bitmap.and_then(|(w, h)| read_rgba(info.hbmColor, w, h));
+        let img = if !info.hbmColor.is_invalid() {
+            let bitmap = hbitmap_size(info.hbmColor);
+            bitmap.and_then(|(w, h)| read_rgba(info.hbmColor, w, h))
+        } else {
+            None
+        };
         if !info.hbmColor.is_invalid() {
             let _ = DeleteObject(info.hbmColor.into());
         }

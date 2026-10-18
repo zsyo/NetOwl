@@ -83,6 +83,7 @@ pub(super) fn table(
     let Some((_, merged)) = state.summary_merged.as_ref() else {
         return;
     };
+    let mut drill: Option<String> = None;
     if merged.is_empty() {
         cells::empty_hint(ui, i18n);
         return;
@@ -141,9 +142,6 @@ pub(super) fn table(
         },
         &|k| i18n.t(k),
     );
-    if sort_clicked {
-        state.dirty = true;
-    }
     // 行距对齐:show_rows 按全局 item_spacing.y 计算行步进与内容总高,
     // 而数据 Grid 的实际行距是 ROW_SPACING_Y——不一致会让底部行画到
     // 声明 rect 之外,滚动范围被反测撑大,拖住滚动条时 offset 在两套
@@ -212,9 +210,10 @@ pub(super) fn table(
                             egui::Sense::click(),
                         );
                         if !r.process.is_empty() && resp.clicked() {
-                            state.view = history_query::ViewMode::Detail;
-                            state.process = r.process.clone();
-                            state.dirty = true;
+                            // merged 借自 state.summary_merged,期间取
+                            // &mut state 会冲突:下钻意图先记下,渲染收尾
+                            // 后写入(重查在下一帧 logic,同帧早晚等价)
+                            drill = Some(r.process.clone());
                         }
                         if !r.process.is_empty() {
                             resp = resp.on_hover_text(i18n.t("history-summary-drill"));
@@ -234,6 +233,11 @@ pub(super) fn table(
     );
     // 行数按合并后的结果计:活跃连接并入的新进程不在 SQL 行数里
     cells::truncated_hint(ui, merged.len(), i18n);
+    if let Some(process) = drill {
+        state.view = history_query::ViewMode::Detail;
+        state.process = process;
+        state.refresh_now();
+    }
 }
 
 /// 活跃连接按进程聚合的实时增量(叠加进汇总视图);过滤口径与连接页

@@ -33,25 +33,45 @@ const TYPE_INVALID: u32 = 2;
 /// 错误描述
 pub fn query_arp() -> Result<Vec<ArpEntry>, String> {
     unsafe {
-        // 两段式:首次 NULL 调用取所需缓冲大小
+        // 两段式:首次 NULL 调用取所需缓冲大小。ARP 表在两次调用之间
+        // 增长会返回 ERROR_INSUFFICIENT_BUFFER,按探测得到的 size 重取
+        // 再试(封顶几次,避免异常驱动下无限循环)
         let mut size = 0u32;
         let probe = GetIpNetTable(None, &mut size, false);
         if probe != ERROR_INSUFFICIENT_BUFFER.0 && probe != ERROR_SUCCESS.0 {
             return Err(format!("GetIpNetTable 探测失败: code {probe:#x}"));
         }
-        let mut buf = vec![0u64; size as usize / 8 + 1];
-        let table = buf.as_mut_ptr() as *mut MIB_IPNETTABLE;
-        let err = GetIpNetTable(Some(table), &mut size, false);
+        // buf 保活到取完行:table_ptr 指向它,不能提前 drop
+        let mut buf: Vec<u64> = Vec::new();
+        let mut err = ERROR_SUCCESS.0;
+        for _ in 0..4 {
+            // size 在 INSUFFICIENT 时被更新为所需字节数,重新分配后再试
+            buf = vec![0u64; size as usize / 8 + 1];
+
+            err = GetIpNetTable(
+                Some(buf.as_mut_ptr() as *mut MIB_IPNETTABLE),
+                &mut size,
+                false,
+            );
+            if err == ERROR_SUCCESS.0 || err != ERROR_INSUFFICIENT_BUFFER.0 {
+                break;
+            }
+        }
         if err != ERROR_SUCCESS.0 {
             return Err(format!("GetIpNetTable 失败: code {err:#x}"));
         }
+        let table = buf.as_ptr() as *const MIB_IPNETTABLE;
         let rows =
             std::slice::from_raw_parts((*table).table.as_ptr(), (*table).dwNumEntries as usize);
         let mut out = Vec::new();
         for row in rows {
             // dwType 与 Type 是 union 两视图;按 MIB_IPNET_TYPE_INVALID(2)过滤
+            // dwPhysAddrLen 由内核填写,而 bPhysAddr 固定 8 字节
+            // (MAXLEN_PHYSADDR):异常驱动给出 >8 时切出的 slice 越界,
+            // 直接在轮询路径 panic,按无效项跳过
             if row.Anonymous.dwType == TYPE_INVALID
                 || row.dwPhysAddrLen == 0
+                || row.dwPhysAddrLen as usize > row.bPhysAddr.len()
                 || row.bPhysAddr[0] & 1 == 1
             {
                 continue;

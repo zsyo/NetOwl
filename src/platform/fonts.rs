@@ -1,6 +1,8 @@
 //! 系统已安装字体枚举:读 Windows 字体注册表键,产出 (显示名, 文件路径) 列表,
 //! 供设置页"界面字体"下拉选择。只读枚举,免管理员权限。
 
+use std::collections::HashSet;
+
 use windows::Win32::Foundation::{ERROR_NO_MORE_ITEMS, ERROR_SUCCESS};
 use windows::Win32::System::Registry::{
     HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, REG_SZ, RegCloseKey, RegEnumValueW,
@@ -30,17 +32,9 @@ pub fn installed_fonts() -> Vec<FontEntry> {
     }
     // 同一路径可能被多个值名指向(如 "X & X UI"),按路径去重保留先出现者
     // (HKLM 优先);再按显示名排序,便于下拉浏览
-    let mut seen: Vec<String> = Vec::with_capacity(out.len());
-    out.retain(|e| {
-        let key = e.path.to_lowercase();
-        if seen.contains(&key) {
-            false
-        } else {
-            seen.push(key);
-            true
-        }
-    });
-    out.sort_by_key(|a| a.name.to_lowercase());
+    let mut seen: HashSet<String> = HashSet::with_capacity(out.len());
+    out.retain(|e| seen.insert(e.path.to_lowercase()));
+    out.sort_by_cached_key(|a| a.name.to_lowercase());
     out
 }
 

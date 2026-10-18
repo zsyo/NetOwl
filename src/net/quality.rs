@@ -246,7 +246,11 @@ fn icmp_probe_v4(ip: Ipv4Addr) -> Result<u32, u32> {
     /// ICMP 请求负载(8 字节,与 ping 默认一致)
     const REQUEST_LEN: usize = 8;
     let request = [0u8; REQUEST_LEN];
-    let mut reply = [0u8; std::mem::size_of::<ICMP_ECHO_REPLY>() + REQUEST_LEN];
+    // 回复缓冲按 8 字节对齐分配:ICMP_ECHO_REPLY 含 u32/IPAddr 字段要求 4
+    // 字节对齐,用对齐为 1 的 [u8; N] 承载结构体引用形式上属 UB(collector
+    // 两段式表缓冲已按此修正,此处遗漏)。缓冲长度向上取整到 8 的倍数
+    let mut reply = vec![0u64; (std::mem::size_of::<ICMP_ECHO_REPLY>() + REQUEST_LEN).div_ceil(8)];
+    let reply_size = reply.len() * size_of::<u64>();
     let n = unsafe {
         IcmpSendEcho(
             handle,
@@ -255,7 +259,7 @@ fn icmp_probe_v4(ip: Ipv4Addr) -> Result<u32, u32> {
             request.len() as u16,
             None,
             reply.as_mut_ptr().cast(),
-            reply.len() as u32,
+            reply_size as u32,
             PROBE_TIMEOUT.as_millis() as u32,
         )
     };
@@ -304,7 +308,10 @@ fn icmp_probe_v6(ip: Ipv6Addr) -> Result<u32, u32> {
     /// ICMP 请求负载(8 字节,与 ping 默认一致)
     const REQUEST_LEN: usize = 8;
     let request = [0u8; REQUEST_LEN];
-    let mut reply = [0u8; std::mem::size_of::<ICMPV6_ECHO_REPLY_LH>() + REQUEST_LEN];
+    // 与 v4 路径同口径:8 字节对齐承载 ICMPV6_ECHO_REPLY_LH 结构体指针
+    let mut reply =
+        vec![0u64; (std::mem::size_of::<ICMPV6_ECHO_REPLY_LH>() + REQUEST_LEN).div_ceil(8)];
+    let reply_size = reply.len() * size_of::<u64>();
     let n = unsafe {
         Icmp6SendEcho2(
             handle,
@@ -317,7 +324,7 @@ fn icmp_probe_v6(ip: Ipv6Addr) -> Result<u32, u32> {
             request.len() as u16,
             None,
             reply.as_mut_ptr().cast(),
-            reply.len() as u32,
+            reply_size as u32,
             PROBE_TIMEOUT.as_millis() as u32,
         )
     };

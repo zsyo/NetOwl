@@ -161,12 +161,16 @@ pub(super) fn rule_row(
         // (负 id)不参与排序,移动一律禁用
         let last = i + 1 == rules.rules.len();
         let movable = rule.id > 0;
+        // 上移/下移的目标行同样不能是会话临时规则(负 id):它们恒在
+        // 数组头部,move_rule 对临时目标直接返回,按钮会静默无效
+        let up_ok = i > 0 && movable && rules.rules[i - 1].id > 0;
+        let down_ok = !last && movable && rules.rules[i + 1].id > 0;
         if widgets::button::icon_btn(
             ui,
             icons::ARROW_UP,
             Some(i18n.t("rules-move-up")),
             false,
-            i > 0 && movable,
+            up_ok,
         )
         .clicked()
         {
@@ -181,7 +185,7 @@ pub(super) fn rule_row(
             icons::ARROW_DOWN,
             Some(i18n.t("rules-move-down")),
             false,
-            !last && movable,
+            down_ok,
         )
         .clicked()
         {
@@ -191,18 +195,28 @@ pub(super) fn rule_row(
                 ops.moved = true;
             }
         }
-        if widgets::button::icon_btn(ui, icons::PENCIL, Some(i18n.t("rules-edit")), false, true)
-            .clicked()
+        // 临时规则不开放编辑:保存走 insert 分支会落库成新的持久规则,
+        // 原临时规则仍留在数组,一条变两条(要改就删了重建)
+        if widgets::button::icon_btn(
+            ui,
+            icons::PENCIL,
+            Some(i18n.t("rules-edit")),
+            false,
+            movable,
+        )
+        .clicked()
         {
             state.draft = Some(Draft::from_rule(&rule));
         }
         if widgets::button::icon_btn(ui, icons::TRASH, Some(i18n.t("rules-delete")), true, true)
             .clicked()
         {
-            if let Err(e) = rules.delete(db, rule.id) {
-                tracing::warn!("[Rules] 删除规则 {} 失败: {e}", rule.id);
+            match rules.delete(db, rule.id) {
+                // 仅落库成功才结束本帧:失败时行仍在列表,break 会让
+                // 后续行整批不渲染,出现一次可见跳变
+                Ok(()) => ops.removed = true,
+                Err(e) => tracing::warn!("[Rules] 删除规则 {} 失败: {e}", rule.id),
             }
-            ops.removed = true;
         }
     });
     ui.end_row();

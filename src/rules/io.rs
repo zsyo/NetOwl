@@ -74,6 +74,8 @@ impl RuleSet {
         }
         let tx = db.unchecked_transaction().map_err(|e| e.to_string())?;
         let base_len = self.rules.len();
+        // insert 顺带写 eval_cache,回滚时要能识别哪些是本批新增的键
+        let cached_before: Vec<i64> = self.eval_cache.keys().copied().collect();
         // 已有规则(含临时)全量入集合,边导边补实现文件内去重
         let mut seen: HashSet<DedupKey> = self.rules.iter().map(dedup_key).collect();
         let mut count = 0usize;
@@ -99,7 +101,7 @@ impl RuleSet {
                 continue;
             }
             if let Err(e) = self.insert(&tx, rule) {
-                self.rules.truncate(base_len);
+                self.rollback_import(base_len, &cached_before);
                 return Err(format!("insert failed: {e}"));
             }
             count += 1;
@@ -107,10 +109,18 @@ impl RuleSet {
         match tx.commit() {
             Ok(()) => Ok((count, skipped)),
             Err(e) => {
-                self.rules.truncate(base_len);
+                self.rollback_import(base_len, &cached_before);
                 Err(format!("commit failed: {e}"))
             }
         }
+    }
+
+    /// 导入失败回滚:截断内存规则集,并清掉本批 insert 写入 eval_cache
+    /// 的条目——库里已回滚,缓存里留 id -> RuleMatch 的幽灵键会让后续
+    /// 同 rowid 复用前求值命中不存在的规则
+    fn rollback_import(&mut self, base_len: usize, cached_before: &[i64]) {
+        self.rules.truncate(base_len);
+        self.eval_cache.retain(|id, _| cached_before.contains(id));
     }
 }
 

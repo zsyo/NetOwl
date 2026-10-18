@@ -278,12 +278,20 @@ impl Reader<'_> {
         String::from_utf8_lossy(self.bytes(len)).into_owned()
     }
 
+    /// LEB128 varint(u64 最多 10 字节)
     fn varint(&mut self) -> u64 {
         let mut result = 0u64;
-        let mut shift = 0;
+        let mut shift = 0u32;
         loop {
             let b = self.data[self.pos];
             self.pos += 1;
+            // 数据编译期内嵌,超长 varint 只可能来自损坏的 geoip.bin:
+            // 显式报错,不让 shift 在 debug 下溢出 panic、release 下回绕
+            assert!(
+                shift < 64,
+                "geoip.bin varint 超长(数据损坏),pos {}",
+                self.pos
+            );
             result |= ((b & 0x7F) as u64) << shift;
             if b & 0x80 == 0 {
                 return result;
@@ -292,13 +300,18 @@ impl Reader<'_> {
         }
     }
 
-    /// u128 版 varint(v6 区间 delta 可超 u64)
+    /// u128 版 varint(v6 区间 delta 可超 u64,最多 19 字节)
     fn varint128(&mut self) -> u128 {
         let mut result = 0u128;
-        let mut shift = 0;
+        let mut shift = 0u32;
         loop {
             let b = self.data[self.pos];
             self.pos += 1;
+            assert!(
+                shift < 128,
+                "geoip.bin varint128 超长(数据损坏),pos {}",
+                self.pos
+            );
             result |= ((b & 0x7F) as u128) << shift;
             if b & 0x80 == 0 {
                 return result;

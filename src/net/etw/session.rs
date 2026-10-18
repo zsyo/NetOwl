@@ -73,7 +73,16 @@ pub(super) unsafe fn run_consumer(agg: Arc<Mutex<Agg>>) {
             );
             return;
         }
-        let _ = ProcessTrace(&[handle], None, None);
+        // ProcessTrace 返回非 0 = 消费者线程提前退出(ERROR_INVALID_HANDLE
+        // 等),此时 Etw 仍存活而 snapshot 恒空,UI 表现为"字节永远 0"而非
+        // "ETW 不可用",必须显式留痕
+        let rc = ProcessTrace(&[handle], None, None);
+        if rc.0 != 0 {
+            tracing::error!(
+                "[ETW] ProcessTrace 提前返回: code {},流量字节与短命连接不可用",
+                rc.0
+            );
+        }
         let _ = CloseTrace(handle);
         let _ = ControlTraceW(
             Default::default(),

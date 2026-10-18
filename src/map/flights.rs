@@ -86,8 +86,15 @@ pub(super) fn draw_flights(
         } else {
             0.45
         };
-        // 曲线横向 bbox 为端点包围盒(控制点 x 居中),据此求可见副本区间
-        let (min_x, max_x) = (start.x.min(end.x), start.x.max(end.x));
+        // 曲线横向范围取 {start, ctrl, end} 凸包(二次贝塞尔整体在
+        // 凸包内),据此求可见副本区间。控制点沿法线抬升 lift(最高
+        // 90px),近竖直连线的 ctrl.x 会偏离端点连线最多 lift/2 ≈ 45px,
+        // 只用端点包围盒会让贴屏幕边缘(含 wrap 接缝相邻副本)的弧线
+        // 被漏判成不可见
+        let (min_x, max_x) = (
+            start.x.min(end.x).min(ctrl.x),
+            start.x.max(end.x).max(ctrl.x),
+        );
         let k0 = ((rect.left() - max_x) / cycle_px).floor() as i32;
         let k1 = ((rect.right() - min_x) / cycle_px).floor() as i32;
         // 粒子与尾迹(主副本算一次,副本平移);相位按聚合键派生保持稳定

@@ -12,8 +12,9 @@ use windows::Win32::Foundation::{
 use windows::Win32::NetworkManagement::IpHelper::{
     GetExtendedTcpTable, GetExtendedUdpTable, MIB_TCP_STATE_DELETE_TCB, MIB_TCP_STATE_LAST_ACK,
     MIB_TCP_STATE_LISTEN, MIB_TCP_STATE_SYN_SENT, MIB_TCP6TABLE_OWNER_PID, MIB_TCPROW_LH,
-    MIB_TCPROW_LH_0, MIB_TCPTABLE_OWNER_PID, MIB_UDP6TABLE_OWNER_PID, MIB_UDPTABLE_OWNER_PID,
-    SetTcpEntry, TCP_TABLE_OWNER_PID_ALL, UDP_TABLE_OWNER_PID,
+    MIB_TCPROW_LH_0, MIB_TCPROW_OWNER_PID, MIB_TCPTABLE_OWNER_PID, MIB_UDP6TABLE_OWNER_MODULE,
+    MIB_UDP6TABLE_OWNER_PID, MIB_UDPTABLE_OWNER_MODULE, MIB_UDPTABLE_OWNER_PID, SetTcpEntry,
+    TCP_TABLE_OWNER_PID_ALL, UDP_TABLE_OWNER_MODULE, UDP_TABLE_OWNER_PID,
 };
 use windows::Win32::Networking::WinSock::{AF_INET, AF_INET6};
 use windows::Win32::System::Threading::{
@@ -24,12 +25,17 @@ use windows::core::PWSTR;
 
 use crate::model::{Connection, Protocol};
 
+/// MIB_UDPROW_OWNER_MODULE.dwFlags 的 SpecificPortBind 位(bit0):置位
+/// 表示该 UDP socket 绑定了明确远端(connect 过的出向 socket),清零表示
+/// 仅本地绑定(监听)。微软头文件 udpmib.h 未导出该常量名,按位定义声明
+const UDP_ROW_SPECIFIC_PORT_BIND: i32 = 0x01;
+
 /// 活动状态区间 [SYN_SENT, LAST_ACK]:LISTEN 是监听而非连接,
 /// CLOSED/TIME_WAIT 已无数据交互,均不入连接列表
 const STATE_ACTIVE_MIN: u32 = MIB_TCP_STATE_SYN_SENT.0 as u32;
 const STATE_ACTIVE_MAX: u32 = MIB_TCP_STATE_LAST_ACK.0 as u32;
 /// 表查询重试次数:两次调用之间表增长会要求更大缓冲,属正常时序
-const QUERY_RETRIES: usize = 3;
+const QUERY_RETRIES: usize = 4;
 
 /// 连接身份:四元组 + 归属进程;快照间据此识别同一连接。
 /// 地址按 IP 族自识别,端口已转主机序;UDP 无远端以零地址填充。
@@ -159,7 +165,71 @@ pub fn query_tcp6_split() -> Result<(Vec<ConnKey>, Vec<ConnKey>), String> {
     Ok((conns, listens))
 }
 
-/// UDP 表查询:本机 socket 行(无远端语义)
+/// UDP 表查询(仅本地绑定行):OWNER_MODULE 档位带 SpecificPortBind 标志,
+/// 过滤掉已 connect 的出向 socket。UDP_TABLE_OWNER_PID 档位无该字段,
+/// 会把每个 DNS/QUIC 出向 socket 也算成监听端口,污染监听视图并让
+/// listen_watch 持续误报。标志语义已在真机实测确认:置位行的本地端口
+/// 全是临时段(connect 过的 socket),清零行是服务端口(仅绑定)
+pub fn query_udp_bound() -> Result<Vec<ConnKey>, String> {
+    let buf = query_table(|p, size| unsafe {
+        GetExtendedUdpTable(p, size, false, AF_INET.0 as u32, UDP_TABLE_OWNER_MODULE, 0)
+    })?;
+    let table = unsafe { &*(buf.as_ptr() as *const MIB_UDPTABLE_OWNER_MODULE) };
+    let rows =
+        unsafe { std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize) };
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        // SpecificPortBind 置位 = 已指定远端(connect 过),不是监听
+        if unsafe { row.Anonymous.dwFlags } & UDP_ROW_SPECIFIC_PORT_BIND != 0 {
+            continue;
+        }
+        let local_port = u16::from_be(row.dwLocalPort as u16);
+        // 本地端口 0 = 尚未分配端口的瞬时 socket,不是监听
+        if local_port == 0 {
+            continue;
+        }
+        out.push(ConnKey {
+            proto: Protocol::Udp,
+            local_addr: IpAddr::V4(Ipv4Addr::from(u32::from_be(row.dwLocalAddr))),
+            local_port,
+            remote_addr: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+            remote_port: 0,
+            pid: row.dwOwningPid,
+        });
+    }
+    Ok(out)
+}
+
+/// UDP 表 IPv6 查询(仅本地绑定行),口径同 query_udp_bound
+pub fn query_udp6_bound() -> Result<Vec<ConnKey>, String> {
+    let buf = query_table(|p, size| unsafe {
+        GetExtendedUdpTable(p, size, false, AF_INET6.0 as u32, UDP_TABLE_OWNER_MODULE, 0)
+    })?;
+    let table = unsafe { &*(buf.as_ptr() as *const MIB_UDP6TABLE_OWNER_MODULE) };
+    let rows =
+        unsafe { std::slice::from_raw_parts(table.table.as_ptr(), table.dwNumEntries as usize) };
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        if unsafe { row.Anonymous.dwFlags } & UDP_ROW_SPECIFIC_PORT_BIND != 0 {
+            continue;
+        }
+        let local_port = u16::from_be(row.dwLocalPort as u16);
+        if local_port == 0 {
+            continue;
+        }
+        out.push(ConnKey {
+            proto: Protocol::Udp,
+            local_addr: IpAddr::V6(Ipv6Addr::from(row.ucLocalAddr)),
+            local_port,
+            remote_addr: IpAddr::V6(Ipv6Addr::UNSPECIFIED),
+            remote_port: 0,
+            pid: row.dwOwningPid,
+        });
+    }
+    Ok(out)
+}
+
+/// UDP 表查询:本机 socket 行(无远端语义,含已 connect 出向 socket)
 pub fn query_udp() -> Result<Vec<ConnKey>, String> {
     let buf = query_table(|p, size| unsafe {
         GetExtendedUdpTable(p, size, false, AF_INET.0 as u32, UDP_TABLE_OWNER_PID, 0)
@@ -303,7 +373,10 @@ fn query_table(
     const INSUFFICIENT: u32 = ERROR_INSUFFICIENT_BUFFER.0;
     let mut size = 0u32;
     for _ in 0..QUERY_RETRIES {
-        let mut buf = vec![0u64; size.max(64) as usize / size_of::<u64>() + 1];
+        // 按所需大小再留一行余量:两次调用之间表增长一行就重新要求更大
+        // 缓冲,无余量时每次增长都要多耗一次重试
+        let need = size as usize + size_of::<MIB_TCPROW_OWNER_PID>();
+        let mut buf = vec![0u64; need.div_ceil(size_of::<u64>()) + 1];
         match fill(Some(buf.as_mut_ptr().cast()), &mut size) {
             SUCCESS => return Ok(buf),
             INSUFFICIENT => continue,

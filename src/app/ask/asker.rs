@@ -124,6 +124,7 @@ impl Asker {
                 remote_ip: c.remote_ip,
                 remote_port: c.remote_port,
                 proto: c.proto,
+                initiated_out: c.initiated_out,
                 domain: rdns.lookup(c.remote_ip).map(str::to_owned),
                 deadline: Instant::now() + ASK_TIMEOUT,
                 scope: Scope::Once,
@@ -154,10 +155,13 @@ impl Asker {
         self.active.take()
     }
 
-    /// 关闭询问(配置项关闭时):丢弃队列与当前弹窗
+    /// 关闭询问(配置项关闭时):丢弃队列与当前弹窗。身份集一并清空:
+    /// 重新开启询问时此前已问过的身份要重新询问,否则关闭期间挂起的
+    /// 待问项在本会话内永久丢失(与 Once 决策后 unask 的重连重问口径一致)
     pub fn clear(&mut self) {
         self.queue.clear();
         self.active = None;
+        self.asked.clear();
     }
 
     /// 决策完成后解除该身份的已询问标记:仅本次决策只作用于当前连接,

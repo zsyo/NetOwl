@@ -161,6 +161,8 @@ pub struct UiCtx<'a> {
     pub icon_tex: &'a HashMap<String, Option<egui::TextureHandle>>,
     /// Windows 默认"应用程序"图标纹理(无路径/提取失败进程的兜底)
     pub default_icon_tex: Option<&'a egui::TextureHandle>,
+    /// 右下角 toast 通知队列(UI 层操作失败时 push,App 层绘制)
+    pub toasts: &'a mut Vec<toast::Toast>,
     /// 历史页状态
     pub history: &'a mut history_query::PageState,
     /// 历史查询只读连接
@@ -239,6 +241,7 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
             ctx.row_hits,
             ctx.row_lock,
             ctx.history_frozen,
+            ctx.toasts,
         ),
         Page::Lan => lan::lan_ui(ui, ctx),
         Page::Rules => rules::show(

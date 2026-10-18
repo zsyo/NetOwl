@@ -43,34 +43,35 @@ pub struct Toast {
     text: String,
     at: Instant,
     pos: ToastPos,
+    /// 入队序号(单调递增):Area id 用它而非可见项下标——下标会因上一条
+    /// 过期而整体前移,id 漂移让 egui 把同一条 toast 当新区块(悬停等
+    /// 按 id 的状态瞬断)
+    seq: u64,
 }
 
-/// 入队(右下角);同文本在去重窗口内只保留一条。
+/// 队尾序号 + 1:Toast 生命周期短(去重窗口 30s),队列很小
+fn next_seq(toasts: &[Toast]) -> u64 {
+    toasts.iter().map(|t| t.seq).max().unwrap_or(0) + 1
+}
+
+/// 入队(右下角);同文本同位置在去重窗口内只保留一条。
 /// 去重状态的存活期是 DEDUP_WINDOW(30s),长于展示时长 TOAST_TTL(6s):
 /// show() 的清理若按 TTL 执行,上一条消失后同文本立刻又能入队,去重
-/// 窗口形同虚设
+/// 窗口形同虚设。两个位置互不挤占,同文案可各存一条
 pub fn push(toasts: &mut Vec<Toast>, kind: ToastKind, text: String) {
-    if toasts
-        .iter()
-        .any(|t| t.text == text && t.at.elapsed() < DEDUP_WINDOW)
-    {
-        return;
-    }
-    tracing::info!("[Toast] {text}");
-    toasts.push(Toast {
-        kind,
-        text,
-        at: Instant::now(),
-        pos: ToastPos::Corner,
-    });
+    push_at(toasts, kind, text, ToastPos::Corner)
 }
 
 /// 入队(页面底部居中气泡):用户操作成功/失败的反馈通道,与右下角
 /// 通知语义分离(互不挤占位置),去重口径同 push
 pub fn push_bottom(toasts: &mut Vec<Toast>, kind: ToastKind, text: String) {
+    push_at(toasts, kind, text, ToastPos::Bottom)
+}
+
+fn push_at(toasts: &mut Vec<Toast>, kind: ToastKind, text: String, pos: ToastPos) {
     if toasts
         .iter()
-        .any(|t| t.text == text && t.at.elapsed() < DEDUP_WINDOW)
+        .any(|t| t.pos == pos && t.text == text && t.at.elapsed() < DEDUP_WINDOW)
     {
         return;
     }
@@ -79,7 +80,8 @@ pub fn push_bottom(toasts: &mut Vec<Toast>, kind: ToastKind, text: String) {
         kind,
         text,
         at: Instant::now(),
-        pos: ToastPos::Bottom,
+        pos,
+        seq: next_seq(toasts),
     });
 }
 
@@ -144,7 +146,7 @@ fn draw_one(
         ToastKind::Success => (icons::CHECK_CIRCLE, p.status_ok),
     };
     let text = t.text.clone();
-    egui::Area::new(egui::Id::unique((id_prefix, i)))
+    egui::Area::new(egui::Id::unique((id_prefix, t.seq)))
         .order(egui::Order::Foreground)
         .anchor(anchor, base - egui::vec2(0.0, i as f32 * STACK_STEP))
         .show(ctx, |ui| {

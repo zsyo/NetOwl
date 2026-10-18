@@ -30,8 +30,8 @@ pub struct PageState {
     pub feedback: Option<Feedback>,
     /// 配置档管理弹窗状态
     pub profiles: profile_manager::ProfileMgrState,
-    /// 档位下拉列表缓存:每帧 list_profiles 查库改按需重载;管理弹窗
-    /// 打开期间直接失效(弹窗内增删改档),关闭后下一帧重建
+    /// 档位下拉列表缓存:按需重载(首次进入/管理弹窗增删改档置脏后),
+    /// 替代每帧 list_profiles 查库
     pub(crate) profiles_cache: Option<Vec<Profile>>,
 }
 
@@ -108,9 +108,11 @@ pub fn show(
             import_export::do_import(db, rules, state, i18n);
         }
         ui.add_space(theme::sp::MD);
-        // 档位切换:重载目标档规则(临时规则保留),写 config 落盘
-        if state.profiles.open || state.profiles_cache.is_none() {
+        // 档位切换:重载目标档规则(临时规则保留),写 config 落盘。
+        // 下拉缓存按需重建:管理弹窗内任一增删改档后由 dirty 置脏
+        if state.profiles.dirty || state.profiles_cache.is_none() {
             state.profiles_cache = Some(RuleSet::list_profiles(db));
+            state.profiles.dirty = false;
         }
         let profiles = state.profiles_cache.as_ref().unwrap();
         let current_name = profiles

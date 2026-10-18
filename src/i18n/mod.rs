@@ -65,10 +65,12 @@ impl I18n {
             }
         }
 
-        // 目录不存在或没有任何词条:加载内嵌兜底
-        if available_langs.is_empty() {
-            Self::add_bundle(&mut bundles, &mut available_langs, "zh-cn", EMBEDDED_ZH_CN);
-            Self::add_bundle(&mut bundles, &mut available_langs, "en", EMBEDDED_EN);
+        // 内嵌兜底按语言逐个补:目录漏拷/词条解析失败时列表可能非空但缺
+        // 中文包,只在列表为空时兜底会让中文用户静默落英文
+        for (code, content) in [(DEFAULT_LANG_CODE, EMBEDDED_ZH_CN), ("en", EMBEDDED_EN)] {
+            if !Self::lang_code_exists(&available_langs, code) {
+                Self::add_bundle(&mut bundles, &mut available_langs, code, content);
+            }
         }
 
         // 初始语言:环境变量覆盖(测试/开发用) -> 系统语言(取前两段) -> 默认语言 -> 列表首个
@@ -192,8 +194,18 @@ impl I18n {
         code: &str,
         content: &str,
     ) {
-        if let Ok(res) = FluentResource::try_new(content.to_string()) {
-            let lang_id: LanguageIdentifier = code.parse().unwrap_or_default();
+        let Ok(lang_id) = code.parse::<LanguageIdentifier>() else {
+            // 词条文件名即语言码,非法码(如带下划线的旧命名)实例化的
+            // bundle 匹配不到任何消息,宁可跳过并告警
+            tracing::warn!("[I18n] [locales] 语言代码 {code} 非法,跳过该词条文件");
+            return;
+        };
+        let Ok(res) = FluentResource::try_new(content.to_string()) else {
+            // 词条语法错误时整包跳过,静默失败会让该语言整个不可用且无迹可查
+            tracing::warn!("[I18n] [locales] 词条文件解析失败,跳过语言 {code}");
+            return;
+        };
+        {
             let mut bundle = FluentBundle::new(vec![lang_id]);
             // 界面为拉丁/CJK 文本,无双向排版需求;关闭隔离避免插值两侧出现
             // FSI/PDI 控制字符(egui 字体无字形,显示为问号)
@@ -207,6 +219,8 @@ impl I18n {
                         name: lang_name,
                     });
                 }
+            } else {
+                tracing::warn!("[I18n] [locales] 词条资源装入失败,跳过语言 {code}");
             }
         }
     }

@@ -13,7 +13,11 @@ use crate::storage::history::Db;
 
 /// 用量查询:按 (last_seen + 时区偏移) 整除桶宽分桶,桶内收发字节求和;
 /// 一条跨桶连接计入其最后活跃桶(与聚合视图按行口径一致)。
-/// bucket_secs = 3600(小时)或 86400(天)
+/// bucket_secs = 3600(小时)或 86400(天)。
+/// 参数编号约定:?1..?9 归 Filter::where_clause/bind(其中 ?8/?9 是
+/// v6 远端范围),时区偏移必须另起编号 ?10——SQLite 的 ?N 按编号寻址,
+/// 复用 ?8 会让追加的时区参数成为第 10 个实参,rusqlite 校验数量即
+/// InvalidParameterCount 失败,用量视图整表空白
 pub(super) fn query_usage(
     db: &Db,
     f: &Filter,
@@ -21,7 +25,7 @@ pub(super) fn query_usage(
     tz_off: i64,
 ) -> rusqlite::Result<Vec<UsageRow>> {
     let sql = format!(
-        "SELECT (last_seen + ?8) / {bucket_secs} AS bucket,
+        "SELECT (last_seen + ?10) / {bucket_secs} AS bucket,
                 SUM(bytes_in) AS in_total, SUM(bytes_out) AS out_total
          FROM conn_events {} GROUP BY bucket ORDER BY bucket DESC LIMIT {QUERY_LIMIT}",
         Filter::where_clause()

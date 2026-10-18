@@ -96,15 +96,6 @@ pub(crate) fn collect_groups<'a>(
             continue;
         }
         let name = c.process.as_str();
-        let keep = needle.is_empty()
-            || name.to_lowercase().contains(&needle)
-            || rdns
-                .lookup(c.remote_ip)
-                .is_some_and(|h| h.to_lowercase().contains(&needle))
-            || c.remote_ip.to_string().contains(&needle);
-        if !keep {
-            continue;
-        }
         let entry = map.entry(name).or_insert_with(|| ProcGroup {
             name: name.to_owned(),
             conns: Vec::new(),
@@ -114,6 +105,27 @@ pub(crate) fn collect_groups<'a>(
         entry.total += c.total_bytes();
     }
     let mut groups: Vec<ProcGroup> = map.into_values().collect();
+    if !needle.is_empty() {
+        // 搜索过滤按组进行:组名命中即整组保留,此时不必逐连接小写化与
+        // IP 字符串化(这是每帧重复的主要堆分配来源);只有组名未命中的组
+        // 才逐连接查 rDNS 域名/IP
+        groups.retain_mut(|g| {
+            if g.name.to_lowercase().contains(&needle) {
+                return true;
+            }
+            g.conns.retain(|c| {
+                rdns.lookup(c.remote_ip)
+                    .is_some_and(|h| h.to_lowercase().contains(&needle))
+                    || c.remote_ip.to_string().contains(&needle)
+            });
+            if g.conns.is_empty() {
+                return false;
+            }
+            // 组内被筛掉一部分,total 需重算,否则排序与占比条失真
+            g.total = g.conns.iter().map(|c| c.total_bytes()).sum();
+            true
+        });
+    }
     // 次级键按名称:HashMap 迭代序随机,total 相同(如未提权时字节恒 0)
     // 的组若不加稳定键,列表顺序每帧跳动
     groups.sort_by(|a, b| b.total.cmp(&a.total).then_with(|| a.name.cmp(&b.name)));

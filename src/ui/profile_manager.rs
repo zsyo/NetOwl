@@ -18,12 +18,18 @@ pub struct ProfileMgrState {
     pub open: bool,
     /// 正在重命名的档 id(行内编辑态)
     pub renaming: Option<i64>,
-    /// 名称输入草稿(新建/重命名共用)
-    pub draft: String,
+    /// 新建档名称输入草稿
+    pub new_draft: String,
+    /// 重命名输入草稿。与 new_draft 分离:两框在同一弹窗同帧渲染,
+    /// 共用一份 String 会互相镜像(进重命名后新建框显示该行名,任一框
+    /// 输入都改写另一框,点新建会按重命名文本建档)
+    pub rename_draft: String,
     /// 待确认删除:(档 id, 名称)
     pub confirm_delete: Option<(i64, String)>,
     /// 弹窗列表缓存:None = 需要重建(首次打开/任一增删改成功后/关闭)
     rows: Option<Vec<ProfileRow>>,
+    /// 本帧完成过增删改:规则页工具栏的档位下拉缓存需重建
+    pub dirty: bool,
 }
 
 /// 档列表行缓存(id/名称/规则数)
@@ -95,14 +101,14 @@ pub fn show_modal(
         // 新建行:输入名称 + 按钮
         ui.horizontal(|ui| {
             ui.add(
-                egui::TextEdit::singleline(&mut state.draft)
+                egui::TextEdit::singleline(&mut state.new_draft)
                     .desired_width(180.0)
                     .hint_text(i18n.t("rules-profile-name-hint")),
             );
             if ui
                 .button(RichText::new(i18n.t("rules-profile-new")).size(theme::font::BODY))
                 .clicked()
-                && let Some(name) = trim_draft(state)
+                && let Some(name) = trim_draft(&state.new_draft)
             {
                 match RuleSet::create_profile(db, &name) {
                     Ok(_) => done = Some((false, "新建", name)),
@@ -158,12 +164,15 @@ pub fn show_modal(
         state.open = false;
         state.renaming = None;
         state.confirm_delete = None;
-        state.draft.clear();
+        state.new_draft.clear();
+        state.rename_draft.clear();
         state.rows = None;
     }
     if let Some((is_err, op, detail)) = done {
-        state.draft.clear();
+        state.dirty = true;
         state.renaming = None;
+        state.new_draft.clear();
+        state.rename_draft.clear();
         // 增删改已落库:失效列表缓存,下一帧重建
         state.rows = None;
         if is_err {
@@ -199,14 +208,14 @@ fn profile_row(
 ) {
     if state.renaming == Some(id) {
         ui.add(
-            egui::TextEdit::singleline(&mut state.draft)
+            egui::TextEdit::singleline(&mut state.rename_draft)
                 .desired_width(180.0)
                 .hint_text(i18n.t("rules-profile-name-hint")),
         );
         if ui
             .button(RichText::new(i18n.t("rules-profile-save")).size(theme::font::BODY))
             .clicked()
-            && let Some(name) = trim_draft(state)
+            && let Some(name) = trim_draft(&state.rename_draft)
         {
             match RuleSet::rename_profile(db, id, &name) {
                 Ok(()) => *done = Some((false, "重命名", name)),
@@ -258,14 +267,14 @@ fn profile_row(
         }
         if widgets::button::icon_btn(ui, icons::PENCIL, None, false, true).clicked() {
             state.renaming = Some(id);
-            state.draft = name.to_owned();
+            state.rename_draft = name.to_owned();
         }
     });
     let _ = rules;
 }
 
 /// 草稿非空校验并取出(trim 后);空输入不动作
-fn trim_draft(state: &ProfileMgrState) -> Option<String> {
-    let name = state.draft.trim().to_owned();
+fn trim_draft(draft: &str) -> Option<String> {
+    let name = draft.trim().to_owned();
     (!name.is_empty()).then_some(name)
 }

@@ -7,6 +7,7 @@ use windows::Win32::Foundation::{FILETIME, SYSTEMTIME};
 use windows::Win32::System::SystemInformation::{GetLocalTime, GetSystemTime};
 use windows::Win32::System::Time::{
     FileTimeToSystemTime, SystemTimeToFileTime, SystemTimeToTzSpecificLocalTime,
+    TzSpecificLocalTimeToSystemTime,
 };
 
 /// FILETIME(1601 起 100ns)与 unix 秒的基准差(秒)
@@ -14,13 +15,14 @@ const EPOCH_DELTA: u64 = 11_644_473_600;
 
 /// 本地时区相对 UTC 的偏移秒数:用量分桶按本地日界/小时界切割,
 /// 同一时刻分别取 GetLocalTime/GetSystemTime 转 FILETIME 差值即偏移;
-/// 换算失败回退 0(按 UTC 分桶,仅桶标签偏移时区)
+/// 换算失败回退 0(按 UTC 分桶,仅桶标签偏移时区)。
+/// 偏移可为负(UTC 以西):local < utc 是正常取值,不是换算失败
 pub fn local_tz_offset_secs() -> i64 {
     unsafe {
         let utc = GetSystemTime();
         let local = GetLocalTime();
         let (a, b) = (filetime_of(&utc), filetime_of(&local));
-        if a == 0 || b < a {
+        if a == 0 || b == 0 {
             return 0;
         }
         (b - a) / 10_000_000
@@ -74,7 +76,9 @@ pub fn fmt_duration(secs: u64) -> String {
     }
 }
 
-/// 本地时区本月 1 日 0 时起的 unix 秒
+/// 本地时区本月 1 日 0 时起的 unix 秒。换算失败(SYSTEMTIME 字段非法,
+/// 正常路径不会发生)退化为 0 即不设下界并告警:调用方在 egui 主线程,
+/// 一次 expect 崩溃会拖垮整个应用(与 fmt_local 同口径)
 pub fn month_start() -> u64 {
     unsafe {
         let mut st = GetLocalTime();
@@ -83,14 +87,11 @@ pub fn month_start() -> u64 {
         st.wMinute = 0;
         st.wSecond = 0;
         st.wMilliseconds = 0;
-        let mut ft = FILETIME::default();
-        SystemTimeToFileTime(&st, &mut ft).expect("[History] 本月起点换算失败");
-        let ticks = ((ft.dwHighDateTime as u64) << 32) | ft.dwLowDateTime as u64;
-        (ticks.saturating_sub(EPOCH_DELTA * 10_000_000)) / 10_000_000
+        day_start_from(&st, "本月起点")
     }
 }
 
-/// 本地时区当日 0 时起的 unix 秒(今日总量口径)
+/// 本地时区当日 0 时起的 unix 秒(今日总量口径);失败口径同 month_start
 pub fn day_start() -> u64 {
     unsafe {
         let mut st = GetLocalTime();
@@ -98,11 +99,27 @@ pub fn day_start() -> u64 {
         st.wMinute = 0;
         st.wSecond = 0;
         st.wMilliseconds = 0;
-        let mut ft = FILETIME::default();
-        SystemTimeToFileTime(&st, &mut ft).expect("[History] 当日起点换算失败");
-        let ticks = ((ft.dwHighDateTime as u64) << 32) | ft.dwLowDateTime as u64;
-        (ticks.saturating_sub(EPOCH_DELTA * 10_000_000)) / 10_000_000
+        day_start_from(&st, "当日起点")
     }
+}
+
+/// SYSTEMTIME(已归零到日界的本地挂钟)-> unix 秒。
+/// SystemTimeToFileTime 把输入按 UTC 解释(MSDN),本地挂钟必须先经
+/// TzSpecificLocalTimeToSystemTime 转成 UTC:直接换算会多出一个时区
+/// 偏移(UTC+8 下今日/本月窗口从本地 08:00 起算,漏掉凌晨流量);
+/// 用逆转换而非减当前偏移,DST 切换日也不会差一小时
+fn day_start_from(st: &SYSTEMTIME, what: &str) -> u64 {
+    let mut utc = SYSTEMTIME::default();
+    if unsafe { TzSpecificLocalTimeToSystemTime(None, st, &mut utc) }.is_err() {
+        tracing::warn!("[History] {what}本地时间转 UTC 失败,退化为不设下界");
+        return 0;
+    }
+    let ticks = filetime_of(&utc);
+    if ticks == 0 {
+        tracing::warn!("[History] {what}换算失败,退化为不设下界");
+        return 0;
+    }
+    ((ticks as u64).saturating_sub(EPOCH_DELTA * 10_000_000)) / 10_000_000
 }
 
 /// unix 秒 -> 本地时间 "MM-DD HH:MM:SS"。

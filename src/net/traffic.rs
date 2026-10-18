@@ -25,6 +25,9 @@ const MAX_BASELINE_GAP_SECS: f32 = 10.0;
 pub struct Sampler {
     /// 上次采样:(下行字节和, 上行字节和, 时刻);None 表示仅建立基线
     last: Option<(u64, u64, Instant)>,
+    /// 上次读表尝试时刻(成功/失败都记):读表失败也要按同一间隔退避,
+    /// 否则失败期间节流判据失效,每帧重读 GetIfTable2
+    last_attempt: Option<Instant>,
     /// 最近速率(字节/秒):(下行, 上行)
     rates: (u64, u64),
     /// 读表失败已上报:失败期间每次采样都失败,只报首次,恢复时复位
@@ -35,6 +38,7 @@ impl Sampler {
     pub fn new() -> Self {
         Sampler {
             last: None,
+            last_attempt: None,
             rates: (0, 0),
             read_failed: false,
         }
@@ -46,10 +50,16 @@ impl Sampler {
     /// 基线——否则恢复后第一帧的 dt 是"上次成功采样到现在"的超长间隔,
     /// 速率被严重低估,且这个错误值会进 rate_hist 持续一整轮
     pub fn poll(&mut self, interval: Duration) -> Option<(u64, u64)> {
-        if self.last.is_some_and(|(_, _, at)| at.elapsed() < interval) {
+        let now = Instant::now();
+        // 节流按"上次尝试"算:基线被清(读表失败)后仍要退避,否则失败
+        // 期间每帧重读 GetIfTable2
+        if self
+            .last_attempt
+            .is_some_and(|at| now.duration_since(at) < interval)
+        {
             return None;
         }
-        let now = Instant::now();
+        self.last_attempt = Some(now);
         let Some((in_octets, out_octets)) = interface_octets() else {
             if !self.read_failed {
                 self.read_failed = true;
@@ -60,13 +70,23 @@ impl Sampler {
         };
         self.read_failed = false;
         if let Some((last_in, last_out, at)) = self.last.replace((in_octets, out_octets, now)) {
-            let dt = now.duration_since(at).as_secs_f32();
-            // 间隔异常长(读表连续失败后恢复)同样只重建基线:差值除以
-            // 巨大 dt 得到的低速率没有意义
-            if dt > 0.0 && dt <= MAX_BASELINE_GAP_SECS {
+            let dt = now.duration_since(at);
+            // 计数器归零(网卡重连/驱动重置/接口被移除):saturating_sub 恒 0
+            // 而 dt 仍正常,速率会凭空掉一格 0,与读表失败同样只重建基线
+            let reset = in_octets < last_in || out_octets < last_out;
+            // 间隔异常长(读表连续失败后恢复)同理:差值除以巨大 dt 得到的
+            // 低速率没有意义
+            let ok_interval = dt > Duration::ZERO && dt.as_secs_f32() <= MAX_BASELINE_GAP_SECS;
+            if !reset && ok_interval {
                 let down = in_octets.saturating_sub(last_in);
                 let up = out_octets.saturating_sub(last_out);
-                self.rates = ((down as f32 / dt) as u64, (up as f32 / dt) as u64);
+                // 整数运算(u128 中间值防大计数器溢出):f32 仅 24 位尾数,
+                // 10Gbps(约 1.25e9 B/s)量级量化粒度约 64 B/s,走势有台阶
+                let ns = dt.as_nanos();
+                self.rates = (
+                    ((down as u128 * 1_000_000_000) / ns) as u64,
+                    ((up as u128 * 1_000_000_000) / ns) as u64,
+                );
                 return Some(self.rates);
             }
         }

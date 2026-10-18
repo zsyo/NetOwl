@@ -45,6 +45,9 @@ pub struct AskItem {
     pub remote_ip: IpAddr,
     pub remote_port: u16,
     pub proto: Protocol,
+    /// 连接方向:true = 本机发起(出向)。询问等待期的临时阻断要按方向
+    /// 选层,否则入站连接没有 In/In6 过滤器,等待期仍继续收发
+    pub initiated_out: Option<bool>,
     /// 首见时的 rDNS 域名(未解析为 None)
     pub domain: Option<String>,
     pub deadline: Instant,
@@ -59,15 +62,26 @@ impl AskItem {
     }
 
     /// 询问等待期间的临时阻断过滤器(精确锁定该连接身份;单地址条件,
-    /// v4 单 IP 区间 / v6 /128 前缀,层随地址族)
+    /// v4 单 IP 区间 / v6 /128 前缀)。层按连接方向取:出向 Out/Out6,
+    /// 入站 In/In6(方向未知时按端口近似,同规则求值口径)
     pub fn pending_block_spec(&self) -> crate::rules::wfp::Spec {
+        let outbound =
+            crate::rules::conn_direction_for(self.initiated_out, self.proto, self.remote_port);
         let (layer, remote) = match self.remote_ip {
             IpAddr::V4(v4) => (
-                crate::rules::wfp::Layer::Out,
+                if outbound {
+                    crate::rules::wfp::Layer::Out
+                } else {
+                    crate::rules::wfp::Layer::In
+                },
                 crate::rules::wfp::RemoteNet::V4(u32::from(v4), u32::from(v4)),
             ),
             IpAddr::V6(v6) => (
-                crate::rules::wfp::Layer::Out6,
+                if outbound {
+                    crate::rules::wfp::Layer::Out6
+                } else {
+                    crate::rules::wfp::Layer::In6
+                },
                 crate::rules::wfp::RemoteNet::V6 {
                     addr: u128::from(v6),
                     prefix: 128,

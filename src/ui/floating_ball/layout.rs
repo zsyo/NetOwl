@@ -43,16 +43,19 @@ pub(super) fn dock_pos(state: &super::types::BallState) -> (f32, f32) {
 /// 菜单窗口位置:贴右缘时弹条左侧、贴左缘时弹条右侧,y 与条顶对齐
 /// 后钳制所在显示器工作区内
 pub(super) fn menu_pos(state: &super::types::BallState) -> (f32, f32) {
-    let (_wl, wt, _wr, wb) = monitor::workarea_of(
-        state.pos.0 + BALL_WIN_W * 0.5,
-        state.pos.1 + BALL_WIN_H * 0.5,
-    );
+    // 基准取钳制后的 dock_pos 而非记忆位置:副屏被拔掉/窗口被系统挪动时
+    // state.pos 可能落在当前工作区外,菜单会跟着跑到屏外
+    let (dock_x, dock_y) = dock_pos(state);
+    let (wl, wt, wr, wb) =
+        monitor::workarea_of(dock_x + BALL_WIN_W * 0.5, dock_y + BALL_WIN_H * 0.5);
     let left = matches!(state.edge, Some(SnapEdge::Left));
     let x = if left {
-        state.pos.0 + BALL_WIN_W + BUBBLE_GAP
+        dock_x + BALL_WIN_W + BUBBLE_GAP
     } else {
-        state.pos.0 - MENU_W - BUBBLE_GAP
+        dock_x - MENU_W - BUBBLE_GAP
     };
-    let y = state.pos.1.clamp(wt, (wb - MENU_H).max(wt));
-    (x, y)
+    let y = dock_y.clamp(wt, (wb - MENU_H).max(wt));
+    // x 同样钳制:窄工作区(< 条宽 + 菜单宽 + 两倍间距)时贴右缘的菜单
+    // x 会小于左缘,不钳制就点不到
+    (x.clamp(wl, (wr - MENU_W).max(wl)), y)
 }

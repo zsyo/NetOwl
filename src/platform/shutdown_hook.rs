@@ -37,6 +37,11 @@ struct Ctx {
     writer: isize,
 }
 
+/// 钩子是否已安装(app 层据此跳过重复的主窗口查找)
+pub fn installed() -> bool {
+    INSTALLED.load(Ordering::Acquire)
+}
+
 /// 子类化主窗口并注册关机收尾对象;hwnd 无效或子类化失败仅告警一次,
 /// 关机时行为回退为未装钩子(数据丢失,与无钩子一致)
 pub fn install(hwnd: isize, tracker: &mut Tracker, writer: &mut Writer) {

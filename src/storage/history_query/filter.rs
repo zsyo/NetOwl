@@ -78,7 +78,7 @@ impl Filter {
     /// ULA 首 2 字节在 [fc00, fdff],链路本地首 2 字节在 [fe80, febf]
     pub(super) fn where_clause() -> &'static str {
         "WHERE last_seen >= ?1
-             AND (?2 = '' OR process LIKE '%' || ?2 || '%')
+             AND (?2 = '' OR process LIKE '%' || ?2 || '%' ESCAPE '\\')
              AND (?3 IS NULL OR (remote_ip6 IS NULL AND remote_ip >= ?3 AND remote_ip <= ?4))
              AND (?5 = '' OR proto = ?5)
              AND (?6 = 0 OR NOT ((remote_ip >> 24) = 127
@@ -96,7 +96,8 @@ impl Filter {
     }
 
     /// 与 where_clause 参数位一一对应(全部 owned);
-    /// proto 为 None 时绑空串(SQL 侧以 ?5 = '' 判定不过滤,NULL 比较恒假)
+    /// proto 为 None 绑空串(SQL 侧以 ?5 = '' 判定不过滤,NULL 比较恒假);
+    /// 进程名经 escape_like 转义,用户输入的 %/_ 按字面匹配
     pub(super) fn bind(&self) -> [Box<dyn rusqlite::ToSql>; 9] {
         let (r4lo, r4hi, r6lo, r6hi) = match self.remote {
             Some(RemoteFilter::V4(lo, hi)) => (Some(lo as i64), Some(hi as i64), None, None),
@@ -110,7 +111,7 @@ impl Filter {
         };
         [
             Box::new(self.start as i64),
-            Box::new(self.process.clone()),
+            Box::new(escape_like(&self.process)),
             Box::new(r4lo),
             Box::new(r4hi),
             Box::new(
@@ -124,6 +125,20 @@ impl Filter {
             Box::new(r6hi),
         ]
     }
+}
+
+/// LIKE 通配符转义:进程名筛选是子串语义,输入里的 %/_/\ 按字面
+/// 匹配(SQL 侧配 ESCAPE '\',见 where_clause),否则输 a_b 会多匹配
+/// axb、输 % 等于不过滤
+fn escape_like(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 4);
+    for c in s.chars() {
+        if matches!(c, '\\' | '%' | '_') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
 }
 
 /// 明细行(一条已完结连接)

@@ -253,6 +253,7 @@ fn write_batch(conn: &mut Db, events: &[ClosedConn]) {
             return;
         }
     };
+    let mut ok = 0usize;
     let insert = |stmt: &mut rusqlite::Statement, e: &ClosedConn| {
         let rip6 = e.remote_ip6.map(|v| v.octets().to_vec());
         stmt.execute(params![
@@ -277,8 +278,9 @@ fn write_batch(conn: &mut Db, events: &[ClosedConn]) {
     ) {
         Ok(mut stmt) => {
             for e in events {
-                if let Err(e) = insert(&mut stmt, e) {
-                    tracing::warn!("[History] 写入连接历史失败: {e}");
+                match insert(&mut stmt, e) {
+                    Ok(_) => ok += 1,
+                    Err(e) => tracing::warn!("[History] 写入连接历史失败: {e}"),
                 }
             }
         }
@@ -286,6 +288,13 @@ fn write_batch(conn: &mut Db, events: &[ClosedConn]) {
     }
     if let Err(e) = tx.commit() {
         tracing::warn!("[History] 提交历史事务失败: {e}");
+    } else if ok < events.len() {
+        tracing::warn!(
+            "[History] 批量落盘 {}/{} 条完结连接,{} 条失败",
+            ok,
+            events.len(),
+            events.len() - ok
+        );
     } else {
         tracing::debug!("[History] 批量落盘 {} 条完结连接", events.len());
     }

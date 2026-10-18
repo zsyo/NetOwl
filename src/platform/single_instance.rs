@@ -8,7 +8,7 @@
 use windows::Win32::Foundation::{CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE, HWND};
 use windows::Win32::System::Threading::CreateMutexW;
 use windows::Win32::UI::WindowsAndMessaging::{
-    ASFW_ANY, AllowSetForegroundWindow, FindWindowW, IsWindowVisible, SW_RESTORE,
+    AllowSetForegroundWindow, FindWindowW, GetWindowThreadProcessId, IsWindowVisible, SW_RESTORE,
     SetForegroundWindow, ShowWindow,
 };
 use windows::core::{HSTRING, PCWSTR};
@@ -45,15 +45,30 @@ pub fn acquire() -> Option<SingleInstanceGuard> {
 /// 唤出已有实例的主窗口:标题查找(品牌名恒定,不随语言变化)。
 /// 主窗口显示/恢复并抢占前台;询问弹窗同为应用窗口,若恰在询问中可能
 /// 命中弹窗——弹窗本身置顶可见,误中无实际影响。
+/// 主实例持互斥体后窗口未必已建成(建库/ETW/配置加载的数毫秒到数百
+/// 毫秒):按短间隔重试至约 5s,避免二次启动双击无任何反应。
 pub fn activate_existing(title: &str) -> bool {
     let title_h = HSTRING::from(title);
-    let Ok(hwnd) = (unsafe { FindWindowW(PCWSTR::null(), PCWSTR(title_h.as_ptr())) }) else {
+    let mut hwnd = unsafe { FindWindowW(PCWSTR::null(), PCWSTR(title_h.as_ptr())) };
+    for _ in 0..50u32 {
+        if hwnd.is_ok() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        hwnd = unsafe { FindWindowW(PCWSTR::null(), PCWSTR(title_h.as_ptr())) };
+    }
+    let Ok(hwnd) = hwnd else {
         tracing::warn!("[SingleInstance] 未找到标题为 {title} 的已有窗口");
         return false;
     };
     unsafe {
-        // 第二实例把前台权让渡给主实例(Windows 前台激活限制)
-        let _ = AllowSetForegroundWindow(ASFW_ANY);
+        // 第二实例把前台权让渡给主实例(Windows 前台激活限制);只放行目标
+        // 窗口所属进程,ASFW_ANY 等于把前台权送给任意进程
+        let mut pid = 0u32;
+        let _ = GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        if pid != 0 {
+            let _ = AllowSetForegroundWindow(pid);
+        }
         let _ = ShowWindow(hwnd, SW_RESTORE);
         let _ = SetForegroundWindow(hwnd);
     }

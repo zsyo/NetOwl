@@ -60,7 +60,7 @@ pub(super) fn view(
     ) {
         panels.proc_rank_sort = s;
     }
-    let mut groups = collect_groups(conns, config, None, "", rdns);
+    let groups = collect_groups(conns, config, None, "", rdns);
     if groups.is_empty() {
         ui.label(theme::dim_text(&i18n.t("map-panel-empty"), theme::font::SM));
     }
@@ -72,15 +72,14 @@ pub(super) fn view(
         RankSort::Out => g.conns.iter().map(|c| c.bytes_out).sum::<u64>(),
         RankSort::In => g.conns.iter().map(|c| c.bytes_in).sum::<u64>(),
     };
-    groups.sort_by(|a, b| {
-        rank_value(b)
-            .cmp(&rank_value(a))
-            .then_with(|| a.name.cmp(&b.name))
-    });
-    let max_rank = groups.first().map(rank_value).unwrap_or(0);
-    for g in groups.iter().take(5) {
+    // 排序键一次性预算:比较器内反复遍历组内连接求和会把排序变成
+    // O(n log n x k)(k = 组内连接数)
+    let mut keyed: Vec<(u64, &ProcGroup)> = groups.iter().map(|g| (rank_value(g), g)).collect();
+    keyed.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.name.cmp(&b.1.name)));
+    let max_rank = keyed.first().map(|(v, _)| *v).unwrap_or(0);
+    for (value, g) in keyed.iter().take(5) {
         let ratio = if max_rank > 0 {
-            rank_value(g) as f32 / max_rank as f32
+            *value as f32 / max_rank as f32
         } else {
             0.0
         };
