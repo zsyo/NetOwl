@@ -65,15 +65,9 @@ pub fn nav_ui(
 
     // 底部:监控状态在其上,速率卡贴底(bottom_up 先绘制者在底部)
     ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-        // 会话累计 = 当前活跃连接字节总和(程序启动起算,重启归零;
-        // 完结连接的字节转入历史库,由历史页统计)
-        // 单次遍历同时累计收发两路(连接数上百时两次全量求和是可省的
-        // 帧开销)
-        let totals = ctx
-            .conns
-            .iter()
-            .fold((0u64, 0u64), |(i, o), c| (i + c.bytes_in, o + c.bytes_out));
-        rate_card(ui, ctx.i18n, ctx.rates, ctx.rate_hist, totals);
+        // 会话累计(程序启动起算,只增不减):连接关闭后其已观测字节仍
+        // 计入,由 App 层每轮增量累加维护(poll_session_bytes)
+        rate_card(ui, ctx.i18n, ctx.rates, ctx.rate_hist, ctx.session_bytes);
         ui.add_space(theme::sp::MD);
         status_rows(ui, ctx.conns, ctx.i18n, collector_kind);
     });

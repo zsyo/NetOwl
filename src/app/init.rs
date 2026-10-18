@@ -192,6 +192,8 @@ impl NetOwlApp {
             row_lock: Default::default(),
             log_window: crate::ui::log_window::PageState::new(),
             conn_prev_bytes: HashMap::new(),
+            session_bytes: (0, 0),
+            session_prev_bytes: HashMap::new(),
             asker: Asker::new(),
             local_probe: local_ip::Probe::new(),
             local_place: None,

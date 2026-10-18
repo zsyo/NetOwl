@@ -3,7 +3,7 @@
 //! 配额告警/更新回收等外围任务见 poll_derived。
 //! 全部按 1s 节流,高帧率重绘帧内跳过。
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Instant;
@@ -61,6 +61,7 @@ impl NetOwlApp {
         let mut seen_udp = HashSet::new();
         self.conns
             .retain(|c| c.proto != Protocol::Udp || seen_udp.insert((c.pid, c.local_port)));
+        self.poll_session_bytes();
         self.rdns.update(&self.conns);
         self.poll_icons(ctx);
         self.poll_history();
@@ -190,6 +191,23 @@ impl NetOwlApp {
         let real = self.collector.kind() == CollectorKind::Real;
         let events = self.tracker.diff(real, &self.conns, history::unix_now());
         self.writer.send(events);
+    }
+
+    /// 本次会话累计:每轮按"本轮字节 - 上轮字节"增量累加(程序启动起算,
+    /// 只增不减)。连接关闭后行从快照消失,已累加部分保留在累计值里,不随
+    /// 快照收缩而扣减——导航栏"本次会话"是运行期间观测到的总量,不是
+    /// 当前活跃连接的字节和。必须晚于 ETW 合并与 UDP 去重:前者让字节取
+    /// 合并后的真实值,后者避免同一 socket 的多行重复计入
+    pub(super) fn poll_session_bytes(&mut self) {
+        let prev = std::mem::take(&mut self.session_prev_bytes);
+        let mut cur: HashMap<u64, (u64, u64)> = HashMap::with_capacity(self.conns.len());
+        for c in &self.conns {
+            let (pin, pout) = prev.get(&c.id).copied().unwrap_or((0, 0));
+            self.session_bytes.0 += c.bytes_in.saturating_sub(pin);
+            self.session_bytes.1 += c.bytes_out.saturating_sub(pout);
+            cur.insert(c.id, (c.bytes_in, c.bytes_out));
+        }
+        self.session_prev_bytes = cur;
     }
 
     /// 网络质量采样:自动目标 = 活跃连接的公网远端(rDNS 同口径),自定义

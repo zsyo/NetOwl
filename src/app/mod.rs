@@ -236,6 +236,11 @@ pub struct NetOwlApp {
     log_window: ui::log_window::PageState,
     /// 上一轮 ETW 字节快照(速率差值基准,键 = conn.id)
     conn_prev_bytes: HashMap<u64, (u64, u64)>,
+    /// 本次会话累计收发字节(程序启动起算,只增不减):连接关闭后其已
+    /// 观测字节仍计入,不随快照行消失而扣减;导航栏"本次会话"展示
+    session_bytes: (u64, u64),
+    /// 每连接上次计入会话累计的字节(增量累加的差值基准,键 = conn.id)
+    session_prev_bytes: HashMap<u64, (u64, u64)>,
     /// 新连接询问(Little Snitch 式弹窗)
     asker: Asker,
     /// 本机公网 IP 探测(公共接口并发,最先成功者胜出)
