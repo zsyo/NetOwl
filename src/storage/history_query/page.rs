@@ -56,6 +56,17 @@ impl Range {
             Range::ThisMonth => month_start(),
         }
     }
+
+    /// 日志用档位名
+    pub fn label(&self) -> &'static str {
+        match self {
+            Range::LastHour => "近1小时",
+            Range::Last6Hours => "近6小时",
+            Range::Last24Hours => "近24小时",
+            Range::Last7Days => "近7天",
+            Range::ThisMonth => "本月",
+        }
+    }
 }
 
 /// 查询结果(与视图形态对应)
@@ -97,6 +108,8 @@ impl Rows {
 pub struct QuerySpec {
     pub filter: Filter,
     pub view: ViewMode,
+    /// 时间范围档位(日志展示;起点已固化进 filter.start)
+    pub range: Range,
     /// 聚合视图排序键与方向
     pub aggregate_sort: (AggregateSort, bool),
     /// 汇总视图排序键与方向
@@ -105,6 +118,79 @@ pub struct QuerySpec {
     pub usage_bucket: u64,
     /// 本地时区偏移秒(用量分桶)
     pub tz_off: i64,
+}
+
+impl QuerySpec {
+    /// 查询耗时日志的参数描述(单行,逗号分隔;筛选项仅列出激活的)
+    pub fn describe(&self) -> String {
+        let mut s = format!(
+            "窗口={}({} 起)",
+            self.range.label(),
+            super::fmt::fmt_local(self.filter.start)
+        );
+        match self.view {
+            ViewMode::Aggregate => {
+                let (k, asc) = self.aggregate_sort;
+                s += &format!(", 排序={} {}", k.label(), dir_label(asc));
+            }
+            ViewMode::Summary => {
+                let (k, asc) = self.summary_sort;
+                s += &format!(", 排序={} {}", k.label(), dir_label(asc));
+            }
+            ViewMode::Usage => {
+                let bucket = if self.usage_bucket == 86400 {
+                    "按天".to_owned()
+                } else if self.usage_bucket == 3600 {
+                    "按小时".to_owned()
+                } else {
+                    format!("按{}秒", self.usage_bucket)
+                };
+                s += &format!(", 桶={bucket}");
+            }
+            ViewMode::Detail => {}
+        }
+        let f = &self.filter;
+        let mut items: Vec<String> = Vec::new();
+        if !f.process.is_empty() {
+            items.push(format!("进程={}", f.process));
+        }
+        if let Some(r) = &f.remote {
+            items.push(format!("远端={}", remote_desc(r)));
+        }
+        if let Some(p) = f.proto {
+            items.push(format!("协议={}", p.as_str()));
+        }
+        if f.hide_local {
+            items.push("隐藏本地".to_owned());
+        }
+        if f.hide_lan {
+            items.push("隐藏局域网".to_owned());
+        }
+        if !items.is_empty() {
+            s += &format!(", 筛选[{}]", items.join(" "));
+        }
+        s
+    }
+}
+
+/// 排序方向日志标签
+fn dir_label(asc: bool) -> &'static str {
+    if asc { "升序" } else { "降序" }
+}
+
+/// 远端筛选区间的日志展示:单 IP 只显一段,区间显 lo~hi
+fn remote_desc(r: &super::filter::RemoteFilter) -> String {
+    use std::net::{Ipv4Addr, Ipv6Addr};
+    match r {
+        super::filter::RemoteFilter::V4(lo, hi) if lo == hi => Ipv4Addr::from(*lo).to_string(),
+        super::filter::RemoteFilter::V4(lo, hi) => {
+            format!("{}~{}", Ipv4Addr::from(*lo), Ipv4Addr::from(*hi))
+        }
+        super::filter::RemoteFilter::V6(lo, hi) if lo == hi => Ipv6Addr::from(*lo).to_string(),
+        super::filter::RemoteFilter::V6(lo, hi) => {
+            format!("{}~{}", Ipv6Addr::from(*lo), Ipv6Addr::from(*hi))
+        }
+    }
 }
 
 /// 历史页状态:视图、筛选、结果与维护操作
@@ -222,6 +308,7 @@ impl PageState {
                 hide_lan,
             },
             view: self.view,
+            range: self.range,
             aggregate_sort: self.aggregate_sort,
             summary_sort: self.summary_sort,
             usage_bucket: self.usage_bucket,

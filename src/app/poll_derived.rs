@@ -170,10 +170,11 @@ impl NetOwlApp {
             let db = crate::storage::db::open();
             let rows = history_query::run_query(&db, &spec);
             tracing::debug!(
-                "[History] [query] {}视图查询完成: {} 行, 耗时 {:?}",
+                "[History] [query] {} 完成: {} 行, 耗时 {:?}, {}",
                 spec.view.label(),
                 rows.len(),
-                started.elapsed()
+                started.elapsed(),
+                spec.describe()
             );
             // 发送失败 = 查询已被更新参数替换(接收端关闭),静默退出
             let _ = tx.send(rows);

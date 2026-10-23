@@ -213,6 +213,17 @@ impl AggregateSort {
             AggregateSort::TotalSecs => "total",
         }
     }
+
+    /// 日志用中文名
+    pub fn label(self) -> &'static str {
+        match self {
+            AggregateSort::LastActive => "最近活动",
+            AggregateSort::BytesOut => "上传",
+            AggregateSort::BytesIn => "下载",
+            AggregateSort::Count => "连接数",
+            AggregateSort::TotalSecs => "时长",
+        }
+    }
 }
 
 /// 汇总行(按进程聚合;同一进程名的多路径/PID 合并,路径取代表用于图标)。
@@ -244,6 +255,16 @@ impl SummarySort {
             SummarySort::BytesIn => "bytes_in",
             SummarySort::Count => "n",
             SummarySort::TotalSecs => "total",
+        }
+    }
+
+    /// 日志用中文名
+    pub fn label(self) -> &'static str {
+        match self {
+            SummarySort::BytesOut => "上传",
+            SummarySort::BytesIn => "下载",
+            SummarySort::Count => "连接数",
+            SummarySort::TotalSecs => "时长",
         }
     }
 }
