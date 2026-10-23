@@ -81,8 +81,9 @@ impl Filter {
              AND (?2 = '' OR process LIKE '%' || ?2 || '%' ESCAPE '\\')
              AND (?3 IS NULL OR (remote_ip6 IS NULL AND remote_ip >= ?3 AND remote_ip <= ?4))
              AND (?5 = '' OR proto = ?5)
-             AND (?6 = 0 OR NOT ((remote_ip >> 24) = 127
-                      OR remote_ip6 = X'00000000000000000000000000000001'))
+             AND (?6 = 0 OR NOT ((remote_ip6 IS NULL AND (remote_ip >> 24) = 127)
+                      OR (remote_ip6 IS NOT NULL
+                          AND remote_ip6 = X'00000000000000000000000000000001')))
              AND (?7 = 0 OR NOT ((remote_ip >> 24) = 10
                       OR (remote_ip >> 20) = 2753
                       OR (remote_ip >> 16) = 49320
@@ -96,13 +97,19 @@ impl Filter {
     }
 
     /// 筛选条件段(?2..?9,不含时间窗):统计表快路径的明细补段查询
-    /// 复用,与 where_clause 的对应行**必须同步维护**
+    /// 复用,与 where_clause 的对应行**必须同步维护**。
+    /// hide_local 段必须显式族判定(IS NULL / IS NOT NULL):v4 行的
+    /// remote_ip6 为 NULL,`col = X'..'` 对 NULL 是三值逻辑 NULL,
+    /// NOT(NULL) 在 WHERE 恒假——旧写法在勾选隐藏本地时把全部
+    /// IPv4 行过滤掉,只剩 v6(CASE WHEN 对 NULL 不命中,统计表
+    /// 物化的同款条件无此问题)
     pub(super) fn cond_clause() -> &'static str {
         "AND (?2 = '' OR process LIKE '%' || ?2 || '%' ESCAPE '\\')
              AND (?3 IS NULL OR (remote_ip6 IS NULL AND remote_ip >= ?3 AND remote_ip <= ?4))
              AND (?5 = '' OR proto = ?5)
-             AND (?6 = 0 OR NOT ((remote_ip >> 24) = 127
-                      OR remote_ip6 = X'00000000000000000000000000000001'))
+             AND (?6 = 0 OR NOT ((remote_ip6 IS NULL AND (remote_ip >> 24) = 127)
+                      OR (remote_ip6 IS NOT NULL
+                          AND remote_ip6 = X'00000000000000000000000000000001')))
              AND (?7 = 0 OR NOT ((remote_ip >> 24) = 10
                       OR (remote_ip >> 20) = 2753
                       OR (remote_ip >> 16) = 49320
