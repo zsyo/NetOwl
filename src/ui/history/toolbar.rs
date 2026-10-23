@@ -1,10 +1,10 @@
 //! 历史页工具栏:四视图切换、时间档位与进程/远端/协议筛选(防抖)、
 //! 噪音过滤下拉(隐藏本地/局域网)、刷新与 CSV 导出按钮、库大小与
-//! 手动清理菜单(库大小置于菜单首行)。
+//! 手动清理菜单(库大小置于菜单首行)。查询执行在 app 层工作线程,
+//! 这里只写状态(置 dirty),不查库。
 
 use eframe::egui;
 use egui::{CornerRadius, RichText, containers::menu::MenuButton};
-use rusqlite::Connection as Db;
 
 use super::export;
 use crate::i18n::I18n;
@@ -21,12 +21,10 @@ pub(super) fn toolbar(
     ui: &mut egui::Ui,
     state: &mut history_query::PageState,
     i18n: &I18n,
-    db: &Db,
     writer: &history::Writer,
     config: &mut Config,
     config_changed: &mut bool,
     conns: &[Connection],
-    frozen: bool,
     toasts: &mut Vec<crate::ui::toast::Toast>,
 ) {
     ui.horizontal(|ui| {
@@ -141,10 +139,10 @@ pub(super) fn toolbar(
         {
             state.refresh_now();
         }
-        if ui
-            .button(RichText::new(i18n.t("history-export")).size(theme::font::BODY))
-            .clicked()
-        {
+        // 导出:查询在途时数据未就绪,禁用防导出旧/空结果
+        let export_btn =
+            egui::Button::new(RichText::new(i18n.t("history-export")).size(theme::font::BODY));
+        if ui.add_enabled(!state.loading, export_btn).clicked() {
             export::export_csv(state, i18n, conns, config, toasts);
         }
         // 输入中防抖重查(合并连续按键);失焦视为输入结束立即刷新
@@ -189,11 +187,6 @@ pub(super) fn toolbar(
             });
         });
     });
-    // 筛选文本失焦与开关变更即刷新(逐帧查询代价已由 dirty 门控);
-    // 冻结期(右键菜单打开)不刷新,rows 定格在打开瞬间
-    if !frozen {
-        state.refresh_if_needed(db, config.general.hide_local, config.general.hide_lan);
-    }
 }
 
 /// 清理菜单档位:(删除天数, 词条文案);0 = 清空全部

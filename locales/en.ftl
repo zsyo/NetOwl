@@ -258,6 +258,7 @@ history-filter-remote = Remote IP…
 filter-proto-all = All protocols
 history-refresh = Refresh
 history-export = Export CSV
+history-loading = Loading…
 history-export-ok = Exported to {$path}
 history-export-failed = Export failed: {$error}
 history-db-size = Database {$size}

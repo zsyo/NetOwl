@@ -1,4 +1,6 @@
-//! 历史页状态:视图形态、筛选、查询结果缓存与按需重载(防抖门控)。
+//! 历史页状态:视图形态、筛选、查询结果缓存与按需重载判定(防抖门控)。
+//! 大库聚合查询秒级,SQL 执行在 app 层派发的工作线程完成(run_query),
+//! 本模块只负责判定何时需要查询(due_for_query)与结果缓存。
 
 use std::time::{Duration, Instant};
 
@@ -7,7 +9,7 @@ use super::filter::{AggregateSort, Filter, SummarySort};
 use super::fmt::{local_tz_offset_secs, month_start};
 use super::query::{query_aggregate, query_detail, query_summary, query_usage};
 use crate::model::Protocol;
-use crate::storage::history::{Db, Writer, db_size, unix_now};
+use crate::storage::history::{Db, Writer, unix_now};
 
 /// 筛选输入防抖时长:连续按键合并为最后一次重查
 pub(super) const FILTER_DEBOUNCE: Duration = Duration::from_millis(300);
@@ -19,6 +21,18 @@ pub enum ViewMode {
     Aggregate,
     Summary,
     Usage,
+}
+
+impl ViewMode {
+    /// 日志用中文名(与查询告警口径一致)
+    pub fn label(&self) -> &'static str {
+        match self {
+            ViewMode::Detail => "明细",
+            ViewMode::Aggregate => "聚合",
+            ViewMode::Summary => "汇总",
+            ViewMode::Usage => "用量",
+        }
+    }
 }
 
 /// 时间范围档位
@@ -52,6 +66,47 @@ pub enum Rows {
     Usage(Vec<super::filter::UsageRow>),
 }
 
+impl Rows {
+    /// 指定视图形态的空结果:派发查询前占位,保证与 view 对齐,
+    /// 旧视图数据不再闪现
+    pub fn empty(view: ViewMode) -> Self {
+        match view {
+            ViewMode::Detail => Rows::Detail(Vec::new()),
+            ViewMode::Aggregate => Rows::Aggregate(Vec::new()),
+            ViewMode::Summary => Rows::Summary(Vec::new()),
+            ViewMode::Usage => Rows::Usage(Vec::new()),
+        }
+    }
+
+    /// 行数(加载态判定与查询耗时日志)
+    pub fn len(&self) -> usize {
+        match self {
+            Rows::Detail(r) => r.len(),
+            Rows::Aggregate(r) => r.len(),
+            Rows::Summary(r) => r.len(),
+            Rows::Usage(r) => r.len(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+/// 一次历史页查询的参数快照:派发时从 PageState 收集,move 进工作线程执行
+pub struct QuerySpec {
+    pub filter: Filter,
+    pub view: ViewMode,
+    /// 聚合视图排序键与方向
+    pub aggregate_sort: (AggregateSort, bool),
+    /// 汇总视图排序键与方向
+    pub summary_sort: (SummarySort, bool),
+    /// 用量视图分桶宽(秒)
+    pub usage_bucket: u64,
+    /// 本地时区偏移秒(用量分桶)
+    pub tz_off: i64,
+}
+
 /// 历史页状态:视图、筛选、结果与维护操作
 pub struct PageState {
     pub view: ViewMode,
@@ -70,6 +125,8 @@ pub struct PageState {
     pub rows: Rows,
     /// 结果或库大小需要重新加载
     pub dirty: bool,
+    /// 查询在途(工作线程执行中):表格区域显示加载动画,不渲染旧数据
+    pub loading: bool,
     pub db_size: u64,
     /// 右键发起的待确认批量删除(确认弹窗,同帧或次帧内决出)
     pub pending_delete: Option<super::query::PendingDelete>,
@@ -97,6 +154,7 @@ impl PageState {
             usage_bucket: 86400,
             rows: Rows::Detail(Vec::new()),
             dirty: true,
+            loading: false,
             db_size: 0,
             pending_delete: None,
             purge_pending: None,
@@ -131,9 +189,10 @@ impl PageState {
         self.purge_pending = Some(Instant::now());
     }
 
-    /// 按需重新加载:dirty(进入页面/筛选变化)或清空完成后;
-    /// 本地/局域网过滤取自 config(两页共享,唯一来源)
-    pub fn refresh_if_needed(&mut self, db: &Db, hide_local: bool, hide_lan: bool) {
+    /// 按需重载判定:dirty(进入页面/筛选变化)或清理完成后到期,返回
+    /// 本次查询的参数快照(调用方派发工作线程执行);本地/局域网过滤
+    /// 取自 config(两页共享,唯一来源)
+    pub fn due_for_query(&mut self, hide_local: bool, hide_lan: bool) -> Option<QuerySpec> {
         if let Some(at) = self.purge_pending
             && at.elapsed() >= Duration::from_millis(300)
         {
@@ -146,41 +205,49 @@ impl PageState {
                 self.dirty = true;
                 self.filter_debounce = None;
             } else {
-                return;
+                return None;
             }
         }
         if !self.dirty {
-            return;
+            return None;
         }
-        let filter = Filter {
-            start: self.range.start(unix_now()),
-            process: self.process.trim().to_owned(),
-            remote: parse_remote_filter(&self.remote),
-            proto: self.proto,
-            hide_local,
-            hide_lan,
-        };
-        self.rows = match self.view {
-            ViewMode::Detail => Rows::Detail(query_or_warn("明细", query_detail(db, &filter))),
-            ViewMode::Aggregate => {
-                let (sort, asc) = self.aggregate_sort;
-                Rows::Aggregate(query_or_warn(
-                    "聚合",
-                    query_aggregate(db, &filter, sort, asc),
-                ))
-            }
-            ViewMode::Summary => {
-                let (sort, asc) = self.summary_sort;
-                Rows::Summary(query_or_warn("汇总", query_summary(db, &filter, sort, asc)))
-            }
-            ViewMode::Usage => Rows::Usage(query_or_warn(
-                "用量",
-                query_usage(db, &filter, self.usage_bucket, local_tz_offset_secs()),
-            )),
-        };
-        self.db_size = db_size();
-        self.summary_merged = None;
         self.dirty = false;
+        Some(QuerySpec {
+            filter: Filter {
+                start: self.range.start(unix_now()),
+                process: self.process.trim().to_owned(),
+                remote: parse_remote_filter(&self.remote),
+                proto: self.proto,
+                hide_local,
+                hide_lan,
+            },
+            view: self.view,
+            aggregate_sort: self.aggregate_sort,
+            summary_sort: self.summary_sort,
+            usage_bucket: self.usage_bucket,
+            tz_off: local_tz_offset_secs(),
+        })
+    }
+}
+
+/// 执行一次查询(工作线程,独立连接):按视图形态分派对应 SQL。
+/// 查询失败告警后降级为空结果:库损坏/磁盘满等不应静默显示为"无数据"
+pub fn run_query(db: &Db, spec: &QuerySpec) -> Rows {
+    let f = &spec.filter;
+    match spec.view {
+        ViewMode::Detail => Rows::Detail(query_or_warn("明细", query_detail(db, f))),
+        ViewMode::Aggregate => {
+            let (sort, asc) = spec.aggregate_sort;
+            Rows::Aggregate(query_or_warn("聚合", query_aggregate(db, f, sort, asc)))
+        }
+        ViewMode::Summary => {
+            let (sort, asc) = spec.summary_sort;
+            Rows::Summary(query_or_warn("汇总", query_summary(db, f, sort, asc)))
+        }
+        ViewMode::Usage => Rows::Usage(query_or_warn(
+            "用量",
+            query_usage(db, f, spec.usage_bucket, spec.tz_off),
+        )),
     }
 }
 

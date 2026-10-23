@@ -1,12 +1,14 @@
-//! 轮询编排的外围任务:悬浮球数据快照、用量配额告警、检查更新结果
-//! 回收。与连接采集无耦合,各自按节流独立运行(悬浮球 1s / 配额 60s /
-//! 更新事件驱动);采集主流程见 super::poll。
+//! 轮询编排的外围任务:悬浮球数据快照、用量配额告警、历史页查询派发
+//! 与收割、检查更新结果回收。与连接采集无耦合,各自按节流独立运行
+//! (悬浮球 1s / 配额与历史查询事件驱动 / 更新事件驱动);采集主流程
+//! 见 super::poll。
 
 use std::time::{Duration, Instant};
 
 use eframe::egui;
 
 use super::{NetOwlApp, TODAY_BYTES_INTERVAL};
+use crate::storage::history_query;
 use crate::ui::floating_ball;
 
 impl NetOwlApp {
@@ -84,6 +86,69 @@ impl NetOwlApp {
             crate::ui::toast::push(&mut self.toasts, crate::ui::toast::ToastKind::Warn, text);
         }
         self.quota_flags = want;
+    }
+
+    /// 历史页查询派发与收割:大库聚合查询秒级,不能在 UI 线程同步执行;
+    /// 切视图/改筛选当帧只切换 UI(表格区显示加载动画),数据由工作
+    /// 线程查回后落地重绘。查询在独立连接上执行(WAL 读者不互斥)。
+    pub(super) fn poll_history_query(&mut self, ctx: &egui::Context) {
+        // 冻结中(右键菜单打开):不派发不收割,rows 定格在打开瞬间;
+        // rows 为空时仍放行建立基线(空表冻结无意义)
+        let frozen = matches!(
+            self.menu_frozen,
+            Some(crate::ui::menu_float::MenuFrozen::History)
+        );
+        if frozen && !self.history.rows.is_empty() {
+            return;
+        }
+        // 收割:在途结果落地(Ok)、动画帧节奏(Empty)、异常兜底(Disconnected)
+        match self.history_query_rx.as_ref().map(|rx| rx.try_recv()) {
+            Some(Ok(rows)) => {
+                self.history_query_rx = None;
+                self.history.rows = rows;
+                self.history.loading = false;
+                self.history.db_size = crate::storage::history::db_size();
+                self.history.summary_merged = None;
+                ctx.request_repaint();
+            }
+            Some(Err(std::sync::mpsc::TryRecvError::Empty)) => {
+                // 在途:33ms 重绘驱动加载动画;期间可能有新交互置 dirty,
+                // 落到派发分支做替换式重派
+                ctx.request_repaint_after(Duration::from_millis(33));
+            }
+            Some(Err(std::sync::mpsc::TryRecvError::Disconnected)) => {
+                // 工作线程异常退出:复位加载态防 UI 永久转圈,本次查询放弃
+                self.history_query_rx = None;
+                self.history.loading = false;
+                tracing::warn!("[History] 查询线程异常退出,本次结果丢弃");
+                ctx.request_repaint();
+            }
+            None => {}
+        }
+        // 派发:到期判定通过则快照参数,替换在途查询(旧通道直接丢弃)
+        let Some(spec) = self
+            .history
+            .due_for_query(self.config.general.hide_local, self.config.general.hide_lan)
+        else {
+            return;
+        };
+        self.history.rows = history_query::Rows::empty(spec.view);
+        self.history.loading = true;
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let started = Instant::now();
+            let db = crate::storage::db::open();
+            let rows = history_query::run_query(&db, &spec);
+            tracing::debug!(
+                "[History] [query] {}视图查询完成: {} 行, 耗时 {:?}",
+                spec.view.label(),
+                rows.len(),
+                started.elapsed()
+            );
+            // 发送失败 = 查询已被更新参数替换(接收端关闭),静默退出
+            let _ = tx.send(rows);
+        });
+        self.history_query_rx = Some(rx);
     }
 
     /// 检查更新:接收设置页按钮触发,派发后台线程请求 GitHub Releases

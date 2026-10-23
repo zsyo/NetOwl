@@ -142,6 +142,9 @@ pub struct NetOwlApp {
     /// 历史页状态与查询只读连接
     history: history_query::PageState,
     history_db: history::Db,
+    /// 历史页在途查询通道(存在 = 工作线程查询中;替换式:派发新查询时
+    /// 旧通道直接丢弃,旧线程发送失败自然退出)
+    history_query_rx: Option<Receiver<history_query::Rows>>,
     /// 规则集(内存 + SQLite 同步,规则页编辑与连接页求值共用)
     rules: rules::RuleSet,
     rules_page: ui_rules::PageState,

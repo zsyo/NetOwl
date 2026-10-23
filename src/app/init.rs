@@ -145,6 +145,7 @@ impl NetOwlApp {
             tracker: history::Tracker::new(),
             history: history_query::PageState::new(),
             history_db,
+            history_query_rx: None,
             rules,
             rules_page: ui_rules::PageState::new(),
             map_panels: crate::ui::map_panel::MapPanelState::default(),

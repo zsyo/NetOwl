@@ -276,6 +276,7 @@ history-filter-remote = 远端 IP…
 filter-proto-all = 全部协议
 history-refresh = 刷新
 history-export = 导出 CSV
+history-loading = 加载中…
 history-export-ok = 已导出到 {$path}
 history-export-failed = 导出失败: {$error}
 history-db-size = 历史库 {$size}

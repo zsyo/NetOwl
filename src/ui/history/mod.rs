@@ -45,11 +45,6 @@ pub fn show(
     toasts: &mut Vec<crate::ui::toast::Toast>,
 ) -> bool {
     let row_lock: &widgets::table::RowHoverLock = row_lock;
-    // 冻结中(右键菜单打开):跳过查询刷新,rows 定格在打开瞬间;
-    // 首次进入 rows 为空时仍查一次建立基线(空表冻结无意义)
-    if !frozen || matches!(&state.rows, history_query::Rows::Detail(r) if r.is_empty()) {
-        state.refresh_if_needed(db, config.general.hide_local, config.general.hide_lan);
-    }
     let mut config_changed = false;
 
     widgets::header::page_header(ui, &i18n.t("history-title"), &i18n.t("history-subtitle"));
@@ -65,12 +60,10 @@ pub fn show(
         ui,
         state,
         i18n,
-        db,
         writer,
         config,
         &mut config_changed,
         conns,
-        frozen,
         toasts,
     );
     ui.add_space(theme::sp::SM);
@@ -155,6 +148,12 @@ fn rows_table(
     row_lock: &widgets::table::RowHoverLock,
     frozen: bool,
 ) {
+    // 查询在途:表格区域显示加载动画,不渲染旧数据(rows 已置为空占位,
+    // 但仍统一走加载态,避免一帧闪现空表)
+    if state.loading {
+        loading_placeholder(ui, i18n);
+        return;
+    }
     match &state.rows {
         history_query::Rows::Detail(_) => {
             detail::table(
@@ -196,4 +195,19 @@ fn rows_table(
             usage::table(ui, state, i18n, elevated);
         }
     }
+}
+
+/// 查询在途的加载占位:表格区域居中转圈 + 文案(工作线程查询期间;
+/// 动画帧节奏由 app 层 poll_history_query 的 request_repaint_after 驱动)
+fn loading_placeholder(ui: &mut egui::Ui, i18n: &I18n) {
+    let avail = ui.available_size();
+    ui.allocate_ui_with_layout(avail, egui::Layout::top_down(egui::Align::Center), |ui| {
+        ui.add_space((avail.y * 0.35).min(240.0));
+        ui.add(egui::Spinner::new().size(theme::font::H2));
+        ui.add_space(theme::sp::SM);
+        ui.label(theme::dim_text(
+            &i18n.t("history-loading"),
+            theme::font::BODY,
+        ));
+    });
 }
