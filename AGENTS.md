@@ -134,21 +134,32 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   v6 = lan_devices 局域网设备表;v7 = profiles 配置档表 + rules.profile_id;
   v8 = rules.hit_count 规则命中计数列;v9 = conn_events.remote_ip6
   IPv6 远端列[16 字节大端 BLOB,等长 memcmp 字典序即数值序,v6 行的
-  remote_ip 列零值占位、族判定以 remote_ip6 IS NULL 为准]);
+  remote_ip 列零值占位、族判定以 remote_ip6 IS NULL 为准];v10 =
+  proc_stats/usage_stats/stats_done 统计预聚合三表[汇总/用量视图加速
+  缓存,可丢弃;迁移只建表,存量由写线程启动后逐天回填]);
   history/:历史落盘(mod.rs:ClosedConn、Tracker 对比前后快照生成事件
   [mock 不入库]、Writer 写线程句柄与 run 主循环、write_batch 批量事务
   [conn_events 事件表,每条已完结连接一行整行 INSERT,含收发字节——
   Tracker 每轮随快照刷新、短命连接取 FlowAgg;托盘退出 flush 并 join;
   归属地不落库];maintenance.rs:自动清理小时级节流[天数 0 = 不清理]、
   purge_before/reclaim_space[DELETE 后归还空闲页+截断 WAL,
-  incremental_vacuum 须消费全部结果行]、db_size);
+  incremental_vacuum 须消费全部结果行]、db_size;stats.rs:统计预聚合物化
+  [proc_stats/usage_stats v10,汇总/用量视图加速缓存,可丢弃非权威——
+  缺块查询侧回退明细全扫;写线程每轮循环末尾逐天物化(每轮至多 4 天,
+  覆盖启动补齐/跨天物化昨天/失效重算),"今天"永不物化由查询侧明细实时算;
+  invalidate_written 落库后失效跨天滞后写入的已物化天;invalidate_days
+  删除联动(UI 侧连接调用);purge_stats 清理联动]。
+  桶号 = (last_seen + tz)/86400|3600,net_class 三分[0 回环/1 私网/2 公网
+  含保留段]与 Filter hide 位运算同口径,聚合值与明细 SQL 同构可相加);
   history_query/:历史查询与页面状态(mod.rs:REMIND_SIZE/QUERY_LIMIT +
   re-export;filter.rs:Filter[WHERE 公共段+参数绑定]、明细/聚合/汇总/
-  用量行类型与排序枚举[order_col 白名单列名映射拼 ORDER BY];query.rs:
+  用量行类型与排序枚举[order_col 白名单列名映射拼 ORDER BY,label()
+  日志用中文名];query.rs:
   明细/聚合/汇总/用量 SQL 全参数绑定,LIMIT 500,远端前缀解析为网段
   BETWEEN;proto None 绑空串而非 NULL——SQL 侧 ?5 = '' 判定,NULL 比较
   恒假会过滤全部行;本地/私网过滤在 SQL 内位运算判定;PendingDelete 与
-  明细行/聚合组/整进程删除;query_db_bytes 今日/当月用量合并单 SQL
+  明细行/聚合组/整进程删除[组删/进程删经 DELETE RETURNING last_seen
+  收集受影响日桶联动统计表失效];query_db_bytes 今日/当月用量合并单 SQL
   (月初窗口单扫,today CASE WHEN 同行取值;工作线程执行);fmt.rs:
   local_tz_offset_secs/month_start/
   fmt_local[Win32 SystemTime]、parse_ip_prefix、fmt_duration;page.rs:
@@ -158,7 +169,16 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   在 app 层工作线程执行(明细走 last_seen 索引提前终止毫秒级,聚合/
   汇总/用量必须全窗扫描 GROUP BY——大库(230 万行实测)聚合 3.5s,
   索引救不了,不可回 UI 线程);Rows::empty(view) 派发前占位防旧视图
-  数据闪现,loading 态表格区显示 Spinner]))
+  数据闪现,loading 态表格区显示 Spinner;QuerySpec::describe() 耗时
+  日志补窗口档位/排序/桶宽/激活筛选项;
+  stats_query.rs:汇总/用量统计表快路径[命中条件:无 remote 筛选
+  (用量另要求无 process 筛选,统计表无进程维度)且覆盖已完结天全部
+  物化;三段合并 = 统计表段(历史全桶,毫秒)+ 头部补段(窗口起点
+  未对齐桶边界的部分桶,明细实时算)+ 今天段(今天永不物化,明细
+  实时算,单天走索引);补段明细 SQL 复用 Filter::cond_clause 筛选段
+  (?2..?9)+ 自有窗口 ?10/?11;实测 230 万行库汇总 2.2s -> 0.2s
+  (今天段占绝对大头,历史段 6ms),30 天外推慢路径 6s 而快路径不随
+  历史增长;未命中回退明细全扫]))
 - src/logging/ - 日志基础设施(mod.rs:tracing 三通道[控制台/文件
   logs/latest.log/内存层 window_layer],ToggleableWriter 动态开关,
   文件开关由关转开时轮转旧文件为 {时间戳}.log;cleanup_old_logs 按
