@@ -289,10 +289,13 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   history/:历史页(mod.rs:show 入口与四视图分发 + 超容提醒卡[warn 低透明
   底 + 警示图标,勾选不再提醒=一票否决持久化,手动清空还原];
   查询在途(loading)表格区居中 Spinner+文案,不渲染旧数据;toolbar.rs:
-  四视图 segmented 切换/时间范围/进程远端协议筛选[300ms 防抖]/导出按钮
-  [loading 禁用,数据未就绪]/
+  四视图 segmented 切换/时间范围/筛选[300ms 防抖,按视图裁剪:明细聚合
+  全量(进程/远端/协议/噪音过滤),汇总仅进程,用量仅时间档位——
+  due_for_query 同口径裁剪,控件不可见时筛选不生效防看不见的隐藏条件]/
+  导出按钮[loading 禁用,数据未就绪]/
   噪音过滤下拉[widgets::noise_filter,与连接页共用:前置对钩勾选、
-  激活时按钮 accent 高亮、菜单点击不关]/库大小置于清理菜单首行;
+  激活时按钮 accent 高亮、菜单点击不关;hide 为 config 全局口径,
+  汇总/用量页无控件但仍生效,可在连接/明细页调节]/库大小置于清理菜单首行;
   本模块只写状态置 dirty,查询执行在 app 层工作线程(poll_derived);
   detail.rs:明细 8 列[行右键删该条];
   aggregate.rs:聚合 9 列表头可排序[行右键删该组];summary.rs:进程汇总
