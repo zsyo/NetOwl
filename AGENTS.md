@@ -44,8 +44,18 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   建纹理)、WFP 目标集合同步[规则 specs+询问 pending 阻断+静默 deny
   兜底/自身放行];poll_derived.rs:外围任务轮询(与采集无耦合,各自
   节流)——悬浮球数据快照[总速率+进程速率榜 1s,今日总量
-  = 当日落库收发(分钟级查库)+活跃连接实时字节]、用量配额告警
-  (分钟级当月累计+活跃字节,80%/100% toast 每级去重)、检查更新
+  = 当日落库收发(读缓存)+活跃连接实时字节]、用量字节查询
+  poll_db_bytes[今日/当月合并单 SQL 单次扫描月初窗口,分钟级节流,
+  工作线程执行(大库聚合秒级不可进主线程),两消费方(悬浮球/配额)
+  都关闭时不查,主线程收割写 today_db_bytes/month_db_bytes 缓存]、
+  用量配额告警(分钟级读缓存+活跃字节,80%/100% toast 每级去重)、
+  历史页查询 poll_history_query[PageState.due_for_query 判定到期即
+  spawn 一次性工作线程(db::open 独立连接)执行 run_query,结果经
+  mpsc 回传收割写 rows/db_size;替换式在途(新查询直接丢旧通道,
+  旧线程 send 失败自然退出,快速切换始终查最新参数);在途 33ms
+  重绘驱动加载动画;冻结(右键菜单)不派发不收割,rows 为空仍放行
+  建基线;Disconnected 兜底复位 loading 防 UI 永久转圈]、
+  检查更新
   结果回收(后台线程+mpsc,完成即重绘);ask_flow.rs:询问编排——入队检测、
   超时默认拒绝、决策落地[永久落库/仅本次临时规则]、临时规则生命周期
   (连接消失即删);ball.rs:悬浮球交互结果落地(位置记忆/唤出主窗口/
@@ -138,10 +148,17 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   明细/聚合/汇总/用量 SQL 全参数绑定,LIMIT 500,远端前缀解析为网段
   BETWEEN;proto None 绑空串而非 NULL——SQL 侧 ?5 = '' 判定,NULL 比较
   恒假会过滤全部行;本地/私网过滤在 SQL 内位运算判定;PendingDelete 与
-  明细行/聚合组/整进程删除;fmt.rs:local_tz_offset_secs/month_start/
+  明细行/聚合组/整进程删除;query_db_bytes 今日/当月用量合并单 SQL
+  (月初窗口单扫,today CASE WHEN 同行取值;工作线程执行);fmt.rs:
+  local_tz_offset_secs/month_start/
   fmt_local[Win32 SystemTime]、parse_ip_prefix、fmt_duration;page.rs:
   ViewMode/Range/Rows/PageState[视图/筛选/排序/结果/清空,筛选防抖
-  300ms,汇总活跃合并缓存]))
+  300ms,汇总活跃合并缓存]。查询异步化:due_for_query 判定(防抖/
+  dirty/purge 门控)返回 QuerySpec 参数快照,run_query(db, spec)
+  在 app 层工作线程执行(明细走 last_seen 索引提前终止毫秒级,聚合/
+  汇总/用量必须全窗扫描 GROUP BY——大库(230 万行实测)聚合 3.5s,
+  索引救不了,不可回 UI 线程);Rows::empty(view) 派发前占位防旧视图
+  数据闪现,loading 态表格区显示 Spinner]))
 - src/logging/ - 日志基础设施(mod.rs:tracing 三通道[控制台/文件
   logs/latest.log/内存层 window_layer],ToggleableWriter 动态开关,
   文件开关由关转开时轮转旧文件为 {时间戳}.log;cleanup_old_logs 按
@@ -250,10 +267,13 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   ask.rs:新连接询问弹窗(右下角无标题栏 toast,盾形图标标题,范围下拉 +
   允许[accent 填充 on_accent 字]/拒绝[danger 描边],进度条内嵌剩余秒数);
   history/:历史页(mod.rs:show 入口与四视图分发 + 超容提醒卡[warn 低透明
-  底 + 警示图标,勾选不再提醒=一票否决持久化,手动清空还原];toolbar.rs:
-  四视图 segmented 切换/时间范围/进程远端协议筛选[300ms 防抖]/导出按钮/
+  底 + 警示图标,勾选不再提醒=一票否决持久化,手动清空还原];
+  查询在途(loading)表格区居中 Spinner+文案,不渲染旧数据;toolbar.rs:
+  四视图 segmented 切换/时间范围/进程远端协议筛选[300ms 防抖]/导出按钮
+  [loading 禁用,数据未就绪]/
   噪音过滤下拉[widgets::noise_filter,与连接页共用:前置对钩勾选、
   激活时按钮 accent 高亮、菜单点击不关]/库大小置于清理菜单首行;
+  本模块只写状态置 dirty,查询执行在 app 层工作线程(poll_derived);
   detail.rs:明细 8 列[行右键删该条];
   aggregate.rs:聚合 9 列表头可排序[行右键删该组];summary.rs:进程汇总
   [按进程聚合字节总量/次数/时长,默认上传降序,数字含活跃连接实时字节——
