@@ -450,6 +450,7 @@ impl eframe::App for NetOwlApp {
         self.poll_conns(ctx);
         self.writer.set_retention(self.config.general.history_days);
         self.poll_quota();
+        self.poll_db_bytes();
         self.poll_update_check(ctx);
         self.poll_history_query(ctx);
         self.sync_silent_mode();

@@ -22,6 +22,5 @@ pub use fmt::{
 };
 pub use page::{PageState, QuerySpec, Range, Rows, ViewMode, run_query};
 pub use query::{
-    PendingDelete, delete_aggregate_group, delete_detail, delete_process, query_month_bytes,
-    query_today_bytes,
+    DbBytes, PendingDelete, delete_aggregate_group, delete_detail, delete_process, query_db_bytes,
 };

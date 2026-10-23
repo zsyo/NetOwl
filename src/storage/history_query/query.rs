@@ -213,36 +213,45 @@ fn parse_proto(s: &str) -> Protocol {
     }
 }
 
-/// 当月(本地时区)累计收发字节总和:用量配额告警的数据源
-/// (配额口径 = 全部落库流量,不套用历史页筛选)
-pub fn query_month_bytes(db: &Db) -> u64 {
-    match db.query_row(
-        "SELECT COALESCE(SUM(bytes_in + bytes_out), 0) FROM conn_events WHERE last_seen >= ?1",
-        [super::fmt::month_start() as i64],
-        |r| r.get::<_, i64>(0),
-    ) {
-        Ok(n) => n.max(0) as u64,
-        Err(e) => {
-            tracing::warn!("[History] 月度用量查询失败: {e}");
-            0
-        }
-    }
+/// 落库用量字节快照:今日(入站, 出站)与当月总量
+pub struct DbBytes {
+    pub today: (u64, u64),
+    pub month: u64,
 }
 
-/// 当日(本地时区)累计收发字节,拆 (入站, 出站) 两列:悬浮窗浮窗
-/// "今日总量"的数据源(口径同上,不套历史页筛选;活跃连接的实时
-/// 字节由调用方叠加)
-pub fn query_today_bytes(db: &Db) -> (u64, u64) {
+/// 今日与当月(本地时区)累计收发字节,单次扫描月初窗口取回:今日是
+/// 当月子集,CASE WHEN 同行取值,免两次全窗扫描。悬浮球"今日总量"与
+/// 用量配额告警的数据源(口径 = 全部落库流量,不套历史页筛选;活跃
+/// 连接的实时字节由调用方叠加)。
+/// 大库上月初窗口聚合秒级,须在工作线程执行
+pub fn query_db_bytes(db: &Db) -> DbBytes {
     match db.query_row(
-        "SELECT COALESCE(SUM(bytes_in), 0), COALESCE(SUM(bytes_out), 0)
-         FROM conn_events WHERE last_seen >= ?1",
-        [super::fmt::day_start() as i64],
-        |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
+        "SELECT COALESCE(SUM(CASE WHEN last_seen >= ?1 THEN bytes_in ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN last_seen >= ?1 THEN bytes_out ELSE 0 END), 0),
+                COALESCE(SUM(bytes_in), 0),
+                COALESCE(SUM(bytes_out), 0)
+         FROM conn_events WHERE last_seen >= ?2",
+        params![
+            super::fmt::day_start() as i64,
+            super::fmt::month_start() as i64
+        ],
+        |r| {
+            Ok(DbBytes {
+                today: (
+                    r.get::<_, i64>(0)?.max(0) as u64,
+                    r.get::<_, i64>(1)?.max(0) as u64,
+                ),
+                month: (r.get::<_, i64>(2)?.max(0) as u64 + r.get::<_, i64>(3)?.max(0) as u64),
+            })
+        },
     ) {
-        Ok((inn, out)) => (inn.max(0) as u64, out.max(0) as u64),
+        Ok(b) => b,
         Err(e) => {
-            tracing::warn!("[History] 当日用量查询失败: {e}");
-            (0, 0)
+            tracing::warn!("[History] 用量字节查询失败: {e}");
+            DbBytes {
+                today: (0, 0),
+                month: 0,
+            }
         }
     }
 }

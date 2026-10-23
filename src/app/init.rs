@@ -237,7 +237,10 @@ impl NetOwlApp {
             ball_data: floating_ball::BallData::default(),
             ball_data_at: Instant::now(),
             today_db_bytes: (0, 0),
-            today_bytes_at: Instant::now(),
+            month_db_bytes: 0,
+            // 回拨一个节流周期:启动即首查(查询在工作线程,不卡启动帧)
+            db_bytes_at: Instant::now() - super::DB_BYTES_INTERVAL,
+            db_bytes_rx: None,
             tray_tip_at: Instant::now(),
             silent_synced: None,
             ask_synced: None,

@@ -1,20 +1,20 @@
-//! 轮询编排的外围任务:悬浮球数据快照、用量配额告警、历史页查询派发
-//! 与收割、检查更新结果回收。与连接采集无耦合,各自按节流独立运行
-//! (悬浮球 1s / 配额与历史查询事件驱动 / 更新事件驱动);采集主流程
-//! 见 super::poll。
+//! 轮询编排的外围任务:悬浮球数据快照、用量字节查询(悬浮球与配额
+//! 共用,工作线程)、用量配额告警、历史页查询派发与收割、检查更新
+//! 结果回收。与连接采集无耦合,各自按节流独立运行(悬浮球 1s /
+//! 用量字节分钟级 / 历史查询与更新事件驱动);采集主流程见 super::poll。
 
 use std::time::{Duration, Instant};
 
 use eframe::egui;
 
-use super::{NetOwlApp, TODAY_BYTES_INTERVAL};
+use super::{DB_BYTES_INTERVAL, NetOwlApp};
 use crate::storage::history_query;
 use crate::ui::floating_ball;
 
 impl NetOwlApp {
     /// 悬浮球数据快照:总速率与进程速率榜 1s 节流重建(与连接采集同频);
-    /// 仅开关开启时计算。今日总量 = 落库当日收发(分钟级查库)+ 活跃
-    /// 连接实时累计(未落库部分,每秒叠加)
+    /// 仅开关开启时计算。今日总量 = 落库当日收发(分钟级异步查库)+
+    /// 活跃连接实时累计(未落库部分,每秒叠加)
     pub(super) fn poll_ball_data(&mut self) {
         if !self.config.floating_ball.enabled
             || self.ball_data_at.elapsed() < Duration::from_secs(1)
@@ -22,11 +22,6 @@ impl NetOwlApp {
             return;
         }
         self.ball_data_at = Instant::now();
-        if self.today_bytes_at.elapsed() >= TODAY_BYTES_INTERVAL {
-            self.today_bytes_at = Instant::now();
-            self.today_db_bytes =
-                crate::storage::history_query::query_today_bytes(&self.history_db);
-        }
         let (up_top, down_top) = floating_ball::collect_proc_rates(
             &self.conns,
             &self.conn_rates,
@@ -48,7 +43,42 @@ impl NetOwlApp {
         };
     }
 
-    /// 用量配额告警:分钟级轻查当月累计(落库)+ 活跃连接字节,达到
+    /// 今日/当月落库用量查询(悬浮球今日总量与配额告警共用,单次扫描
+    /// 月初窗口):分钟级节流派发工作线程执行,主线程只收割写缓存,
+    /// 消费方(poll_ball_data/poll_quota)读缓存。两个消费方都关闭时
+    /// 不查
+    pub(super) fn poll_db_bytes(&mut self) {
+        match self.db_bytes_rx.as_ref().map(|rx| rx.try_recv()) {
+            Some(Ok(bytes)) => {
+                self.db_bytes_rx = None;
+                self.today_db_bytes = bytes.today;
+                self.month_db_bytes = bytes.month;
+            }
+            Some(Err(std::sync::mpsc::TryRecvError::Empty)) => return,
+            Some(Err(std::sync::mpsc::TryRecvError::Disconnected)) => {
+                // 工作线程异常退出:复位防节流判定永久卡在在途
+                self.db_bytes_rx = None;
+                tracing::warn!("[History] 用量查询线程异常退出,本次结果丢弃");
+            }
+            None => {}
+        }
+        let want = self.config.floating_ball.enabled || self.config.general.usage_quota_gb != 0;
+        if !want || self.db_bytes_rx.is_some() || self.db_bytes_at.elapsed() < DB_BYTES_INTERVAL {
+            return;
+        }
+        self.db_bytes_at = Instant::now();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let db = crate::storage::db::open();
+            let bytes = history_query::query_db_bytes(&db);
+            // 发送失败 = 接收端已关闭(进程退出),静默退出
+            let _ = tx.send(bytes);
+        });
+        self.db_bytes_rx = Some(rx);
+    }
+
+    /// 用量配额告警:分钟级检查当月累计(落库缓存,由 poll_db_bytes
+    /// 分钟级异步刷新)+ 活跃连接字节,达到
     /// 80%/100% 阈值时 toast 告警;每级会话内一次,用量回落到阈值下
     /// (月切换/数据清理)自动重置
     pub(super) fn poll_quota(&mut self) {
@@ -61,7 +91,7 @@ impl NetOwlApp {
             return;
         }
         self.quota_checked_at = Instant::now();
-        let month = crate::storage::history_query::query_month_bytes(&self.history_db);
+        let month = self.month_db_bytes;
         let active: u64 = self.conns.iter().map(|c| c.total_bytes()).sum();
         let total = month + active;
         // 阈值比较全程 saturating:quota_gb 来自配置(极大值时 u64 乘法

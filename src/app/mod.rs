@@ -97,9 +97,9 @@ const TRAY_PIN_RETRY_INTERVAL: Duration = Duration::from_secs(60);
 const AUTOSTART_RETRY_INTERVAL: Duration = Duration::from_secs(60);
 /// 托盘悬停提示的速率刷新间隔(秒级,与速率采样同频)
 const TRAY_TIP_INTERVAL: Duration = Duration::from_secs(1);
-/// 当日用量(本地时区)查库间隔:浮窗"今日总量"= 落库值 + 活跃连接
-/// 实时字节,秒级 SUM 全表开销不值当,分钟级即可
-const TODAY_BYTES_INTERVAL: Duration = Duration::from_secs(60);
+/// 今日/当月用量(本地时区)查库间隔:浮窗"今日总量"与配额告警共用
+/// 单次扫描(工作线程),秒级 SUM 全表开销不值当,分钟级即可
+const DB_BYTES_INTERVAL: Duration = Duration::from_secs(60);
 /// 进入设置页时字体表重扫的最小间隔:反复在别的页与设置页之间切换不
 /// 重复读注册表;重启不受限(启动时必扫一次并记录时刻)
 const FONT_CATALOG_REFRESH_INTERVAL: Duration = Duration::from_secs(5 * 60);
@@ -316,10 +316,14 @@ pub struct NetOwlApp {
     /// 悬浮球数据快照(总速率 + 进程速率榜,1s 节流聚合)
     ball_data: floating_ball::BallData,
     ball_data_at: Instant,
-    /// 当日(本地时区)落库收发字节 (入站, 出站) 与查询时刻:
-    /// 浮窗"今日总量"= 此值 + 活跃连接实时字节(分钟级查库)
+    /// 当日(本地时区)落库收发字节 (入站, 出站):浮窗"今日总量"=
+    /// 此值 + 活跃连接实时字节(分钟级查库,异步收割更新)
     today_db_bytes: (u64, u64),
-    today_bytes_at: Instant,
+    /// 当月落库收发字节总量:配额告警的数据源(与今日共用一次查询)
+    month_db_bytes: u64,
+    /// 今日/当月用量查询节流时刻与在途通道(存在 = 工作线程查询中)
+    db_bytes_at: Instant,
+    db_bytes_rx: Option<Receiver<history_query::DbBytes>>,
     /// 托盘悬停提示上次刷新时刻(速率跟随)
     tray_tip_at: Instant,
     /// 静默模式上次同步值(config 变化或采集器重建后重同步:兜底规则
