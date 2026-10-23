@@ -24,6 +24,7 @@ pub(super) fn cleanup(conn: &Db, retention: &AtomicU32, last_cleanup: &mut Insta
     ) {
         Ok(n) if n > 0 => {
             tracing::info!("[History] 自动清理 {days} 天前历史 {n} 行");
+            super::stats::purge_stats(conn, days);
             reclaim_space(conn);
         }
         Ok(_) => {}
@@ -49,6 +50,7 @@ pub(super) fn purge_before(conn: &Db, days: u32) {
             } else {
                 tracing::info!("[History] 已清理 {days} 天前历史 {n} 行");
             }
+            super::stats::purge_stats(conn, days);
             reclaim_space(conn);
         }
         Err(e) => tracing::warn!("[History] 清理历史失败: {e}"),

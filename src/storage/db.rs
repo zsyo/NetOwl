@@ -221,4 +221,49 @@ fn migrate(conn: &mut Connection) {
             Ok(())
         });
     }
+    if current < 10 {
+        // 版本 10:历史统计预聚合表(可丢弃缓存,非权威数据——任何缺块
+        // 都回退明细全扫,由写线程重建,见 history/stats.rs)。
+        // proc_stats:汇总视图维度(本地日桶号 × 进程 × 协议 × 网络类别),
+        // rep_path 供图标;usage_stats:用量视图按本地小时桶 × 网络类别 ×
+        // 协议(按天查询聚合 24 小时行);stats_done:已物化日桶号标记
+        // (区分"未物化"与"该天无数据")。桶号 = (last_seen + 时区偏移) /
+        // 桶宽,与 history_query 分桶口径一致。迁移只建表不回填,存量由
+        // 写线程启动后逐天补齐
+        step(conn, 10, |tx| {
+            tx.execute(
+                "CREATE TABLE IF NOT EXISTS proc_stats (
+                    day INTEGER NOT NULL,
+                    process TEXT NOT NULL,
+                    proto TEXT NOT NULL,
+                    net_class INTEGER NOT NULL,
+                    n INTEGER NOT NULL,
+                    total_secs INTEGER NOT NULL,
+                    bytes_in INTEGER NOT NULL,
+                    bytes_out INTEGER NOT NULL,
+                    rep_path TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (day, process, proto, net_class)
+                )",
+                [],
+            )?;
+            tx.execute(
+                "CREATE TABLE IF NOT EXISTS usage_stats (
+                    hour INTEGER NOT NULL,
+                    net_class INTEGER NOT NULL,
+                    proto TEXT NOT NULL,
+                    bytes_in INTEGER NOT NULL,
+                    bytes_out INTEGER NOT NULL,
+                    PRIMARY KEY (hour, net_class, proto)
+                )",
+                [],
+            )?;
+            tx.execute(
+                "CREATE TABLE IF NOT EXISTS stats_done (
+                    day INTEGER PRIMARY KEY
+                )",
+                [],
+            )?;
+            Ok(())
+        });
+    }
 }

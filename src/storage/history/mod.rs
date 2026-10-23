@@ -7,6 +7,7 @@
 //! 自动清理与空间回收见 maintenance。
 
 mod maintenance;
+mod stats;
 
 use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr};
@@ -217,6 +218,7 @@ fn run(rx: Receiver<Msg>, retention: std::sync::Arc<AtomicU32>) {
             Ok(m) => m,
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 maintenance::cleanup(&conn, &retention, &mut last_cleanup);
+                stats::materialize_pending(&mut conn);
                 continue;
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
@@ -234,10 +236,16 @@ fn run(rx: Receiver<Msg>, retention: std::sync::Arc<AtomicU32>) {
             }
         }
         write_batch(&mut conn, &events);
+        if !events.is_empty() {
+            // 跨天瞬间的滞后落库会写进已物化天:失效该天统计待重算
+            stats::invalidate_written(&conn, &events);
+        }
         if let Some(days) = purge {
             maintenance::purge_before(&conn, days);
         }
         maintenance::cleanup(&conn, &retention, &mut last_cleanup);
+        // 统计预聚合物化:补缺失天/跨天物化昨天,每轮至多数天
+        stats::materialize_pending(&mut conn);
     }
 }
 
