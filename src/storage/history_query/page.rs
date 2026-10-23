@@ -318,7 +318,9 @@ impl PageState {
 }
 
 /// 执行一次查询(工作线程,独立连接):按视图形态分派对应 SQL。
-/// 查询失败告警后降级为空结果:库损坏/磁盘满等不应静默显示为"无数据"
+/// 汇总/用量优先尝试统计表快路径(覆盖天已物化且筛选可下推),
+/// 未命中回退明细全扫。查询失败告警后降级为空结果:库损坏/磁盘满等
+/// 不应静默显示为"无数据"
 pub fn run_query(db: &Db, spec: &QuerySpec) -> Rows {
     let f = &spec.filter;
     match spec.view {
@@ -329,12 +331,18 @@ pub fn run_query(db: &Db, spec: &QuerySpec) -> Rows {
         }
         ViewMode::Summary => {
             let (sort, asc) = spec.summary_sort;
-            Rows::Summary(query_or_warn("汇总", query_summary(db, f, sort, asc)))
+            let rows = super::stats_query::try_query_summary_stats(db, f, sort, asc)
+                .unwrap_or_else(|| query_or_warn("汇总", query_summary(db, f, sort, asc)));
+            Rows::Summary(rows)
         }
-        ViewMode::Usage => Rows::Usage(query_or_warn(
-            "用量",
-            query_usage(db, f, spec.usage_bucket, spec.tz_off),
-        )),
+        ViewMode::Usage => {
+            let rows =
+                super::stats_query::try_query_usage_stats(db, f, spec.usage_bucket, spec.tz_off)
+                    .unwrap_or_else(|| {
+                        query_or_warn("用量", query_usage(db, f, spec.usage_bucket, spec.tz_off))
+                    });
+            Rows::Usage(rows)
+        }
     }
 }
 

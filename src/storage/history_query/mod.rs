@@ -2,12 +2,13 @@
 //! 归属地不落库,渲染时实时反查 geoip;全部查询走 rusqlite 参数绑定。
 //!
 //! Filter 与行/排序类型在 filter,只读查询与删除在 query,时间与
-//! 文本格式化在 fmt,历史页状态在 page。
+//! 文本格式化在 fmt,统计表快路径在 stats_query,历史页状态在 page。
 
 mod filter;
 mod fmt;
 mod page;
 mod query;
+mod stats_query;
 
 /// 历史库超容提醒阈值(1 GiB)
 pub const REMIND_SIZE: u64 = 1024 * 1024 * 1024;

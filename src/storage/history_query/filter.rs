@@ -95,6 +95,26 @@ impl Filter {
                       AND remote_ip6 >= ?8 AND remote_ip6 <= ?9))"
     }
 
+    /// 筛选条件段(?2..?9,不含时间窗):统计表快路径的明细补段查询
+    /// 复用,与 where_clause 的对应行**必须同步维护**
+    pub(super) fn cond_clause() -> &'static str {
+        "AND (?2 = '' OR process LIKE '%' || ?2 || '%' ESCAPE '\\')
+             AND (?3 IS NULL OR (remote_ip6 IS NULL AND remote_ip >= ?3 AND remote_ip <= ?4))
+             AND (?5 = '' OR proto = ?5)
+             AND (?6 = 0 OR NOT ((remote_ip >> 24) = 127
+                      OR remote_ip6 = X'00000000000000000000000000000001'))
+             AND (?7 = 0 OR NOT ((remote_ip >> 24) = 10
+                      OR (remote_ip >> 20) = 2753
+                      OR (remote_ip >> 16) = 49320
+                      OR (remote_ip6 IS NOT NULL
+                          AND ((substr(remote_ip6, 1, 2) >= X'fc00'
+                                AND substr(remote_ip6, 1, 2) <= X'fdff')
+                           OR (substr(remote_ip6, 1, 2) >= X'fe80'
+                                AND substr(remote_ip6, 1, 2) <= X'febf')))))
+             AND (?8 IS NULL OR (remote_ip6 IS NOT NULL
+                      AND remote_ip6 >= ?8 AND remote_ip6 <= ?9))"
+    }
+
     /// 与 where_clause 参数位一一对应(全部 owned);
     /// proto 为 None 绑空串(SQL 侧以 ?5 = '' 判定不过滤,NULL 比较恒假);
     /// 进程名经 escape_like 转义,用户输入的 %/_ 按字面匹配
@@ -125,12 +145,20 @@ impl Filter {
             Box::new(r6hi),
         ]
     }
+
+    /// ?2..?9 的筛选项绑定(不含时间窗起点):统计表快路径的补段
+    /// 查询拼接自有窗口时复用,与 bind 的后 8 项一致
+    pub(super) fn bind_tail(&self) -> Vec<Box<dyn rusqlite::ToSql>> {
+        let mut tail: Vec<Box<dyn rusqlite::ToSql>> = self.bind().into_iter().skip(1).collect();
+        tail.truncate(8);
+        tail
+    }
 }
 
 /// LIKE 通配符转义:进程名筛选是子串语义,输入里的 %/_/\ 按字面
 /// 匹配(SQL 侧配 ESCAPE '\',见 where_clause),否则输 a_b 会多匹配
-/// axb、输 % 等于不过滤
-fn escape_like(s: &str) -> String {
+/// axb、输 % 等于不过滤。统计表快路径的 proc_stats 查询同款复用
+pub(super) fn escape_like(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 4);
     for c in s.chars() {
         if matches!(c, '\\' | '%' | '_') {
