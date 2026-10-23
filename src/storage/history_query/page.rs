@@ -160,11 +160,12 @@ impl QuerySpec {
         if let Some(p) = f.proto {
             items.push(format!("协议={}", p.as_str()));
         }
+        // 与噪音过滤 UI 文案同口径(勾选=包含):排除时打"不含"
         if f.hide_local {
-            items.push("隐藏本地".to_owned());
+            items.push("不含本地流量".to_owned());
         }
         if f.hide_lan {
-            items.push("隐藏局域网".to_owned());
+            items.push("不含局域网流量".to_owned());
         }
         if !items.is_empty() {
             s += &format!(", 筛选[{}]", items.join(" "));
