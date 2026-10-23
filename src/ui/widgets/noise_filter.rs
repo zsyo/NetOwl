@@ -1,6 +1,8 @@
-//! 噪音过滤下拉:历史页与连接页筛选栏共用(漏斗按钮 + 隐藏本地/
-//! 局域网两项可勾选)。选中态以前置对钩标示,不用 selectable_label
-//! 的选中底色——两项同选时底色相同,对钩才能直观区分。
+//! 噪音过滤下拉:历史页与连接页筛选栏共用(漏斗按钮 + 包含本地/
+//! 局域网流量两项可勾选)。勾选 = 包含对应流量(正向语义;数据侧
+//! 仍是 hide_local/hide_lan 的排除口径,控件内取反绑定)。选中态
+//! 以前置对钩标示,不用 selectable_label 的选中底色——两项同选时
+//! 底色相同,对钩才能直观区分。
 
 use eframe::egui;
 use egui::{Color32, RichText, containers::PopupCloseBehavior, containers::menu::MenuConfig};
@@ -14,9 +16,11 @@ const ROW_H: f32 = TOOLBAR_ROW_H;
 const ITEM_PAD: f32 = theme::sp::SM;
 const CHECK_COL_W: f32 = 18.0;
 
-/// 漏斗按钮 + 两项可勾选;任一项开启时按钮 accent 高亮。勾选点击后
+/// 漏斗按钮 + 两项可勾选;任一项排除时按钮 accent 高亮。勾选点击后
 /// 菜单保持(CloseOnClickOutside),可连续勾两项,点外部/Esc 关闭。
-/// 返回本帧是否有切换(调用方据此刷新查询并持久化 config)
+/// 勾选 = 包含(不过滤),对钩标示包含态;数据侧 hide_local/hide_lan
+/// 仍为排除语义,绑定处取反。返回本帧是否有切换(调用方据此刷新
+/// 查询并持久化 config)
 pub fn noise_filter(
     ui: &mut egui::Ui,
     i18n: &I18n,
@@ -34,7 +38,7 @@ pub fn noise_filter(
     // 弹窗与按钮同宽(ComboBox 弹窗即与按钮同宽):按钮宽取"按钮内容"
     // 与"最宽菜单项 + 弹窗双边距"的较大值,弹窗内容宽按按钮宽反推,
     // 两项由 justified 布局拉齐,避免按钮与弹窗一宽一窄
-    let item_w = [i18n.t("filter-hide-local"), i18n.t("filter-hide-lan")]
+    let item_w = [i18n.t("filter-include-local"), i18n.t("filter-include-lan")]
         .iter()
         .map(|t| ITEM_PAD + CHECK_COL_W + text_width(ui, t, theme::font::BODY) + ITEM_PAD)
         .fold(0.0, f32::max);
@@ -67,12 +71,13 @@ pub fn noise_filter(
                         ui.with_layout(
                             egui::Layout::top_down(egui::Align::LEFT).with_cross_justify(true),
                             |ui| {
-                                if check_item(ui, *hide_local, i18n.t("filter-hide-local")) {
+                                // 勾选 = 包含(!hide):点击翻转排除开关
+                                if check_item(ui, !*hide_local, i18n.t("filter-include-local")) {
                                     *hide_local = !*hide_local;
                                     changed = true;
                                 }
                                 ui.add_space(theme::sp::XS);
-                                if check_item(ui, *hide_lan, i18n.t("filter-hide-lan")) {
+                                if check_item(ui, !*hide_lan, i18n.t("filter-include-lan")) {
                                     *hide_lan = !*hide_lan;
                                     changed = true;
                                 }

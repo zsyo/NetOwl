@@ -298,12 +298,12 @@ impl PageState {
             return None;
         }
         self.dirty = false;
-        // 筛选按视图裁剪(与工具栏控件裁剪同步):汇总页只应用进程筛选,
-        // 用量页不套任何筛选——控件不可见时筛选仍生效会变成看不见的
-        // 隐藏条件;明细/聚合页全量应用
+        // 筛选按视图裁剪(与工具栏控件裁剪同步):汇总页只应用进程与
+        // 协议筛选,用量页仅协议——控件不可见时筛选仍生效会变成看不见
+        // 的隐藏条件;明细/聚合页全量应用
         let (process, remote, proto) = match self.view {
-            ViewMode::Summary => (self.process.trim().to_owned(), None, None),
-            ViewMode::Usage => (String::new(), None, None),
+            ViewMode::Summary => (self.process.trim().to_owned(), None, self.proto),
+            ViewMode::Usage => (String::new(), None, self.proto),
             _ => (
                 self.process.trim().to_owned(),
                 parse_remote_filter(&self.remote),

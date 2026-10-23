@@ -121,8 +121,8 @@ proc-sign-invalid = 签名未通过
 proc-sign-unknown = 签名未知
 proc-path-unknown = 无法读取路径
 
-filter-hide-local = 隐藏本地
-filter-hide-lan = 隐藏局域网
+filter-include-local = 包含本地流量
+filter-include-lan = 包含局域网流量
 
 settings-history-days = 历史自动清理
 settings-history-days-unit = 天

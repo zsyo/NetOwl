@@ -121,8 +121,8 @@ proc-sign-invalid = Signature invalid
 proc-sign-unknown = Signature unknown
 proc-path-unknown = Path unavailable
 
-filter-hide-local = Hide local
-filter-hide-lan = Hide LAN
+filter-include-local = Include local traffic
+filter-include-lan = Include LAN traffic
 
 settings-history-days = Auto-clean history
 settings-history-days-unit = days

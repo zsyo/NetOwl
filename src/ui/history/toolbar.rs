@@ -1,8 +1,9 @@
 //! 历史页工具栏:四视图切换、时间档位与筛选、刷新与 CSV 导出按钮、
-//! 库大小与手动清理菜单(库大小置于菜单首行)。筛选按视图裁剪:
-//! 明细/聚合全量(进程/远端/协议/噪音过滤),汇总仅进程筛选,用量
-//! 仅时间档位——查询侧 due_for_query 同口径裁剪,控件不可见时筛选
-//! 不生效。查询执行在 app 层工作线程,这里只写状态(置 dirty),不查库。
+//! 库大小与手动清理菜单(库大小置于菜单首行)。文本筛选按视图裁剪:
+//! 远端筛选仅明细/聚合页,进程筛选汇总页保留、用量页无;协议与噪音
+//! 过滤四视图全量(作用于数据源而非列显示)——查询侧 due_for_query
+//! 同口径裁剪,控件不可见时筛选不生效。查询执行在 app 层工作线程,
+//! 这里只写状态(置 dirty),不查库。
 
 use eframe::egui;
 use egui::{CornerRadius, RichText, containers::menu::MenuButton};
@@ -88,7 +89,7 @@ pub(super) fn toolbar(
                 }
             });
 
-        // 进程 / 远端筛选(按视图裁剪:汇总页仅进程,用量页不套文本筛选)
+        // 进程 / 远端筛选(按视图裁剪:进程用量页无,远端仅明细/聚合页)
         let show_process = !matches!(state.view, ViewMode::Usage);
         let show_remote = matches!(state.view, ViewMode::Detail | ViewMode::Aggregate);
         if show_process {
@@ -121,39 +122,36 @@ pub(super) fn toolbar(
             }
         }
 
-        // 协议(明细/聚合页;汇总/用量页对协议维度无意义,裁剪)
-        if matches!(state.view, ViewMode::Detail | ViewMode::Aggregate) {
-            egui::ComboBox::from_id_salt("history-proto")
-                .width(90.0)
-                .selected_text(RichText::new(proto_name(i18n, state.proto)).size(theme::font::BODY))
-                .show_ui(ui, |ui| {
-                    for p in [None, Some(Protocol::Tcp), Some(Protocol::Udp)] {
-                        if ui
-                            .selectable_label(
-                                state.proto == p,
-                                RichText::new(proto_name(i18n, p)).size(theme::font::BODY),
-                            )
-                            .clicked()
-                        {
-                            state.proto = p;
-                            state.refresh_now();
-                        }
+        // 协议(四视图全量:筛选作用于数据源而非列显示,汇总/用量页
+        // 无协议列但按协议过滤数据同样有效)
+        egui::ComboBox::from_id_salt("history-proto")
+            .width(90.0)
+            .selected_text(RichText::new(proto_name(i18n, state.proto)).size(theme::font::BODY))
+            .show_ui(ui, |ui| {
+                for p in [None, Some(Protocol::Tcp), Some(Protocol::Udp)] {
+                    if ui
+                        .selectable_label(
+                            state.proto == p,
+                            RichText::new(proto_name(i18n, p)).size(theme::font::BODY),
+                        )
+                        .clicked()
+                    {
+                        state.proto = p;
+                        state.refresh_now();
                     }
-                });
-        }
+                }
+            });
 
-        // 噪音过滤下拉(明细/聚合页;与连接页共用的 widgets::noise_filter):
-        // 英文文案长,行内平铺两个 checkbox 会把右组库大小+清理挤出叠印
+        // 噪音过滤下拉(与连接页共用的 widgets::noise_filter):英文
+        // 文案长,行内平铺两个 checkbox 会把右组库大小+清理挤出叠印
         // (最小窗口 1440 下英文总宽约 1350 > 可用 1198),收进漏斗下拉。
-        // 汇总/用量页裁剪——开关是 config 全局口径,仍可在连接/明细页调节
-        if matches!(state.view, ViewMode::Detail | ViewMode::Aggregate)
-            && widgets::noise_filter::noise_filter(
-                ui,
-                i18n,
-                &mut config.general.hide_local,
-                &mut config.general.hide_lan,
-            )
-        {
+        // 勾选 = 包含对应流量(默认排除回环/私网,与连接页同口径)
+        if widgets::noise_filter::noise_filter(
+            ui,
+            i18n,
+            &mut config.general.hide_local,
+            &mut config.general.hide_lan,
+        ) {
             state.refresh_now();
             *config_changed = true;
         }
