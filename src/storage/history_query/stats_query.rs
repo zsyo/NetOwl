@@ -193,12 +193,19 @@ fn proc_stats_rows(db: &Db, f: &Filter, lo: i64, hi: i64) -> Option<Vec<SummaryR
          FROM proc_stats WHERE day >= ?1 AND day < ?2",
     );
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(lo), Box::new(hi)];
+    // 参数编号按实际存在的条件递增分配:固定 ?3/?4 会在"无进程筛选
+    // 但有协议筛选"时空悬,快路径静默 miss
+    let mut idx = 2;
     if !f.process.is_empty() {
-        sql.push_str(" AND process LIKE '%' || ?3 || '%' ESCAPE '\\'");
+        idx += 1;
+        sql.push_str(&format!(
+            " AND process LIKE '%' || ?{idx} || '%' ESCAPE '\\'"
+        ));
         args.push(Box::new(escape_like(&f.process)));
     }
     if let Some(p) = f.proto {
-        sql.push_str(" AND proto = ?4");
+        idx += 1;
+        sql.push_str(&format!(" AND proto = ?{idx}"));
         args.push(Box::new(p.as_str().to_owned()));
     }
     if f.hide_local {

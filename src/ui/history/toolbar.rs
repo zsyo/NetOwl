@@ -1,7 +1,8 @@
-//! 历史页工具栏:四视图切换、时间档位与进程/远端/协议筛选(防抖)、
-//! 噪音过滤下拉(隐藏本地/局域网)、刷新与 CSV 导出按钮、库大小与
-//! 手动清理菜单(库大小置于菜单首行)。查询执行在 app 层工作线程,
-//! 这里只写状态(置 dirty),不查库。
+//! 历史页工具栏:四视图切换、时间档位与筛选、刷新与 CSV 导出按钮、
+//! 库大小与手动清理菜单(库大小置于菜单首行)。筛选按视图裁剪:
+//! 明细/聚合全量(进程/远端/协议/噪音过滤),汇总仅进程筛选,用量
+//! 仅时间档位——查询侧 due_for_query 同口径裁剪,控件不可见时筛选
+//! 不生效。查询执行在 app 层工作线程,这里只写状态(置 dirty),不查库。
 
 use eframe::egui;
 use egui::{CornerRadius, RichText, containers::menu::MenuButton};
@@ -87,48 +88,72 @@ pub(super) fn toolbar(
                 }
             });
 
-        // 进程 / 远端筛选
-        let process = widgets::search_box::search_box(
-            ui,
-            &mut state.process,
-            i18n.t("history-filter-process"),
-            100.0,
-        );
-        let remote = widgets::search_box::search_box(
-            ui,
-            &mut state.remote,
-            i18n.t("history-filter-remote"),
-            100.0,
-        );
+        // 进程 / 远端筛选(按视图裁剪:汇总页仅进程,用量页不套文本筛选)
+        let show_process = !matches!(state.view, ViewMode::Usage);
+        let show_remote = matches!(state.view, ViewMode::Detail | ViewMode::Aggregate);
+        if show_process {
+            let process = widgets::search_box::search_box(
+                ui,
+                &mut state.process,
+                i18n.t("history-filter-process"),
+                100.0,
+            );
+            // 输入中防抖重查(合并连续按键);失焦视为输入结束立即刷新
+            if process.changed() {
+                state.defer_refresh();
+            }
+            if process.lost_focus() {
+                state.refresh_now();
+            }
+        }
+        if show_remote {
+            let remote = widgets::search_box::search_box(
+                ui,
+                &mut state.remote,
+                i18n.t("history-filter-remote"),
+                100.0,
+            );
+            if remote.changed() {
+                state.defer_refresh();
+            }
+            if remote.lost_focus() {
+                state.refresh_now();
+            }
+        }
 
-        // 协议
-        egui::ComboBox::from_id_salt("history-proto")
-            .width(90.0)
-            .selected_text(RichText::new(proto_name(i18n, state.proto)).size(theme::font::BODY))
-            .show_ui(ui, |ui| {
-                for p in [None, Some(Protocol::Tcp), Some(Protocol::Udp)] {
-                    if ui
-                        .selectable_label(
-                            state.proto == p,
-                            RichText::new(proto_name(i18n, p)).size(theme::font::BODY),
-                        )
-                        .clicked()
-                    {
-                        state.proto = p;
-                        state.refresh_now();
+        // 协议(明细/聚合页;汇总/用量页对协议维度无意义,裁剪)
+        if matches!(state.view, ViewMode::Detail | ViewMode::Aggregate) {
+            egui::ComboBox::from_id_salt("history-proto")
+                .width(90.0)
+                .selected_text(RichText::new(proto_name(i18n, state.proto)).size(theme::font::BODY))
+                .show_ui(ui, |ui| {
+                    for p in [None, Some(Protocol::Tcp), Some(Protocol::Udp)] {
+                        if ui
+                            .selectable_label(
+                                state.proto == p,
+                                RichText::new(proto_name(i18n, p)).size(theme::font::BODY),
+                            )
+                            .clicked()
+                        {
+                            state.proto = p;
+                            state.refresh_now();
+                        }
                     }
-                }
-            });
+                });
+        }
 
-        // 噪音过滤下拉(与连接页共用的 widgets::noise_filter):英文
-        // 文案长,行内平铺两个 checkbox 会把右组库大小+清理挤出叠印
-        // (最小窗口 1440 下英文总宽约 1350 > 可用 1198),收进漏斗下拉
-        if widgets::noise_filter::noise_filter(
-            ui,
-            i18n,
-            &mut config.general.hide_local,
-            &mut config.general.hide_lan,
-        ) {
+        // 噪音过滤下拉(明细/聚合页;与连接页共用的 widgets::noise_filter):
+        // 英文文案长,行内平铺两个 checkbox 会把右组库大小+清理挤出叠印
+        // (最小窗口 1440 下英文总宽约 1350 > 可用 1198),收进漏斗下拉。
+        // 汇总/用量页裁剪——开关是 config 全局口径,仍可在连接/明细页调节
+        if matches!(state.view, ViewMode::Detail | ViewMode::Aggregate)
+            && widgets::noise_filter::noise_filter(
+                ui,
+                i18n,
+                &mut config.general.hide_local,
+                &mut config.general.hide_lan,
+            )
+        {
             state.refresh_now();
             *config_changed = true;
         }
@@ -144,13 +169,6 @@ pub(super) fn toolbar(
             egui::Button::new(RichText::new(i18n.t("history-export")).size(theme::font::BODY));
         if ui.add_enabled(!state.loading, export_btn).clicked() {
             export::export_csv(state, i18n, conns, config, toasts);
-        }
-        // 输入中防抖重查(合并连续按键);失焦视为输入结束立即刷新
-        if process.changed() || remote.changed() {
-            state.defer_refresh();
-        }
-        if process.lost_focus() || remote.lost_focus() {
-            state.refresh_now();
         }
 
         // 手动清理(右对齐):点击弹出档位菜单;库大小置于菜单首行——
