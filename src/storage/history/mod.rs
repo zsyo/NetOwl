@@ -24,6 +24,9 @@ use crate::model::{Connection, Protocol, Signing};
 
 pub use maintenance::db_size;
 
+/// 统计表失效(删除联动,历史页右键删除经 UI 侧连接调用)
+pub(crate) use stats::invalidate_days;
+
 /// 当前 unix 秒
 pub fn unix_now() -> u64 {
     std::time::SystemTime::now()

@@ -154,49 +154,98 @@ pub struct PendingDelete {
 }
 
 /// 明细行删除:事件身份 + 首末时刻定位唯一行(端口复用产生同 event_id
-/// 的多次连接,由 first_seen 区分)
+/// 的多次连接,由 first_seen 区分)。统计表联动:该行所在日桶失效待重算
 pub fn delete_detail(
     db: &Db,
     event_id: u64,
     first_seen: u64,
     last_seen: u64,
 ) -> rusqlite::Result<usize> {
-    db.execute(
+    let n = db.execute(
         "DELETE FROM conn_events WHERE event_id = ?1 AND first_seen = ?2 AND last_seen = ?3",
         params![event_id as i64, first_seen as i64, last_seen as i64],
-    )
+    )?;
+    if n > 0 {
+        invalidate_stats(db, [last_seen as i64]);
+    }
+    Ok(n)
 }
 
-/// 聚合组删除:同进程 + 协议 + 远端(按族落到对应地址列)的全部记录
+/// 聚合组删除:同进程 + 协议 + 远端(按族落到对应地址列)的全部记录。
+/// RETURNING 收集受影响日桶做统计表失效
 pub fn delete_aggregate_group(
     db: &Db,
     process: &str,
     proto: Protocol,
     remote: IpAddr,
 ) -> rusqlite::Result<usize> {
-    match remote {
-        IpAddr::V4(v4) => db.execute(
+    let sql = match remote {
+        IpAddr::V4(_) => {
             "DELETE FROM conn_events WHERE process = ?1 AND proto = ?2
-             AND remote_ip6 IS NULL AND remote_ip = ?3",
-            params![process, proto.as_str(), u32::from(v4) as i64],
-        ),
-        IpAddr::V6(v6) => db.execute(
-            "DELETE FROM conn_events WHERE process = ?1 AND proto = ?2 AND remote_ip6 = ?3",
-            params![
-                process,
-                proto.as_str(),
-                u128::from(v6).to_be_bytes().as_slice()
-            ],
-        ),
+             AND remote_ip6 IS NULL AND remote_ip = ?3 RETURNING last_seen"
+        }
+        IpAddr::V6(_) => {
+            "DELETE FROM conn_events WHERE process = ?1 AND proto = ?2
+             AND remote_ip6 = ?3 RETURNING last_seen"
+        }
+    };
+    let mut stmt = db.prepare(sql)?;
+    let v4 = match remote {
+        IpAddr::V4(v4) => u32::from(v4) as i64,
+        IpAddr::V6(_) => 0,
+    };
+    let v6 = match remote {
+        IpAddr::V4(_) => None,
+        IpAddr::V6(v6) => Some(u128::from(v6).to_be_bytes().to_vec()),
+    };
+    let mut n = 0usize;
+    let mut days: std::collections::HashSet<i64> = std::collections::HashSet::new();
+    let rows = stmt.query_map(params![process, proto.as_str(), v4or6_value(v4, v6)], |r| {
+        r.get::<_, i64>(0)
+    })?;
+    for ls in rows.flatten() {
+        n += 1;
+        days.insert(day_bucket(ls));
+    }
+    if !days.is_empty() {
+        crate::storage::history::invalidate_days(db, &days);
+    }
+    Ok(n)
+}
+
+/// 进程全部记录删除(RETURNING 收集受影响日桶做统计表失效)
+pub fn delete_process(db: &Db, process: &str) -> rusqlite::Result<usize> {
+    let mut stmt = db.prepare("DELETE FROM conn_events WHERE process = ?1 RETURNING last_seen")?;
+    let mut n = 0usize;
+    let mut days: std::collections::HashSet<i64> = std::collections::HashSet::new();
+    let rows = stmt.query_map(params![process], |r| r.get::<_, i64>(0))?;
+    for ls in rows.flatten() {
+        n += 1;
+        days.insert(day_bucket(ls));
+    }
+    if !days.is_empty() {
+        crate::storage::history::invalidate_days(db, &days);
+    }
+    Ok(n)
+}
+
+/// v4/v6 远端参数:族对应的列绑值,另一列绑占位(同一 ?3 位两种族)
+fn v4or6_value(v4: i64, v6: Option<Vec<u8>>) -> Box<dyn rusqlite::ToSql> {
+    match v6 {
+        Some(b) => Box::new(b),
+        None => Box::new(v4),
     }
 }
 
-/// 进程全部记录删除
-pub fn delete_process(db: &Db, process: &str) -> rusqlite::Result<usize> {
-    db.execute(
-        "DELETE FROM conn_events WHERE process = ?1",
-        params![process],
-    )
+/// 本地日桶号(与统计表口径一致)
+fn day_bucket(last_seen: i64) -> i64 {
+    (last_seen + super::fmt::local_tz_offset_secs()).div_euclid(86400)
+}
+
+/// 单行删除的统计表失效
+fn invalidate_stats(db: &Db, times: impl IntoIterator<Item = i64>) {
+    let days: std::collections::HashSet<i64> = times.into_iter().map(day_bucket).collect();
+    crate::storage::history::invalidate_days(db, &days);
 }
 
 /// remote_ip6 列读回:16 字节大端 BLOB,长度不符视为损坏行(NULL 语义)
