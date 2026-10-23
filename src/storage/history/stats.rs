@@ -149,7 +149,10 @@ pub fn invalidate_days(conn: &Db, days: &HashSet<i64>) {
 
 /// 清理联动:按保留截止同步删统计表(purge_before/cleanup 后,写线程
 /// 连接执行)。days = 0 清空全部;否则删 cutoff(= now - days*86400)
-/// 所在日桶之前的天。rusqlite execute 单语句,三条分开执行
+/// **所在日桶及之前**的天(含边界天):conn_events 按秒级 cutoff 删除,
+/// 边界天的明细被切掉前半段而统计表还是全天聚合,该日必须连同
+/// stats_done 标记一起删,写线程下轮从剩余明细重算自愈。
+/// rusqlite execute 单语句,三条分开执行
 pub(super) fn purge_stats(conn: &Db, days: u32) {
     let res = if days == 0 {
         conn.execute_batch(
@@ -161,9 +164,14 @@ pub(super) fn purge_stats(conn: &Db, days: u32) {
         let tz = local_tz_offset_secs();
         let before = unix_now().saturating_sub(days as u64 * 86400) as i64;
         let cutoff = day_bucket(before, tz);
-        conn.execute("DELETE FROM proc_stats WHERE day < ?1", [cutoff])
-            .and_then(|_| conn.execute("DELETE FROM usage_stats WHERE hour < ?1", [cutoff * 24]))
-            .and_then(|_| conn.execute("DELETE FROM stats_done WHERE day < ?1", [cutoff]))
+        conn.execute("DELETE FROM proc_stats WHERE day <= ?1", [cutoff])
+            .and_then(|_| {
+                conn.execute(
+                    "DELETE FROM usage_stats WHERE hour < ?1",
+                    [(cutoff + 1) * 24],
+                )
+            })
+            .and_then(|_| conn.execute("DELETE FROM stats_done WHERE day <= ?1", [cutoff]))
             .map(|_| ())
     };
     if let Err(e) = res {

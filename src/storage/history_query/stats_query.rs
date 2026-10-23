@@ -93,8 +93,9 @@ pub(super) fn try_query_usage_stats(
         cond = class_cond(f)
     );
     let mut stmt = db.prepare(&sql).ok()?;
-    let mut args: Vec<Box<dyn rusqlite::ToSql>> =
-        vec![Box::new(seg_day * 24), Box::new(today * 24)];
+    // ?1/?2 绑日桶号,SQL 侧统一 ×24 换算小时桶(勿在两侧各乘一次,
+    // 下界会放大 24 倍致统计表段恒空,用量只剩今天段)
+    let mut args: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(seg_day), Box::new(today)];
     if let Some(p) = f.proto {
         args.push(Box::new(p.as_str().to_owned()));
     }
