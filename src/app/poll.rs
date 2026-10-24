@@ -57,10 +57,25 @@ impl NetOwlApp {
             .retain(|c| !(c.proto == Protocol::Udp && c.remote_ip.is_unspecified()));
         // UDP 表对同一 socket 的多个绑定地址各返回一行(同 pid+本地端口,
         // 多网卡机器 NetBIOS 类服务可达 5+ 行);ETW 合并键不含本机地址,
-        // 这些行注定共享同一份回填数据,按 (pid, 本地端口) 去重留一行
-        let mut seen_udp = HashSet::new();
-        self.conns
-            .retain(|c| c.proto != Protocol::Udp || seen_udp.insert((c.pid, c.local_port)));
+        // 这些行注定共享同一份回填数据,按 (pid, 本地端口) 去重留一行。
+        // 保留键必须确定:兄弟行同轮首现时 first_seen 相同,快照排序
+        // 退化为 HashMap 迭代序,顺序保留会让保留行逐轮漂移——Tracker
+        // 把旧 id 判完结落库、新 id 重建,历史与累计双计。固定保留
+        // local_addr 最小者
+        let mut keep_min: HashMap<(u32, u16), IpAddr> = HashMap::new();
+        for c in self.conns.iter().filter(|c| c.proto == Protocol::Udp) {
+            keep_min
+                .entry((c.pid, c.local_port))
+                .and_modify(|m| {
+                    if c.local_addr < *m {
+                        *m = c.local_addr;
+                    }
+                })
+                .or_insert(c.local_addr);
+        }
+        self.conns.retain(|c| {
+            c.proto != Protocol::Udp || keep_min.get(&(c.pid, c.local_port)) == Some(&c.local_addr)
+        });
         self.poll_session_bytes();
         self.rdns.update(&self.conns);
         self.poll_icons(ctx);
