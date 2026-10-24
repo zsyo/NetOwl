@@ -273,6 +273,12 @@ impl PageState {
         self.filter_debounce = Some(Instant::now());
     }
 
+    /// 防抖是否在途(输入后失焦立即刷新的门控:无在途防抖说明本次
+    /// 输入的重查已排定或完成,失焦无需再触发)
+    pub fn debounce_pending(&self) -> bool {
+        self.filter_debounce.is_some()
+    }
+
     /// 发起清理:删除 days 天前的数据(0 = 清空全部);
     /// 还原超容提醒由调用方处理(config)
     pub fn request_purge(&mut self, writer: &Writer, days: u32) {

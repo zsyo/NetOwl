@@ -197,7 +197,15 @@ fn draw_content(
         plot.bottom() - h
     });
 
-    for (i, b) in bars.iter().enumerate() {
+    // 可见桶索引区间(按实际裁剪矩形反解,两端各放宽一桶):滚动下
+    // 视口外的桶由 GPU 裁剪兜底,但省掉矩形填充调用本身(大桶数 x
+    // 每桶两柱)
+    let vis = painter.clip_rect();
+    let i_first = (((vis.left() - plot.left()) / slot).floor().max(0.0) as usize).min(n);
+    let i_last = ((((vis.right() - plot.left()) / slot).ceil().max(0.0) as usize) + 1).min(n);
+
+    for (i, b) in bars[i_first..i_last].iter().enumerate() {
+        let i = i + i_first;
         let cx = center_of(i);
         for (v, color, dx) in [
             (b.down, p.inbound, -(bar_w + gap) * 0.5),
@@ -234,8 +242,9 @@ fn draw_content(
 
     // X 标签:按标签最小间距推导步长(固定索引,滚动不跳动)
     let step = ((LABEL_SPACING / slot) as usize).max(1);
-    for (i, b) in bars.iter().enumerate() {
-        if i % step != 0 {
+    for (i, b) in bars[i_first..i_last].iter().enumerate() {
+        let i = i + i_first;
+        if !i.is_multiple_of(step) {
             continue;
         }
         painter.text(

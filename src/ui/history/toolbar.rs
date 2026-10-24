@@ -103,7 +103,9 @@ pub(super) fn toolbar(
             if process.changed() {
                 state.defer_refresh();
             }
-            if process.lost_focus() {
+            // 输入中防抖在途才需要失焦立即刷新,否则本次输入的重查
+            // 已排定,无条件 refresh_now 是一次多余的全窗查询
+            if process.lost_focus() && state.debounce_pending() {
                 state.refresh_now();
             }
         }
@@ -117,7 +119,7 @@ pub(super) fn toolbar(
             if remote.changed() {
                 state.defer_refresh();
             }
-            if remote.lost_focus() {
+            if remote.lost_focus() && state.debounce_pending() {
                 state.refresh_now();
             }
         }

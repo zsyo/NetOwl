@@ -22,6 +22,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use windows::Win32::Security::{GetTokenInformation, TOKEN_ELEVATION, TOKEN_QUERY, TokenElevation};
 use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
@@ -213,6 +214,8 @@ fn run(rx: Receiver<Msg>, status: Arc<Mutex<Status>>) {
     }
 
     let mut live: HashMap<GUID, Spec> = HashMap::new();
+    // 添加失败 spec 的退避表(见 reconcile)
+    let mut retry: HashMap<Spec, (Instant, Duration)> = HashMap::new();
     set(Status::Active(0));
     tracing::info!("[Wfp] 拦截引擎已启动(动态会话,退出自毁)");
     // 收敛到最新目标集合再 reconcile(同步消息可以任意密集)
@@ -221,7 +224,7 @@ fn run(rx: Receiver<Msg>, status: Arc<Mutex<Status>>) {
         while let Ok(Msg::Sync(s)) = rx.try_recv() {
             latest = s;
         }
-        reconcile(engine, &mut live, &latest);
+        reconcile(engine, &mut live, &latest, &mut retry);
         set(Status::Active(live.len()));
     }
     // 关闭动态会话:全部过滤器与子层随之清除
@@ -261,8 +264,18 @@ fn ensure_sublayer(engine: HANDLE) -> Result<(), u32> {
     (rc == 0).then_some(()).ok_or(rc)
 }
 
-/// diff 当前集合与目标集合,事务外逐条增删(单条失败仅记录,不影响其余)
-fn reconcile(engine: HANDLE, live: &mut HashMap<GUID, Spec>, target: &[Spec]) {
+/// diff 当前集合与目标集合,事务外逐条增删(单条失败仅记录,不影响其余)。
+/// 添加失败的 spec 进入退避表:首次失败告警,退避期内跳过重试与日志,
+/// 到期重试仍失败降级 debug 并翻倍退避(上限 60s)——app 侧每秒同步,
+/// 无退避时持续失败的 spec 每秒重试并刷屏
+fn reconcile(
+    engine: HANDLE,
+    live: &mut HashMap<GUID, Spec>,
+    target: &[Spec],
+    retry: &mut HashMap<Spec, (Instant, Duration)>,
+) {
+    const BACKOFF_INIT: Duration = Duration::from_secs(2);
+    const BACKOFF_MAX: Duration = Duration::from_secs(60);
     let target_set: HashSet<&Spec> = target.iter().collect();
     let stale: Vec<GUID> = live
         .iter()
@@ -279,16 +292,34 @@ fn reconcile(engine: HANDLE, live: &mut HashMap<GUID, Spec>, target: &[Spec]) {
     }
     let live_specs: HashSet<Spec> = live.values().cloned().collect();
     let mut added = 0usize;
+    let now = Instant::now();
     for spec in target {
         if live_specs.contains(spec) {
+            continue;
+        }
+        if retry.get(spec).is_some_and(|(at, _)| now < *at) {
             continue;
         }
         match filter::add_filter(engine, spec) {
             Ok(key) => {
                 live.insert(key, spec.clone());
+                retry.remove(spec);
                 added += 1;
             }
-            Err(e) => tracing::warn!("[Wfp] 添加过滤器失败: {e}"),
+            Err(e) => {
+                let backoff = retry
+                    .get(spec)
+                    .map_or(BACKOFF_INIT, |(_, d)| (*d * 2).min(BACKOFF_MAX));
+                if retry.contains_key(spec) {
+                    tracing::debug!(
+                        "[Wfp] 添加过滤器重试失败: {e}({}s 后再试)",
+                        backoff.as_secs()
+                    );
+                } else {
+                    tracing::warn!("[Wfp] 添加过滤器失败: {e}({}s 后重试)", backoff.as_secs());
+                }
+                retry.insert(spec.clone(), (now + backoff, backoff));
+            }
         }
     }
     if added > 0 || !stale.is_empty() {

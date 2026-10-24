@@ -17,6 +17,10 @@ pub fn open() -> Connection {
     let mut conn = Connection::open(&path).unwrap_or_else(|e| panic!("[Db] 打开数据库失败: {e}"));
     conn.pragma_update(None, "journal_mode", "WAL")
         .unwrap_or_else(|e| panic!("[Db] 设置 WAL 模式失败: {e}"));
+    // WAL 下的推荐持久档:批量提交不再等每次写完整 fsync(断电只丢最后
+    // 一个事务,不损坏库),历史批量落库的提交延迟显著降低
+    conn.pragma_update(None, "synchronous", "NORMAL")
+        .unwrap_or_else(|e| panic!("[Db] 设置 synchronous=NORMAL 失败: {e}"));
     // 写者等待上限:WAL 下读者不互斥,但写线程批量提交与 UI 侧写操作
     // (规则 CRUD/历史删除/lan 合并)撞车时,无等待会立即 SQLITE_BUSY,
     // 写线程整批事件提交失败、历史静默丢失

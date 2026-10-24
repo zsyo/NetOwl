@@ -305,8 +305,10 @@ fn log_list(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n) {
                             .size(theme::font::XS)
                             .color(theme::c().text_dim),
                     );
+                    // 级别名全 <=5 字符,静态表补齐对齐宽度,替代每行
+                    // 每帧 format!("{:5}") 分配
                     ui.label(
-                        RichText::new(format!("{:5}", line.level))
+                        RichText::new(level_cell(line.level))
                             .monospace()
                             .size(theme::font::XS)
                             .color(level_color(line.level)),
@@ -325,6 +327,18 @@ fn log_list(ui: &mut egui::Ui, state: &mut PageState, i18n: &I18n) {
                 });
             }
         });
+}
+
+/// 等级列显示文本(5 字符宽,等宽字体下与时间列对齐):全级别名
+/// <=5 字符,静态表替代每行每帧 format!("{:5}") 分配
+fn level_cell(level: Level) -> &'static str {
+    match level {
+        Level::ERROR => "ERROR",
+        Level::WARN => "WARN ",
+        Level::INFO => "INFO ",
+        Level::DEBUG => "DEBUG",
+        Level::TRACE => "TRACE",
+    }
 }
 
 /// 等级语义色:ERROR 红 / WARN 黄 / INFO 强调色 / DEBUG·TRACE 弱化

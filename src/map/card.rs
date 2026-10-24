@@ -24,20 +24,29 @@ fn text_width(painter: &egui::Painter, text: &str, font: &FontId) -> f32 {
         .width()
 }
 
-/// 按像素尾部省略:不超宽原样返回,超宽则去尾补省略号直到可容纳
+/// 按像素尾部省略:不超宽原样返回,超宽则二分前缀长度去尾补省略号
+/// (逐字符回退每步一次文本布局,卡内多行文本累计 O(n²))
 fn fit_text(painter: &egui::Painter, text: &str, font: &FontId, max_w: f32) -> String {
     if text_width(painter, text, font) <= max_w {
         return text.to_owned();
     }
-    let mut chars: Vec<char> = text.chars().collect();
-    while chars.len() > 1 {
-        chars.pop();
-        let candidate: String = chars.iter().collect::<String>() + "…";
-        if text_width(painter, &candidate, font) <= max_w {
-            return candidate;
+    let chars: Vec<char> = text.chars().collect();
+    let dots = text_width(painter, "…", font);
+    // 前缀可用宽度;max_w 不足省略号本身时结果整体截为省略号
+    let avail = (max_w - dots).max(0.0);
+    let (mut lo, mut hi) = (0usize, chars.len());
+    while lo < hi {
+        let mid = (lo + hi).div_ceil(2);
+        let candidate: String = chars[..mid].iter().collect();
+        if text_width(painter, &candidate, font) <= avail {
+            lo = mid;
+        } else {
+            hi = mid - 1;
         }
     }
-    "…".to_owned()
+    let mut out: String = chars[..lo].iter().collect();
+    out.push('…');
+    out
 }
 
 /// 悬停归属节点的信息卡:节点名、运营商、总流量、最多 6 条连接明细
