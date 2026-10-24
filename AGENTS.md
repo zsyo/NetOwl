@@ -324,13 +324,17 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   log_window.rs:日志浏览窗口(样式与主窗口刻度对齐);
   toast/:通知浮层(mod.rs:Toast 队列[ttl_left 剩余寿命]与 push 入口
   [Corner 右下角牌堆/Bottom 底部居中气泡两通道,同文本 30s 去重,
-  牌堆上限 8 条丢最老]、show 编排[bottom 各自倒计时;牌堆悬停全暂停,
-  否则只扣堆顶=最新一条,过期后次新顶上,被压住的保留;条目存活至
-  去重窗口结束供判重]、draw_bottom 底部气泡;stack.rs:牌堆几何与
+  牌堆上限 8 条丢最老;带跳转入队走 push_action:监听端口→连接页
+  监听视图按端口筛选/新设备→局域网页/配额告警→历史用量视图,frame
+  层 apply_toast_action 落地]、show 编排[bottom 各自倒计时;牌堆
+  悬停全暂停,否则只扣堆顶=最新一条,过期后次新顶上,被压住的保留;
+  条目存活至去重窗口结束供判重;返回被点卡的跳转动作,被点卡即时
+  消化]、draw_bottom 底部气泡;stack.rs:牌堆几何与
   交互[默认只完整显示最新一张,更早的向下错开 6px 露边,最新卡
   右上角 +N 角标;悬停判定区=视口∪收拢包围盒,150ms smoothstep
   展开;展开内容自上而下新到旧,超出安全高度滚轮滚动,离开复位;
-  单 Area 注册交互区,层级遮挡防地图滚轮穿透]);
+  单 Area 注册交互区,层级遮挡防地图滚轮穿透;可点卡逐卡
+  Sense::click 注册,hover 描边提亮 accent+手型光标]);
   map_panel/:地图左面板(mod.rs:MapPanelState/RankSort/ProcGroup/
   collect_groups 分组聚合与 list_panel[搜索/端点过滤条/WFP 状态提示];
   group_row.rs:进程组头行[名称+会话累计上/下行副行+连接数徽章+进程级

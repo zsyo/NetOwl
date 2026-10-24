@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use eframe::egui;
 use egui::{Align2, CornerRadius, FontId, Rect, Sense, Stroke};
 
-use super::Toast;
+use super::{Toast, ToastAction};
 use crate::ui::{icons, theme};
 
 /// 卡片固定宽高:单行内容,牌堆几何需预知尺寸
@@ -69,18 +69,25 @@ fn ease(t: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
+/// 本帧被点击的卡片(seq 供 mod.rs 定位消化)
+pub(super) struct CardClick {
+    pub(super) seq: u64,
+    pub(super) action: ToastAction,
+}
+
 pub(super) fn draw(
     ctx: &egui::Context,
     p: &theme::Palette,
     items: &[&Toast],
     st: &mut StackState,
     dt: Duration,
-) {
+) -> Option<CardClick> {
     let n = items.len();
     let step_e = CARD_H + GAP;
     let content_h = CARD_H + (n as f32 - 1.0) * step_e;
     let collapsed_h = CARD_H + (n as f32 - 1.0) * EDGE;
     let mut top_card: Option<Rect> = None;
+    let mut click: Option<CardClick> = None;
     egui::Area::new(egui::Id::unique("toast-stack"))
         .order(egui::Order::Foreground)
         .anchor(
@@ -123,14 +130,32 @@ pub(super) fn draw(
             let eased = ease(st.expand);
 
             let painter = ui.painter().with_clip_rect(view);
-            // 从最老到最新绘制:上层新卡覆盖下层旧卡,自然形成露边堆叠
+            // 从最老到最新绘制:上层新卡覆盖下层旧卡,自然形成露边堆叠;
+            // interact 同序注册,同层后注册者赢 hit-test,与视觉层叠一致
             for (j, t) in items.iter().enumerate() {
                 let top_c = bottom - CARD_H - j as f32 * EDGE;
                 let top_e = view.top() - st.scroll_off + (n as f32 - 1.0 - j as f32) * step_e;
                 let top = top_c + (top_e - top_c) * eased;
                 let card =
                     Rect::from_min_size(egui::pos2(rect.left(), top), egui::vec2(CARD_W, CARD_H));
-                draw_card(&painter, p, t, card);
+                // 可点卡注册点击区并给悬停反馈(描边提亮 + 手型光标)
+                let mut hovered = false;
+                if let Some(action) = t.action {
+                    let resp = ui.interact(
+                        card,
+                        egui::Id::unique(("toast-card", t.seq)),
+                        egui::Sense::click(),
+                    );
+                    hovered = resp.hovered();
+                    if hovered {
+                        ui.ctx()
+                            .output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
+                    }
+                    if resp.clicked() {
+                        click = Some(CardClick { seq: t.seq, action });
+                    }
+                }
+                draw_card(&painter, p, t, card, hovered);
                 top_card = Some(card);
             }
             // 收拢态堆数角标:最新卡右上角 +N(N-1 = 被压住的条数)
@@ -145,15 +170,18 @@ pub(super) fn draw(
     // 倒计时消化需要周期帧;悬停(平滑滚动)与展开动画需要连续帧
     let animating = st.hover || (st.expand > 0.0 && st.expand < 1.0);
     ctx.request_repaint_after(Duration::from_millis(if animating { 16 } else { 250 }));
+    click
 }
 
-/// 单张卡片:圆角背景 + 边框 + 语义图标 + 单行文本(超宽截断)
-fn draw_card(painter: &egui::Painter, p: &theme::Palette, t: &Toast, rect: Rect) {
+/// 单张卡片:圆角背景 + 边框 + 语义图标 + 单行文本(超宽截断);
+/// hovered = 可点卡悬停时描边提亮 accent
+fn draw_card(painter: &egui::Painter, p: &theme::Palette, t: &Toast, rect: Rect, hovered: bool) {
     painter.rect_filled(rect, CornerRadius::same(theme::RADIUS_MD), p.bg_elevated);
+    let stroke_color = if hovered { p.accent } else { p.stroke };
     painter.rect_stroke(
         rect,
         CornerRadius::same(theme::RADIUS_MD),
-        Stroke::new(1.0, p.stroke),
+        Stroke::new(1.0, stroke_color),
         egui::StrokeKind::Inside,
     );
     let (glyph, accent) = match t.kind {

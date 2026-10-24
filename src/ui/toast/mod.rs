@@ -35,6 +35,17 @@ pub enum ToastKind {
     Success,
 }
 
+/// 卡片点击跳转动作:点击后该卡消化,frame 层执行页面跳转
+#[derive(Clone, Copy)]
+pub enum ToastAction {
+    /// 跳连接页监听视图,端口填入搜索框筛选
+    ListenPort(u16),
+    /// 跳局域网设备页(该页无筛选,仅跳转)
+    Lan,
+    /// 跳历史页用量视图(配额告警)
+    Usage,
+}
+
 /// 展示位置:右下角牌堆 vs 页面底部居中气泡
 #[derive(Clone, Copy, PartialEq)]
 enum ToastPos {
@@ -54,6 +65,8 @@ pub struct Toast {
     /// 过期而整体前移,id 漂移让 egui 把同一条 toast 当新区块(悬停等
     /// 按 id 的状态瞬断)
     seq: u64,
+    /// 点击跳转动作(None = 纯展示不可点)
+    action: Option<ToastAction>,
 }
 
 /// 队尾序号 + 1:Toast 生命周期短(去重窗口 30s),队列很小
@@ -61,19 +74,30 @@ fn next_seq(toasts: &[Toast]) -> u64 {
     toasts.iter().map(|t| t.seq).max().unwrap_or(0) + 1
 }
 
-/// 入队(右下角牌堆);同文本同位置在去重窗口内只保留一条。
+/// 入队(右下角牌堆,纯展示不可点);同文本同位置在去重窗口内只保留一条。
 /// 两个位置互不挤占,同文案可各存一条
 pub fn push(toasts: &mut Vec<Toast>, kind: ToastKind, text: String) {
-    push_at(toasts, kind, text, ToastPos::Corner)
+    push_at(toasts, kind, text, ToastPos::Corner, None)
+}
+
+/// 入队(右下角牌堆,带点击跳转动作)
+pub fn push_action(toasts: &mut Vec<Toast>, kind: ToastKind, text: String, action: ToastAction) {
+    push_at(toasts, kind, text, ToastPos::Corner, Some(action))
 }
 
 /// 入队(页面底部居中气泡):用户操作成功/失败的反馈通道,与右下角
 /// 通知语义分离(互不挤占位置),去重口径同 push
 pub fn push_bottom(toasts: &mut Vec<Toast>, kind: ToastKind, text: String) {
-    push_at(toasts, kind, text, ToastPos::Bottom)
+    push_at(toasts, kind, text, ToastPos::Bottom, None)
 }
 
-fn push_at(toasts: &mut Vec<Toast>, kind: ToastKind, text: String, pos: ToastPos) {
+fn push_at(
+    toasts: &mut Vec<Toast>,
+    kind: ToastKind,
+    text: String,
+    pos: ToastPos,
+    action: Option<ToastAction>,
+) {
     if toasts
         .iter()
         .any(|t| t.pos == pos && t.text == text && t.at.elapsed() < DEDUP_WINDOW)
@@ -88,6 +112,7 @@ fn push_at(toasts: &mut Vec<Toast>, kind: ToastKind, text: String, pos: ToastPos
         ttl_left: TOAST_TTL,
         pos,
         seq: next_seq(toasts),
+        action,
     });
     // 牌堆上限:仅统计 Corner 条目(bottom 不占额),超限移除最老
     let corner_n = toasts.iter().filter(|t| t.pos == ToastPos::Corner).count();
@@ -101,8 +126,13 @@ fn push_at(toasts: &mut Vec<Toast>, kind: ToastKind, text: String, pos: ToastPos
 /// 驱动 toast 生命周期并绘制(每帧调用,空队列零开销)。
 /// TTL 消化:底部气泡各自倒计时;牌堆悬停时全部暂停,否则只扣堆顶
 /// (最新一条),过期后次新顶上继续计时,被压住的一直保留。
-/// 条目在展示寿命耗尽后仍保留至去重窗口结束(供 push 判重)
-pub fn show(ctx: &egui::Context, toasts: &mut Vec<Toast>, stack: &mut StackState) {
+/// 条目在展示寿命耗尽后仍保留至去重窗口结束(供 push 判重)。
+/// 返回值 = 本帧被点击卡片的跳转动作(被点卡即时消化)
+pub fn show(
+    ctx: &egui::Context,
+    toasts: &mut Vec<Toast>,
+    stack: &mut StackState,
+) -> Option<ToastAction> {
     let dt = stack.tick();
     for t in toasts.iter_mut() {
         if matches!(t.pos, ToastPos::Bottom) {
@@ -128,10 +158,19 @@ pub fn show(ctx: &egui::Context, toasts: &mut Vec<Toast>, stack: &mut StackState
         .iter()
         .filter(|t| matches!(t.pos, ToastPos::Corner) && t.ttl_left > Duration::ZERO)
         .collect();
-    if corner.is_empty() {
+    let clicked = if corner.is_empty() {
         stack.reset();
+        None
     } else {
-        stack::draw(ctx, p, &corner, stack, dt);
+        stack::draw(ctx, p, &corner, stack, dt)
+    };
+    // 被点卡片即时消化(已处理;判重状态仍保留至去重窗口结束)
+    if let Some(c) = &clicked {
+        for t in toasts.iter_mut() {
+            if t.seq == c.seq {
+                t.ttl_left = Duration::ZERO;
+            }
+        }
     }
     for (i, t) in toasts
         .iter()
@@ -140,6 +179,7 @@ pub fn show(ctx: &egui::Context, toasts: &mut Vec<Toast>, stack: &mut StackState
     {
         draw_bottom(ctx, p, t, i);
     }
+    clicked.map(|c| c.action)
 }
 
 /// 底部居中气泡(逐条独立 Area,向上堆叠)

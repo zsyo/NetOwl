@@ -105,7 +105,12 @@ impl NetOwlApp {
                         ),
                     ],
                 );
-                crate::ui::toast::push(&mut self.toasts, crate::ui::toast::ToastKind::Info, text);
+                crate::ui::toast::push_action(
+                    &mut self.toasts,
+                    crate::ui::toast::ToastKind::Info,
+                    text,
+                    crate::ui::toast::ToastAction::ListenPort(l.local_port),
+                );
             }
         }
     }

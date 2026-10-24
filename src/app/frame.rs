@@ -444,7 +444,12 @@ impl eframe::App for NetOwlApp {
                 let text = self
                     .i18n
                     .t_with_args("lan-notify-toast", &[("ip", ip.to_string()), ("mac", mac)]);
-                crate::ui::toast::push(&mut self.toasts, crate::ui::toast::ToastKind::Info, text);
+                crate::ui::toast::push_action(
+                    &mut self.toasts,
+                    crate::ui::toast::ToastKind::Info,
+                    text,
+                    crate::ui::toast::ToastAction::Lan,
+                );
             }
         }
         self.poll_traffic(ctx);
@@ -600,7 +605,11 @@ impl eframe::App for NetOwlApp {
         // 右下角 toast 通知(新设备接入/用量配额告警)
         // 菜单动作先行执行:复制等反馈走底部气泡,与 toast 同帧展示
         self.run_menu_actions(ui.ctx());
-        crate::ui::toast::show(ui.ctx(), &mut self.toasts, &mut self.toast_stack);
+        if let Some(action) =
+            crate::ui::toast::show(ui.ctx(), &mut self.toasts, &mut self.toast_stack)
+        {
+            self.apply_toast_action(action);
+        }
 
         if config_changed {
             self.mark_config_dirty();
@@ -610,5 +619,32 @@ impl eframe::App for NetOwlApp {
         let ui_us = ui_t0.elapsed().as_micros() as u64;
         self.frame_stats_ui_us += ui_us;
         self.frame_stats_ui_max_us = self.frame_stats_ui_max_us.max(ui_us);
+    }
+}
+
+impl NetOwlApp {
+    /// toast 卡片点击跳转:监听端口 -> 连接页监听视图按端口筛选(重置
+    /// 协议筛选防旧条件挡住目标行);新设备 -> 局域网设备页;
+    /// 配额告警 -> 历史页用量视图
+    fn apply_toast_action(&mut self, action: ui::toast::ToastAction) {
+        match action {
+            ui::toast::ToastAction::ListenPort(port) => {
+                self.nav_request = Some(ui::Page::Connections);
+                self.conn_view = ui::ConnView::Listens;
+                self.conn_search = port.to_string();
+                self.conn_proto = None;
+                tracing::debug!("[Toast] 点击跳转监听视图,端口筛选 {port}");
+            }
+            ui::toast::ToastAction::Lan => {
+                self.nav_request = Some(ui::Page::Lan);
+                tracing::debug!("[Toast] 点击跳转局域网设备页");
+            }
+            ui::toast::ToastAction::Usage => {
+                self.nav_request = Some(ui::Page::History);
+                self.history.view = crate::storage::history_query::ViewMode::Usage;
+                self.history.refresh_now();
+                tracing::debug!("[Toast] 点击跳转历史用量视图");
+            }
+        }
     }
 }

@@ -151,14 +151,24 @@ impl NetOwlApp {
                 "quota-warn-toast",
                 &[("used", crate::model::fmt_bytes(total))],
             );
-            crate::ui::toast::push(&mut self.toasts, crate::ui::toast::ToastKind::Warn, text);
+            crate::ui::toast::push_action(
+                &mut self.toasts,
+                crate::ui::toast::ToastKind::Warn,
+                text,
+                crate::ui::toast::ToastAction::Usage,
+            );
         }
         if want.1 && !self.quota_flags.1 {
             let text = self.i18n.t_with_args(
                 "quota-exceed-toast",
                 &[("used", crate::model::fmt_bytes(total))],
             );
-            crate::ui::toast::push(&mut self.toasts, crate::ui::toast::ToastKind::Warn, text);
+            crate::ui::toast::push_action(
+                &mut self.toasts,
+                crate::ui::toast::ToastKind::Warn,
+                text,
+                crate::ui::toast::ToastAction::Usage,
+            );
         }
         self.quota_flags = want;
     }
