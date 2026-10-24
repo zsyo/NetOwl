@@ -111,6 +111,7 @@ impl RuleSet {
                 Protocol::Udp => PROTO_UDP,
             });
             let port = (r.port != 0).then_some(r.port);
+            let local_port = (r.local_port != 0).then_some(r.local_port);
             // 层按远端条件的地址族分派:网段/单 IP 条件落到对应族;
             // 不限远端(进程/端口/协议规则)在 v4/v6 四层同时生效,
             // 否则另一族流量不受该规则约束
@@ -150,6 +151,7 @@ impl RuleSet {
                             remote: *remote,
                             proto,
                             port,
+                            local_port,
                         });
                     }
                 }

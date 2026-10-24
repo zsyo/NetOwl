@@ -372,6 +372,7 @@ impl NetOwlApp {
                     remote: None,
                     proto: None,
                     port: None,
+                    local_port: None,
                 });
                 specs.push(wfp::Spec {
                     layer,
@@ -381,6 +382,7 @@ impl NetOwlApp {
                     remote: None,
                     proto: None,
                     port: None,
+                    local_port: None,
                 });
             }
         }

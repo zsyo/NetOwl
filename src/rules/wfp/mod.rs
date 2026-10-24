@@ -84,6 +84,10 @@ pub struct Spec {
     pub remote: Option<RemoteNet>,
     pub proto: Option<u8>,
     pub port: Option<u16>,
+    /// 本机侧端口条件(Out 层 = 源端口,In 层 = 目的端口,与求值侧
+    /// Connection::local_port 同口径);None = 不限。"仅本次"临时规则
+    /// 精确锁定本地端口,同进程同远端其它本地端口的并行连接不受影响
+    pub local_port: Option<u16>,
 }
 
 /// 拦截引擎状态(设置/规则页展示)

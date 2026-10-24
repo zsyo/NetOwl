@@ -96,6 +96,8 @@ impl AskItem {
             remote: Some(remote),
             proto: Some(proto_num(self.proto)),
             port: Some(self.remote_port),
+            // 不锁本地端口:同身份(进程+目标)其它连接在决策前同样阻断
+            local_port: None,
         }
     }
 
