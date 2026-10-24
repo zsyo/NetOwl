@@ -345,7 +345,10 @@ impl NetOwlApp {
         } else {
             Vec::new()
         };
-        if let Some(item) = self.asker.active.as_ref() {
+        // 询问等待期间临时阻断:active 与 queue 全部条目都生成 pending
+        // spec——队列上限 10 项,只覆盖 active 时排队项身份的连接最长
+        // 数百秒自由收发。同为 weight 15,不受用户规则 14 条钳制
+        for item in self.asker.active.iter().chain(self.asker.queue.iter()) {
             specs.insert(0, item.pending_block_spec());
         }
         // 静默拒绝:兜底全通配阻断(weight 0,低于全部用户规则)+ 自身
