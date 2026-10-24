@@ -32,15 +32,8 @@ impl Config {
                     return cfg;
                 }
                 Err(e) => {
-                    tracing::warn!(
-                        "[Config] 配置文件解析失败: {e},将备份为 {}.bak 并使用默认配置",
-                        paths::CONFIG_FILE
-                    );
-                    if let Err(e) =
-                        std::fs::rename(paths::CONFIG_FILE, format!("{}.bak", paths::CONFIG_FILE))
-                    {
-                        tracing::debug!("[Config] 备份损坏配置失败: {e}");
-                    }
+                    tracing::warn!("[Config] 配置文件解析失败: {e},将归档损坏文件并使用默认配置");
+                    archive_corrupt_config();
                 }
             }
         }
@@ -89,5 +82,24 @@ impl Config {
         } else {
             tracing::debug!("[Config] 配置已写盘({content_len} 字节)");
         }
+    }
+}
+
+/// 损坏配置归档:.bak 是写盘前备份的最后成功版本,不得覆盖——已存在时
+/// 损坏文件改归档为带时间戳名(Unix 秒,保证同名连续损坏不互撞);
+/// .bak 缺失(从未成功写盘)才用 .bak 名
+fn archive_corrupt_config() {
+    let bak = format!("{}.bak", paths::CONFIG_FILE);
+    let target = if std::fs::metadata(&bak).is_ok() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        format!("{}.corrupt-{now}", paths::CONFIG_FILE)
+    } else {
+        bak
+    };
+    if let Err(e) = std::fs::rename(paths::CONFIG_FILE, &target) {
+        tracing::debug!("[Config] 归档损坏配置失败: {e}");
     }
 }

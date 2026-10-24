@@ -109,6 +109,11 @@ impl NetOwlApp {
     /// 不经过 app 命令路径,以 IsWindowVisible 为准纠正(隐藏/显示命令自身的
     /// 发送路径窗口状态一致,校准为无操作)
     pub(super) fn calibrate_window_visible(&mut self) {
+        // 主窗口尚未创建(句柄 0)时 IsWindowVisible 恒 false,会把
+        // 跟踪态误校准成隐藏;此时跳过,首帧后句柄就绪再校准
+        if self.main_hwnd == 0 {
+            return;
+        }
         let visible = single_instance::is_window_visible(self.main_hwnd);
         if visible != self.window_visible {
             tracing::debug!("[Window] 可见性外部变更校准 -> {visible}(单实例唤出或系统操作)");

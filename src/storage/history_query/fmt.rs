@@ -13,14 +13,18 @@ use windows::Win32::System::Time::{
 /// FILETIME(1601 起 100ns)与 unix 秒的基准差(秒)
 const EPOCH_DELTA: u64 = 11_644_473_600;
 
-/// 本地时区相对 UTC 的偏移秒数:用量分桶按本地日界/小时界切割,
-/// 同一时刻分别取 GetLocalTime/GetSystemTime 转 FILETIME 差值即偏移;
-/// 换算失败回退 0(按 UTC 分桶,仅桶标签偏移时区)。
+/// 本地时区相对 UTC 的偏移秒数:用量分桶按本地日界/小时界切割。
+/// 一次取 UTC 经 SystemTimeToTzSpecificLocalTime(None = 当前时区)换算
+/// 出本地,与 GetLocalTime 两次独立采样会跨秒边界产生 ±1s 偏差值
+/// (如 28801);换算失败回退 0(按 UTC 分桶,仅桶标签偏移时区)。
 /// 偏移可为负(UTC 以西):local < utc 是正常取值,不是换算失败
 pub fn local_tz_offset_secs() -> i64 {
     unsafe {
         let utc = GetSystemTime();
-        let local = GetLocalTime();
+        let mut local = SYSTEMTIME::default();
+        if SystemTimeToTzSpecificLocalTime(None, &utc, &mut local).is_err() {
+            return 0;
+        }
         let (a, b) = (filetime_of(&utc), filetime_of(&local));
         if a == 0 || b == 0 {
             return 0;

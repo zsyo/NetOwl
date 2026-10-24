@@ -61,9 +61,10 @@ pub(super) fn table(
 }
 
 /// 用量桶标签:按天取 "MM-DD",按小时取 "MM-DD HH"(fmt_local 输出
-/// "MM-DD HH:MM:SS",ASCII 字段按字节切片安全)
+/// "MM-DD HH:MM:SS",ASCII 字段按字节切片安全;小时桶起点分钟恒为
+/// 零,截到 11 字符会展示恒零的 ":00")
 pub(super) fn usage_label(bucket_start: u64, bucket_secs: u64) -> String {
     let text = history_query::fmt_local(bucket_start);
-    let len = if bucket_secs == 86400 { 5 } else { 11 };
+    let len = if bucket_secs == 86400 { 5 } else { 8 };
     text.chars().take(len).collect()
 }

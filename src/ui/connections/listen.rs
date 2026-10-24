@@ -32,6 +32,9 @@ pub(super) fn listen_table(ui: &mut egui::Ui, ctx: &mut UiCtx) {
             conn_proto.is_none_or(|p| l.proto == p)
                 && (needle.is_empty()
                     || l.process.to_lowercase().contains(&needle)
+                    || l.proc_path
+                        .as_deref()
+                        .is_some_and(|p| p.to_lowercase().contains(&needle))
                     || l.local_port.to_string().contains(&needle))
         })
         .collect();
