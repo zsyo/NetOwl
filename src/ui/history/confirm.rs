@@ -3,7 +3,6 @@
 
 use eframe::egui;
 use egui::RichText;
-use rusqlite::Connection as Db;
 
 use crate::i18n::I18n;
 use crate::storage::history_query;
@@ -14,7 +13,6 @@ pub(super) fn confirm_delete_modal(
     ui: &mut egui::Ui,
     state: &mut history_query::PageState,
     i18n: &I18n,
-    db: &Db,
 ) {
     let Some(pending) = state.pending_delete.clone() else {
         return;
@@ -69,19 +67,24 @@ pub(super) fn confirm_delete_modal(
         });
     });
     if confirmed {
-        let result = match (pending.proto, pending.remote_ip) {
-            (Some(p), Some(ip)) => {
-                history_query::delete_aggregate_group(db, &pending.process, p, ip)
-            }
-            _ => history_query::delete_process(db, &pending.process),
-        };
-        match result {
-            Ok(n) => {
-                state.refresh_now();
-                tracing::info!("[History] 已删除 {n} 条历史记录");
-            }
-            Err(e) => tracing::warn!("[History] 删除历史记录失败: {e}"),
-        }
+        // 删除在工作线程执行(独立连接):大库全表 DELETE 秒级,同步
+        // 执行会冻结 UI;确认即关弹窗,列表转加载态,结果由 app 层收割
+        let (tx, rx) = std::sync::mpsc::channel();
+        let job = pending.clone();
+        std::thread::spawn(move || {
+            let db = crate::storage::db::open();
+            let result = match (job.proto, job.remote_ip) {
+                (Some(p), Some(ip)) => {
+                    history_query::delete_aggregate_group(&db, &job.process, p, ip)
+                }
+                _ => history_query::delete_process(&db, &job.process),
+            };
+            // 发送失败 = 接收端已关闭(进程退出),静默退出
+            let _ = tx.send(result);
+        });
+        state.delete_rx = Some(rx);
+        state.rows = history_query::Rows::empty(state.view);
+        state.loading = true;
         state.pending_delete = None;
     } else if cancelled || modal.should_close() {
         state.pending_delete = None;

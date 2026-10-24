@@ -122,6 +122,27 @@ impl NetOwlApp {
     /// 切视图/改筛选当帧只切换 UI(表格区显示加载动画),数据由工作
     /// 线程查回后落地重绘。查询在独立连接上执行(WAL 读者不互斥)。
     pub(super) fn poll_history_query(&mut self, ctx: &egui::Context) {
+        // 批量删除在途收割:删除完成(或失败)后置 dirty 重查;在途期间
+        // 不派发新查询,防读到删了一半的库
+        if let Some(rx) = self.history.delete_rx.as_ref() {
+            match rx.try_recv() {
+                Ok(result) => {
+                    self.history.delete_rx = None;
+                    match result {
+                        Ok(n) => tracing::info!("[History] 已删除 {n} 条历史记录"),
+                        Err(e) => tracing::warn!("[History] 删除历史记录失败: {e}"),
+                    }
+                    self.history.refresh_now();
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => return,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    // 删除线程异常退出:复位防加载态永久卡住,重查还原列表
+                    self.history.delete_rx = None;
+                    tracing::warn!("[History] 删除线程异常退出");
+                    self.history.refresh_now();
+                }
+            }
+        }
         // 冻结中(右键菜单打开):不派发不收割,rows 定格在打开瞬间;
         // rows 为空时仍放行建立基线(空表冻结无意义)
         let frozen = matches!(

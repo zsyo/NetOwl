@@ -17,7 +17,6 @@ use std::collections::HashMap;
 
 use eframe::egui;
 use egui::{CornerRadius, Frame, Margin, RichText, Stroke};
-use rusqlite::Connection as Db;
 
 use crate::i18n::I18n;
 use crate::model::{Connection, fmt_bytes};
@@ -35,7 +34,6 @@ pub fn show(
     icon_tex: &HashMap<String, Option<egui::TextureHandle>>,
     default_icon_tex: Option<&egui::TextureHandle>,
     conns: &[Connection],
-    db: &Db,
     writer: &history::Writer,
     config: &mut Config,
     elevated: bool,
@@ -81,7 +79,7 @@ pub fn show(
         row_lock,
         frozen,
     );
-    confirm::confirm_delete_modal(ui, state, i18n, db);
+    confirm::confirm_delete_modal(ui, state, i18n);
     config_changed
 }
 

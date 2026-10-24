@@ -217,6 +217,9 @@ pub struct PageState {
     pub db_size: u64,
     /// 右键发起的待确认批量删除(确认弹窗,同帧或次帧内决出)
     pub pending_delete: Option<super::query::PendingDelete>,
+    /// 在途批量删除(工作线程独立连接执行,大库全表 DELETE 秒级不可进
+    /// UI 线程):确认弹窗关闭后表格区立即转加载态,结果由 app 层收割
+    pub delete_rx: Option<std::sync::mpsc::Receiver<rusqlite::Result<usize>>>,
     /// 已发起清理,延迟数帧后刷新(等写线程完成)
     purge_pending: Option<Instant>,
     /// 筛选输入防抖:输入每键一次全量 SQL 查询在大库上卡顿,记下
@@ -244,6 +247,7 @@ impl PageState {
             loading: false,
             db_size: 0,
             pending_delete: None,
+            delete_rx: None,
             purge_pending: None,
             filter_debounce: None,
             summary_merged: None,

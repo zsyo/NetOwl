@@ -242,7 +242,6 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
             ctx.icon_tex,
             ctx.default_icon_tex,
             ctx.conns,
-            ctx.history_db,
             ctx.writer,
             ctx.config,
             ctx.elevated,
