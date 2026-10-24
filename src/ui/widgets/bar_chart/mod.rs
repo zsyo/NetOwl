@@ -3,6 +3,7 @@
 //! 左侧 Y 轴刻度固定,内容置于横向 ScrollArea 实现三段式桶宽:数据少时
 //! 桶宽封顶并整体居中,中等时铺满视口,数据多时恒定最小桶宽横向滚动
 //! (粘性跟随最新:停在右端时数据增长自动跟随,向左回看不打扰)。
+//! 滚动来源:滚动条/滚轮/鼠标按住拖拽平移(egui 默认仅触摸屏,须显式开启)。
 //! 纵轴取 nice number 刻度画网格;悬停桶整槽高亮,数据卡见 tooltip。
 
 mod tooltip;
@@ -80,7 +81,15 @@ pub fn bar_chart(ui: &mut egui::Ui, bars: &[UsageBar], size: Vec2) {
         let mut area = egui::ScrollArea::horizontal()
             .id_salt("usage-bar-scroll")
             .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
-            .auto_shrink(Vec2b::new(false, true));
+            .auto_shrink(Vec2b::new(false, true))
+            // 鼠标按住拖拽平移(默认 DragScroll::OnTouch 仅触摸屏生效),
+            // 抓手光标提示可拖;内容不超宽时 egui 不启用,无误提示
+            .scroll_source(egui::scroll_area::ScrollSource {
+                drag: egui::scroll_area::DragScroll::Always,
+                ..Default::default()
+            })
+            .on_hover_cursor(egui::CursorIcon::Grab)
+            .on_drag_cursor(egui::CursorIcon::Grabbing);
         if stick && max_offset > 0.0 {
             area = area.scroll_offset(Vec2::new(max_offset, 0.0));
         }
@@ -160,13 +169,18 @@ fn draw_content(
     let gap = slot * BAR_GAP;
     let center_of = |i: usize| plot.left() + slot * (i as f32 + 0.5);
 
-    // 悬停定位桶(命中区下探到底部标签带:紧贴底缘的桶易悬停)
-    let hover_idx = ui.input(|i| i.pointer.hover_pos()).and_then(|pos| {
-        if pos.x < plot.left() || pos.x > plot.right() || pos.y < content_rect.top() {
-            return None;
-        }
-        Some((((pos.x - plot.left()) / slot) as usize).min(n - 1))
-    });
+    // 悬停定位桶(命中区下探到底部标签带:紧贴底缘的桶易悬停);
+    // 按住拖动是平移手势,期间不响应高亮与数据卡
+    let hover_idx = if ui.input(|i| i.pointer.primary_down()) {
+        None
+    } else {
+        ui.input(|i| i.pointer.hover_pos()).and_then(|pos| {
+            if pos.x < plot.left() || pos.x > plot.right() || pos.y < content_rect.top() {
+                return None;
+            }
+            Some((((pos.x - plot.left()) / slot) as usize).min(n - 1))
+        })
+    };
 
     if let Some(i) = hover_idx {
         let slot_rect = Rect::from_min_max(
