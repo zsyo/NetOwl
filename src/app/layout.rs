@@ -150,6 +150,7 @@ impl NetOwlApp {
             history_frozen,
             fonts: &self.font_catalog,
             font_filter: &mut self.font_filter,
+            listen_ignore_win: &mut self.listen_ignore_win,
         };
         let mut config_changed = false;
 

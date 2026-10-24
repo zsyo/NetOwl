@@ -87,9 +87,15 @@ impl NetOwlApp {
         // 规则命中计数(1s 快照口径,非渲染帧):供规则页调优参考
         self.rules.note_hits(&self.conns, &self.rdns);
         // 新监听端口提醒(基线后新出现的监听端口):与 listens 刷新同轮,
-        // toast 通知,设置页可关
+        // toast 通知,设置页可关;忽略列表中开关开启的程序跳过提醒
+        // (列表行保留,关闭开关即恢复提醒)
         if self.config.general.listen_notify {
-            for l in self.listen_watch.observe(&self.listens) {
+            'outer: for l in self.listen_watch.observe(&self.listens) {
+                for e in &self.config.general.listen_ignores {
+                    if e.ignore && e.name.eq_ignore_ascii_case(&l.process) {
+                        continue 'outer;
+                    }
+                }
                 let process = if l.process.is_empty() {
                     self.i18n.t("conn-proc-unknown")
                 } else {

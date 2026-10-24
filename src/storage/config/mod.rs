@@ -105,6 +105,10 @@ pub struct GeneralConfig {
     /// toast 通知;启动基线不计)
     #[serde(default = "default_true")]
     pub listen_notify: bool,
+    /// 监听提醒忽略程序列表(命中映像名的程序不弹提醒;行上开关关闭 =
+    /// 保留行但恢复提醒,可随时再开启)
+    #[serde(default)]
+    pub listen_ignores: Vec<ListenIgnore>,
     /// 月度流量配额(GB,本地时区月界;0 = 不启用告警)
     #[serde(default)]
     pub usage_quota_gb: u32,
@@ -141,6 +145,16 @@ pub struct GeneralConfig {
     pub quality_targets: Vec<QualityTarget>,
 }
 
+/// 一条监听提醒忽略程序(设置页管理)
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ListenIgnore {
+    /// 进程映像名(如 svchost.exe;匹配忽略大小写)
+    pub name: String,
+    /// 是否忽略提醒(false = 该行暂不生效,提醒恢复)
+    #[serde(default = "default_true")]
+    pub ignore: bool,
+}
+
 /// 一条自定义质量采样目标
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct QualityTarget {
@@ -172,6 +186,7 @@ impl Default for GeneralConfig {
             autostart: false,
             lan_notify: true,
             listen_notify: true,
+            listen_ignores: Vec::new(),
             usage_quota_gb: 0,
             log_level: default_log_level(),
             log_to_file: false,

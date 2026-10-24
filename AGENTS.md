@@ -273,7 +273,10 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   开机自启动/全局快捷键自定义捕获;
   monitor.rs:监控卡
   (数据源/保留期/询问/静默模式三态分段
-  [off/allow/deny]/新设备接入提醒/新监听端口提醒;
+  [off/allow/deny]/新设备接入提醒/新监听端口提醒[行内"忽略程序管理"
+  按钮 + listen_ignore.rs 管理弹窗:程序名列表 + 行内忽略开关 + 删除,
+  数据存 config.general.listen_ignores,开关关闭仅停用行可再开启;
+  poll 层提醒推送按映像名忽略大小写匹配过滤];
   logging.rs:日志文件开关/级别/浏览入口);
   widgets/:公共组件库(header 页头/badge 胶囊徽章/
   segmented 分段选择/toggle 滑动开关/table 统一表头与行底色[列贴列布局

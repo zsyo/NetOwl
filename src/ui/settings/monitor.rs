@@ -12,7 +12,13 @@ use crate::net::quality::SAMPLE_TTL;
 use crate::storage::config::{Config, QualityTarget};
 use crate::ui::{icons, theme, widgets};
 
-pub(super) fn section(ui: &mut egui::Ui, config: &mut Config, i18n: &I18n, changed: &mut bool) {
+pub(super) fn section(
+    ui: &mut egui::Ui,
+    config: &mut Config,
+    i18n: &I18n,
+    listen_win: &mut crate::ui::ListenIgnoreWin,
+    changed: &mut bool,
+) {
     section_card(
         ui,
         icons::ETHERNET,
@@ -69,14 +75,26 @@ pub(super) fn section(ui: &mut egui::Ui, config: &mut Config, i18n: &I18n, chang
                 &i18n.t("settings-listen-notify"),
                 &i18n.t("settings-listen-notify-hint"),
                 |ui| {
+                    // RTL 布局先加的在最右:开关贴右缘,管理按钮在其左侧
                     *changed |= widgets::toggle::toggle_switch(
                         ui,
                         &mut config.general.listen_notify,
                         egui::Id::unique("settings-listen-notify-toggle"),
                     )
                     .changed();
+                    if ui
+                        .button(
+                            RichText::new(i18n.t("settings-listen-ignore-btn"))
+                                .size(theme::font::BODY),
+                        )
+                        .clicked()
+                    {
+                        listen_win.open = true;
+                    }
                 },
             );
+            // 忽略程序管理弹窗(打开时渲染)
+            *changed |= super::listen_ignore::show_modal(ui, config, listen_win, i18n);
             ui.add_space(theme::sp::SM);
             setting_row(
                 ui,

@@ -398,6 +398,13 @@ toast-font-missing = Font {$name} is not in the system font list; kept the curre
 toast-font-failed = Failed to switch the interface font: {$error}
 settings-listen-notify = New listening port alert
 settings-listen-notify-hint = Show a toast when a program opens a new listening port
+settings-listen-ignore-btn = Manage ignored
+settings-listen-ignore-title = Ignored programs
+settings-listen-ignore-hint = New listening ports of programs with ignore on won't notify; turn off the toggle to restore alerts
+settings-listen-ignore-col-name = Program
+settings-listen-ignore-col-ignore = Ignore
+settings-listen-ignore-add = Add
+settings-listen-ignore-empty = No ignored programs
 settings-quality = Network quality probing
 settings-quality-hint = ICMP-probe public remotes of active connections; map nodes are colored by latency
 

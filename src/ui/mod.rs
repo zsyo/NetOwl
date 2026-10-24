@@ -206,6 +206,16 @@ pub struct UiCtx<'a> {
     pub fonts: &'a [crate::platform::fonts::FontEntry],
     /// 字体下拉搜索词(会话态;离开设置页由 App 层清空)
     pub font_filter: &'a mut String,
+    /// 监听提醒忽略程序管理弹窗状态(设置页)
+    pub listen_ignore_win: &'a mut ListenIgnoreWin,
+}
+
+/// 监听提醒忽略程序管理弹窗状态(App 持有,跨帧保留)
+#[derive(Default)]
+pub struct ListenIgnoreWin {
+    pub open: bool,
+    /// 添加行输入草稿
+    pub input: String,
 }
 
 use crate::rules as rules_engine;

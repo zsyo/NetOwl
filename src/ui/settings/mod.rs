@@ -3,6 +3,7 @@
 
 mod about;
 mod general;
+mod listen_ignore;
 mod logging;
 mod monitor;
 
@@ -28,6 +29,7 @@ pub(super) fn settings_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         quality,
         fonts,
         font_filter,
+        listen_ignore_win,
         ..
     } = ctx;
     // &mut UiCtx 解构出的引用字段带两层 &mut,借类型注解 coerce 回单层
@@ -40,6 +42,7 @@ pub(super) fn settings_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     let update_checking = *update_checking;
     let fonts: &[crate::platform::fonts::FontEntry] = fonts;
     let font_filter: &mut String = font_filter;
+    let listen_ignore_win: &mut crate::ui::ListenIgnoreWin = listen_ignore_win;
     widgets::header::page_header(ui, &i18n.t("settings-title"), "");
     ui.add_space(theme::sp::MD);
 
@@ -62,7 +65,7 @@ pub(super) fn settings_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
             ui.add_space(theme::sp::MD);
 
             // ---- 监控:数据源 / 质量采样 / 保留期 / 询问 / 静默 ----
-            monitor::section(ui, config, i18n, &mut changed);
+            monitor::section(ui, config, i18n, listen_ignore_win, &mut changed);
             ui.add_space(theme::sp::MD);
             monitor::targets_section(ui, config, i18n, quality, &mut changed);
             ui.add_space(theme::sp::MD);

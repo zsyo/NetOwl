@@ -370,6 +370,8 @@ pub struct NetOwlApp {
     applied_font: String,
     /// 字体下拉搜索词(会话态,离开设置页清空)
     font_filter: String,
+    /// 监听提醒忽略程序管理弹窗状态(设置页)
+    listen_ignore_win: ui::ListenIgnoreWin,
     /// 托盘句柄保活,drop 时移除托盘图标
     _tray: Tray,
 }

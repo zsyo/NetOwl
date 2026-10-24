@@ -260,6 +260,7 @@ impl NetOwlApp {
             font_catalog_at,
             applied_font,
             font_filter: String::new(),
+            listen_ignore_win: Default::default(),
             _tray,
         }
     }

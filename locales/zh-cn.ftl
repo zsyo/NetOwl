@@ -399,6 +399,13 @@ toast-font-missing = 字体 {$name} 不在系统字体列表中,已保持原字�
 toast-font-failed = 切换界面字体失败:{$error}
 settings-listen-notify = 新监听端口提醒
 settings-listen-notify-hint = 程序打开新的监听端口时右下角通知
+settings-listen-ignore-btn = 忽略程序管理
+settings-listen-ignore-title = 监听提醒忽略程序
+settings-listen-ignore-hint = 开启忽略的程序打开新监听端口时不再通知,关闭行内开关即恢复提醒
+settings-listen-ignore-col-name = 程序名
+settings-listen-ignore-col-ignore = 忽略
+settings-listen-ignore-add = 添加
+settings-listen-ignore-empty = 暂无忽略程序
 settings-quality = 网络质量采样
 settings-quality-hint = 对活跃连接的公网远端做 ICMP 探测,地图节点按延迟着色
 
