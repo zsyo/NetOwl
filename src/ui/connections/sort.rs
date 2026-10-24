@@ -63,7 +63,14 @@ pub(super) fn sort_conns(
         }
     };
     let mut keyed: Vec<(SortKey, &Connection)> = shown.iter().map(|c| (key_of(c), *c)).collect();
-    keyed.sort_unstable_by(|a, b| cmp(&a.0, &b.0));
+    keyed.sort_unstable_by(|a, b| {
+        cmp(&a.0, &b.0)
+            // 主键相等(典型:速率全 0 的空闲连接)必须有确定次级键,否则
+            // 每秒快照重建后 unstable 排序大片行重排,列表跳动;进程名
+            // 相同落到 id(id 唯一,比较器成全序)
+            .then_with(|| a.1.process.cmp(&b.1.process))
+            .then_with(|| a.1.id.cmp(&b.1.id))
+    });
     for (dst, (_, c)) in shown.iter_mut().zip(keyed) {
         *dst = c;
     }
