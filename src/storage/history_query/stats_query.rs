@@ -175,8 +175,9 @@ fn window_days(db: &Db, f: &Filter, tz: i64) -> Option<(i64, i64)> {
 }
 
 /// 检查 [lo, hi) 的已完结天是否全部物化(库中无数据的天也已标记;
-/// 窗口起点早于库中最早数据时以最早数据起算)
-fn days_covered(db: &Db, lo: i64, hi: i64, tz: i64) -> bool {
+/// 窗口起点早于库中最早数据时以最早数据起算)。query_db_bytes 快路径
+/// 门控共用(见 query.rs)
+pub(super) fn days_covered(db: &Db, lo: i64, hi: i64, tz: i64) -> bool {
     if lo >= hi {
         return true;
     }
@@ -359,7 +360,7 @@ fn merge_summary(
 
 #[cfg(test)]
 mod tests {
-    use super::super::query::{query_summary, query_usage};
+    use super::super::query::{query_db_bytes, query_summary, query_usage};
     use super::*;
     use rusqlite::Connection;
 
@@ -590,5 +591,51 @@ mod tests {
             let slow = query_usage(&db, &fa, bucket, tz).expect("慢路径");
             assert_eq!(usage_tuples(&fast), usage_tuples(&slow));
         }
+    }
+
+    /// query_db_bytes 统计表快路径与明细全扫对拍:月初当天 01:00 一条
+    /// (统计表段,今天恰为 1 号时自然落进今天段)与现在前 1 分钟一条
+    /// (今天段),月初到今天之间的空天补物化标记
+    #[test]
+    fn db_bytes_fast_path_matches_detail() {
+        let db = setup_db();
+        let tz = local_tz_offset_secs();
+        let now = unix_now();
+        let today_start = ((now as i64 + tz).div_euclid(86400) * 86400 - tz).max(0) as u64;
+        let month_start = super::super::fmt::month_start();
+        let seg0 = (month_start as i64 + tz).div_euclid(86400);
+        let today = (today_start as i64 + tz).div_euclid(86400);
+        insert_event(
+            &db,
+            1,
+            ((seg0 * 86400 - tz).max(0) as u64) + 3600,
+            "h.exe",
+            tz,
+        );
+        insert_event(&db, 2, now - 60, "t.exe", tz);
+        for d in seg0..today {
+            db.execute("INSERT OR IGNORE INTO stats_done (day) VALUES (?1)", [d])
+                .unwrap();
+        }
+        let fast = query_db_bytes(&db);
+        // 明细对拍(与回退 SQL 同构,独立手写):今日入站/出站 + 月窗收发总和
+        let slow: (i64, i64, i64) = db
+            .query_row(
+                "SELECT SUM(CASE WHEN last_seen >= ?1 THEN bytes_in ELSE 0 END),
+                        SUM(CASE WHEN last_seen >= ?1 THEN bytes_out ELSE 0 END),
+                        SUM(bytes_in) + SUM(bytes_out)
+                 FROM conn_events WHERE last_seen >= ?2",
+                rusqlite::params![today_start as i64, month_start as i64],
+                |r| {
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        r.get::<_, i64>(1)?,
+                        r.get::<_, i64>(2)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(fast.today, (slow.0.max(0) as u64, slow.1.max(0) as u64));
+        assert_eq!(fast.month, slow.2.max(0) as u64);
     }
 }

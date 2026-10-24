@@ -268,22 +268,61 @@ pub struct DbBytes {
     pub month: u64,
 }
 
-/// 今日与当月(本地时区)累计收发字节,单次扫描月初窗口取回:今日是
-/// 当月子集,CASE WHEN 同行取值,免两次全窗扫描。悬浮球"今日总量"与
-/// 用量配额告警的数据源(口径 = 全部落库流量,不套历史页筛选;活跃
-/// 连接的实时字节由调用方叠加)。
-/// 大库上月初窗口聚合秒级,须在工作线程执行
+/// 今日与当月(本地时区)累计收发字节,悬浮球"今日总量"与用量配额
+/// 告警的数据源(口径 = 全部落库流量,不套历史页筛选;活跃连接的实时
+/// 字节由调用方叠加)。大库上月初窗口聚合秒级,须在工作线程执行。
+/// 月初窗口的已完结天全部物化时走统计表快路径:[月初, 今天零点) 段
+/// usage_stats 单次 SUM(毫秒级),今天段永不物化保持明细实时算(单天
+/// 走 last_seen 索引);缺块(写线程未回填)回退明细单 SQL 全扫
 pub fn query_db_bytes(db: &Db) -> DbBytes {
+    let tz = super::fmt::local_tz_offset_secs();
+    let today_start = super::fmt::day_start() as i64;
+    let month_start = super::fmt::month_start() as i64;
+    let today = (today_start + tz).div_euclid(86400);
+    let seg_day = (month_start + tz).div_euclid(86400);
+    if super::stats_query::days_covered(db, seg_day, today, tz) {
+        if let Some(b) = query_db_bytes_stats(db, seg_day, today, today_start) {
+            return b;
+        }
+        return DbBytes {
+            today: (0, 0),
+            month: 0,
+        };
+    }
+    query_db_bytes_detail(db, today_start, month_start)
+}
+
+/// 统计表快路径:None = 任一段查询失败(调用方按全零处理,与明细
+/// 路径失败语义一致,不返回部分和)
+fn query_db_bytes_stats(db: &Db, seg_day: i64, today: i64, today_start: i64) -> Option<DbBytes> {
+    let (hist_in, hist_out) = sum_bytes(
+        db,
+        "SELECT COALESCE(SUM(bytes_in), 0), COALESCE(SUM(bytes_out), 0)
+         FROM usage_stats WHERE hour >= ?1 * 24 AND hour < ?2 * 24",
+        params![seg_day, today],
+    )?;
+    let (day_in, day_out) = sum_bytes(
+        db,
+        "SELECT COALESCE(SUM(bytes_in), 0), COALESCE(SUM(bytes_out), 0)
+         FROM conn_events WHERE last_seen >= ?1",
+        params![today_start],
+    )?;
+    Some(DbBytes {
+        today: (day_in, day_out),
+        month: hist_in + hist_out + day_in + day_out,
+    })
+}
+
+/// 明细回退:月初窗口单次扫描,今日是当月子集,CASE WHEN 同行取值,
+/// 免两次全窗扫描
+fn query_db_bytes_detail(db: &Db, today_start: i64, month_start: i64) -> DbBytes {
     match db.query_row(
         "SELECT COALESCE(SUM(CASE WHEN last_seen >= ?1 THEN bytes_in ELSE 0 END), 0),
                 COALESCE(SUM(CASE WHEN last_seen >= ?1 THEN bytes_out ELSE 0 END), 0),
                 COALESCE(SUM(bytes_in), 0),
                 COALESCE(SUM(bytes_out), 0)
          FROM conn_events WHERE last_seen >= ?2",
-        params![
-            super::fmt::day_start() as i64,
-            super::fmt::month_start() as i64
-        ],
+        params![today_start, month_start],
         |r| {
             Ok(DbBytes {
                 today: (
@@ -301,6 +340,22 @@ pub fn query_db_bytes(db: &Db) -> DbBytes {
                 today: (0, 0),
                 month: 0,
             }
+        }
+    }
+}
+
+/// 双列 SUM 取回(失败带日志返回 None)
+fn sum_bytes(db: &Db, sql: &str, args: impl rusqlite::Params) -> Option<(u64, u64)> {
+    match db.query_row(sql, args, |r| {
+        Ok((
+            r.get::<_, i64>(0)?.max(0) as u64,
+            r.get::<_, i64>(1)?.max(0) as u64,
+        ))
+    }) {
+        Ok(v) => Some(v),
+        Err(e) => {
+            tracing::warn!("[History] 用量字节统计表快路径查询失败: {e}");
+            None
         }
     }
 }
