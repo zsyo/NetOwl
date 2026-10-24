@@ -95,14 +95,13 @@ pub(super) fn draw(
             egui::vec2(-ANCHOR_MARGIN, -ANCHOR_MARGIN),
         )
         .show(ctx, |ui| {
-            // 注册整堆交互区:hit-test 层级遮挡让地图等底层画布的
-            // hovered 失效,堆上滚轮/拖拽不穿透(绘制对齐判定区)。
-            // 尺寸 = 视口 ∪ 收拢包围盒,展开后指针划过卡片间隙不收拢
-            let judge_h = collapsed_h.max(content_h);
-            let (rect, _) = ui.allocate_exact_size(egui::vec2(CARD_W, judge_h), Sense::hover());
-            // 几何全部以本 rect 为基准(Area 锚定 = 窗口右下角内缩,局部坐标系)
-            let right = rect.right();
-            let bottom = rect.bottom();
+            // 零尺寸探针定位锚点(Area 的 RIGHT_BOTTOM 锚把探针右下角
+            // 钉在窗口右下内缩处);交互区改经 ui.interact 注册,
+            // 不参与 Area 尺寸测量
+            let (probe, _) = ui.allocate_exact_size(egui::Vec2::ZERO, Sense::hover());
+            // 几何全部以锚点为基准(局部坐标系)
+            let right = probe.right();
+            let bottom = probe.bottom();
             // 视口顶部安全边(避让标题栏);高取展开内容高与可用高的较小值
             let avail_h = (bottom - SAFE_TOP + ANCHOR_MARGIN).max(CARD_H);
             let view_h = content_h.min(avail_h);
@@ -112,9 +111,23 @@ pub(super) fn draw(
                 egui::pos2(right, bottom),
             );
 
+            // 判定/交互区跟随上一帧动画态的实际包围盒:收拢时只有
+            // 收拢高,指针碰到牌堆上方空白(展开后才占的区域)不触发
+            // 展开、不挡周围页面操作;展开后跟随展开高度,指针划过
+            // 卡片间隙不收拢(用推进前的 expand 避免判定与动画循环依赖)
+            let eased_before = ease(st.expand);
+            let judge_h = collapsed_h + (view_h - collapsed_h) * eased_before;
+            let judge = Rect::from_min_max(
+                egui::pos2(right - CARD_W, bottom - judge_h),
+                egui::pos2(right, bottom),
+            );
+            // 注册交互区:hit-test 层级遮挡让地图等底层画布的 hovered
+            // 失效,堆上滚轮/拖拽不穿透
+            ui.interact(judge, egui::Id::unique("toast-stack-hit"), Sense::hover());
+
             st.hover = ui
                 .input(|i| i.pointer.hover_pos())
-                .is_some_and(|pos| rect.contains(pos));
+                .is_some_and(|pos| judge.contains(pos));
             // 离开牌堆即复位滚动:下次展开从最新一张开始
             if !st.hover {
                 st.scroll_off = 0.0;
@@ -136,8 +149,10 @@ pub(super) fn draw(
                 let top_c = bottom - CARD_H - j as f32 * EDGE;
                 let top_e = view.top() - st.scroll_off + (n as f32 - 1.0 - j as f32) * step_e;
                 let top = top_c + (top_e - top_c) * eased;
-                let card =
-                    Rect::from_min_size(egui::pos2(rect.left(), top), egui::vec2(CARD_W, CARD_H));
+                let card = Rect::from_min_size(
+                    egui::pos2(right - CARD_W, top),
+                    egui::vec2(CARD_W, CARD_H),
+                );
                 // 可点卡注册点击区并给悬停反馈(描边提亮 + 手型光标)
                 let mut hovered = false;
                 if let Some(action) = t.action {
