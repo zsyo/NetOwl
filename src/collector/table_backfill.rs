@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::windows_table::TableCollector;
-use super::{IconState, signature};
+use super::{IconOutcome, IconState, signature};
 use crate::model::Signing;
 
 const SIG_MAX_INFLIGHT: usize = 4;
@@ -48,19 +48,21 @@ impl TableCollector {
 
     /// 收割已完成的图标提取结果
     pub(super) fn collect_icons(&mut self) {
-        while let Ok((path, img)) = self.icon_rx.try_recv() {
-            self.icon_inflight.remove(&path);
-            match img {
-                Some(img) => {
-                    self.icons
-                        .insert(path, IconState::Ready(Some(Arc::new(img))));
+        while let Ok((path, at, outcome)) = self.icon_rx.try_recv() {
+            // 只匹配当前在途批次:超时重派后迟到的旧结果不得移除新批次
+            // 的在途记录(否则预算虚高导致重复重派,线程堆积)
+            if self.icon_inflight.get(path.as_str()) == Some(&at) {
+                self.icon_inflight.remove(path.as_str());
+            }
+            match outcome {
+                IconOutcome::Ready(img) => {
+                    self.icons.insert(path, IconState::Ready(img.map(Arc::new)));
                 }
-                None => {
-                    // 无色位图老式图标与提取失败同样返回 None:前者是"该
-                    // 进程确实无彩色图标"的既成事实,缓存占位避免每轮重派;
-                    // 但提取线程崩溃/句柄异常等瞬时失败不缓存,下轮重试
-                    tracing::debug!("[Collector] 进程图标提取失败:{path}");
-                    self.icons.insert(path, IconState::Ready(None));
+                IconOutcome::Failed => {
+                    // 提取失败(文件被锁/句柄异常等瞬时):保持 Pending,
+                    // 下轮预算重派;事实性"无图标"(无色位图/无资源段)
+                    // 才缓存占位防每轮重派(分类见 icon::extract)
+                    tracing::debug!("[Collector] 图标提取失败,保持待重试:{path}");
                 }
             }
         }
@@ -93,11 +95,12 @@ impl TableCollector {
             .take(budget)
             .collect::<Vec<_>>()
         {
-            self.icon_inflight.insert(path.clone(), Instant::now());
+            let at = Instant::now();
+            self.icon_inflight.insert(path.clone(), at);
             let tx = self.icon_tx.clone();
             std::thread::spawn(move || {
-                let img = super::icon::extract(&path);
-                let _ = tx.send((path, img));
+                let outcome = super::icon::extract(&path);
+                let _ = tx.send((path, at, outcome));
             });
         }
     }

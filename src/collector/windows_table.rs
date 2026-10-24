@@ -12,12 +12,11 @@ use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
-use super::icon::IconImage;
 use super::query::{
     ConnKey, query_process_names, query_process_path, query_tcp_split, query_tcp6_split, query_udp,
     query_udp_bound, query_udp6, query_udp6_bound,
 };
-use super::{Collector, CollectorKind, IconState};
+use super::{Collector, CollectorKind, IconOutcome, IconState};
 use crate::model::{Connection, ListenEntry, Place, Signing};
 /// 表快照间隔:连接增减的可见延迟上限(与任务管理器刷新节奏相当)
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
@@ -52,8 +51,8 @@ pub struct TableCollector {
     /// 映像路径 -> 图标状态(常驻缓存:连接关闭后进程再现时图标即取即用)
     pub(super) icons: HashMap<String, IconState>,
     /// 图标提取回报通道(发送端克隆给每个提取线程)
-    pub(super) icon_tx: Sender<(String, Option<IconImage>)>,
-    pub(super) icon_rx: Receiver<(String, Option<IconImage>)>,
+    pub(super) icon_tx: Sender<(String, std::time::Instant, IconOutcome)>,
+    pub(super) icon_rx: Receiver<(String, std::time::Instant, IconOutcome)>,
     /// 已派发未返回的图标提取请求(按映像路径;值为派发时刻,超时未回
     /// 允许重试,见 table_backfill::collect_icons)
     pub(super) icon_inflight: HashMap<String, Instant>,

@@ -9,7 +9,7 @@ mod signature;
 mod table_backfill;
 mod windows_table;
 
-pub use icon::{IconImage, default_app_icon};
+pub use icon::{IconImage, IconOutcome, default_app_icon};
 pub use mock::MockCollector;
 pub use query::{close_tcp_connection, query_process_path};
 pub use windows_table::TableCollector;

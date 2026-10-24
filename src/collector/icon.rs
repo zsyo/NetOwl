@@ -3,7 +3,8 @@
 //!
 //! 读取文件与 GDI 调用可能阻塞数十毫秒,调用方须在工作线程执行;
 //! 提取链:SHGetFileInfoW → ExtractIconExW(资源型 exe 的兜底)→
-//! 仍失败返回 None,由调用方缓存避免重复尝试。
+//! 结果以 [`IconOutcome`] 区分事实(有/确认无图标,可缓存)与瞬时
+//! 失败(保持待重试)。
 //! [`default_app_icon`] 提供 Windows 默认"应用程序"图标兜底
 //! (SHGFI_USEFILEATTRIBUTES 按扩展名查询,不触碰真实文件)。
 
@@ -26,13 +27,22 @@ pub struct IconImage {
     pub rgba: Vec<u8>,
 }
 
-/// 提取映像文件的关联图标;SHGetFileInfoW 失败再试 ExtractIconExW
-/// (个别 exe 的关联图标查询失败但资源可直读),仍失败返回 None。
-/// 返回 None 分两种:该文件确实无彩色图标(老式单色 mask 图标,事实
-/// 性占位),与提取失败(句柄异常等,可重试)——本层不区分,由调用方
-/// (table_backfill)按需决定是否缓存
-pub fn extract(path: &str) -> Option<IconImage> {
-    via_shgetfileinfo(path).or_else(|| via_extract_icon(path))
+/// 提取结果:Ready 确定态(有图标或确认无图标,缓存后不再重派)与
+/// Failed 瞬时失败(文件被锁/GDI 资源异常等,保持待派发下轮重试)
+pub enum IconOutcome {
+    Ready(Option<IconImage>),
+    Failed,
+}
+
+/// 提取映像文件的关联图标;SHGetFileInfoW 未命中再试 ExtractIconExW
+/// (个别 exe 的关联图标查询失败但资源可直读)。资源级查询确认无图标
+/// 才是事实(Ready(None)):无色位图老式单色图标、无图标资源;SHGetFileInfoW
+/// 查询失败本身是瞬时态,交兜底通道再判,两路都失败才保持 Failed
+pub fn extract(path: &str) -> IconOutcome {
+    match via_shgetfileinfo(path) {
+        IconOutcome::Failed => via_extract_icon(path),
+        ready => ready,
+    }
 }
 
 /// Windows 默认"应用程序"图标(通用 exe 样式):按扩展名属性提取,
@@ -44,23 +54,30 @@ pub fn default_app_icon() -> Option<IconImage> {
         SHGFI_ICON | SHGFI_LARGEICON | SHGFI_USEFILEATTRIBUTES,
     )
     .and_then(|hicon| {
-        let img = unsafe { hicon_to_rgba(hicon) };
+        let outcome = unsafe { hicon_to_rgba(hicon) };
         unsafe {
             let _ = DestroyIcon(hicon);
         }
-        img
+        match outcome {
+            IconOutcome::Ready(img) => img,
+            IconOutcome::Failed => None,
+        }
     })
 }
 
-/// SHGetFileInfoW 路径查询取关联图标
-fn via_shgetfileinfo(path: &str) -> Option<IconImage> {
-    shgetfileinfo_hicon(path, SHGFI_ICON | SHGFI_LARGEICON).and_then(|hicon| {
-        let img = unsafe { hicon_to_rgba(hicon) };
-        unsafe {
-            let _ = DestroyIcon(hicon);
+/// SHGetFileInfoW 路径查询取关联图标(查询未命中为 Failed,交资源级
+/// 兜底再判;命中后的转换结果原样返回)
+fn via_shgetfileinfo(path: &str) -> IconOutcome {
+    match shgetfileinfo_hicon(path, SHGFI_ICON | SHGFI_LARGEICON) {
+        Some(hicon) => {
+            let outcome = unsafe { hicon_to_rgba(hicon) };
+            unsafe {
+                let _ = DestroyIcon(hicon);
+            }
+            outcome
         }
-        img
-    })
+        None => IconOutcome::Failed,
+    }
 }
 
 /// SHGetFileInfoW 取 HICON(通用入口;flags 决定是否走文件属性模式)
@@ -80,36 +97,43 @@ fn shgetfileinfo_hicon(path: &str, flags: windows::Win32::UI::Shell::SHGFI_FLAGS
     }
 }
 
-/// ExtractIconExW 直读 exe 图标资源(第一枚大图标)
-fn via_extract_icon(path: &str) -> Option<IconImage> {
+/// ExtractIconExW 直读 exe 图标资源(第一枚大图标)。资源级查询无果
+/// (n=0/句柄无效)= 确认无图标资源的稳定事实;GDI 转换失败仍为瞬时态
+fn via_extract_icon(path: &str) -> IconOutcome {
     unsafe {
         let mut path_w: Vec<u16> = path.encode_utf16().collect();
         path_w.push(0);
         let mut hicon = HICON::default();
         let n = ExtractIconExW(PCWSTR(path_w.as_ptr()), 0, Some(&mut hicon), None, 1);
         if n == 0 || hicon.is_invalid() {
-            return None;
+            return IconOutcome::Ready(None);
         }
-        let img = hicon_to_rgba(hicon);
+        let outcome = hicon_to_rgba(hicon);
         let _ = DestroyIcon(hicon);
-        img
+        outcome
     }
 }
 
 /// HICON -> 32bpp RGBA(非预乘);GetIconInfo 成功后位图句柄由调用方释放。
-/// 无色位图的老式单色图标(hbmColor 无效、仅 hbmMask)不写缓存:
-/// read_rgba 对 mask 位图只会得到全黑轮廓,占位即可,不必让它永久缓存
-unsafe fn hicon_to_rgba(
-    hicon: windows::Win32::UI::WindowsAndMessaging::HICON,
-) -> Option<IconImage> {
+/// 无色位图的老式单色图标(hbmColor 无效、仅 hbmMask)为事实性无彩色
+/// 图标 Ready(None):read_rgba 对 mask 位图只会得到全黑轮廓,重试无意义;
+/// GDI 调用失败(句柄/资源异常)为瞬时态 Failed
+unsafe fn hicon_to_rgba(hicon: windows::Win32::UI::WindowsAndMessaging::HICON) -> IconOutcome {
     unsafe {
         let mut info = ICONINFO::default();
-        GetIconInfo(hicon, &mut info).ok()?;
-        let img = if !info.hbmColor.is_invalid() {
-            let bitmap = hbitmap_size(info.hbmColor);
-            bitmap.and_then(|(w, h)| read_rgba(info.hbmColor, w, h))
+        if GetIconInfo(hicon, &mut info).is_err() {
+            return IconOutcome::Failed;
+        }
+        let outcome = if !info.hbmColor.is_invalid() {
+            match hbitmap_size(info.hbmColor) {
+                Some((w, h)) => match read_rgba(info.hbmColor, w, h) {
+                    Some(img) => IconOutcome::Ready(Some(img)),
+                    None => IconOutcome::Failed,
+                },
+                None => IconOutcome::Failed,
+            }
         } else {
-            None
+            IconOutcome::Ready(None)
         };
         if !info.hbmColor.is_invalid() {
             let _ = DeleteObject(info.hbmColor.into());
@@ -117,7 +141,7 @@ unsafe fn hicon_to_rgba(
         if !info.hbmMask.is_invalid() {
             let _ = DeleteObject(info.hbmMask.into());
         }
-        img
+        outcome
     }
 }
 
