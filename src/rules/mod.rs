@@ -149,15 +149,16 @@ impl Rule {
     }
 }
 
-/// 求值输入:从连接与 rDNS 域名构造。进程/路径/域名的比较基准在构造时
-/// 小写化一次(每连接一次,供全部规则复用),求值路径零分配
-pub struct MatchReq {
-    /// 进程映像名小写
-    pub process_lower: String,
-    /// 完整路径小写
-    pub proc_path_lower: Option<String>,
-    /// rDNS 域名小写(未解析/无 PTR 为 None)
-    pub domain_lower: Option<String>,
+/// 求值输入:从连接与 rDNS 域名借用构造,零分配(进程/路径/域名的
+/// 匹配比较在求值侧以忽略大小写流式进行,见 eval::process_hit_ci;
+/// 每连接每帧构造一次,供全部规则复用)
+pub struct MatchReq<'a> {
+    /// 进程映像名(原始大小写)
+    pub process: &'a str,
+    /// 完整路径(原始大小写)
+    pub proc_path: Option<&'a str>,
+    /// rDNS 域名(原始大小写;未解析/无 PTR 为 None)
+    pub domain: Option<&'a str>,
     pub proto: Protocol,
     pub remote_ip: IpAddr,
     pub remote_port: u16,
@@ -166,12 +167,12 @@ pub struct MatchReq {
     pub direction: Direction,
 }
 
-impl MatchReq {
-    pub fn from_conn(conn: &Connection, domain: Option<&str>) -> Self {
+impl<'a> MatchReq<'a> {
+    pub fn from_conn(conn: &'a Connection, domain: Option<&'a str>) -> Self {
         MatchReq {
-            process_lower: conn.process.to_lowercase(),
-            proc_path_lower: conn.proc_path.as_deref().map(str::to_lowercase),
-            domain_lower: domain.map(str::to_lowercase),
+            process: &conn.process,
+            proc_path: conn.proc_path.as_deref(),
+            domain,
             proto: conn.proto,
             remote_ip: conn.remote_ip,
             remote_port: conn.remote_port,
@@ -275,25 +276,10 @@ pub fn parse_net(input: &str) -> Option<NetRange> {
     }
 }
 
-/// 进程条件命中:规则值与连接侧小写基准比较——完整路径结尾(前带分隔符,
-/// 避免误匹配同级前缀名)或映像名精确相等
-pub(super) fn process_hit(v: &str, name_lower: &str, path_lower: Option<&str>) -> bool {
-    if let Some(p) = path_lower
-        && (p == v || ends_with_path(p, v))
-    {
-        return true;
-    }
-    name_lower == v
-}
-
-/// 路径结尾匹配:p 以分隔符 + v 结尾(字节判定,零分配)
+/// 路径结尾匹配:p 以分隔符 + v 结尾(字节判定,零分配;两侧均为
+/// 已小写的预计算值,specs 翻译路径使用)
 pub(super) fn ends_with_path(p: &str, v: &str) -> bool {
     p.len() > v.len() && p.ends_with(v) && p.as_bytes()[p.len() - v.len() - 1] == b'\\'
-}
-
-/// 子域名匹配:精确相等或以 .v 结尾(字节判定,零分配)
-pub(super) fn is_subdomain(h: &str, v: &str) -> bool {
-    h == v || (h.len() > v.len() && h.ends_with(v) && h.as_bytes()[h.len() - v.len() - 1] == b'.')
 }
 
 /// 规则匹配条件的预计算派生数据(经 RuleSet::eval_cache 随规则增删改

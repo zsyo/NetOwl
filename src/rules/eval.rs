@@ -7,11 +7,61 @@ use std::net::IpAddr;
 
 use rusqlite::params;
 
-use super::{
-    Action, Direction, MatchReq, NetRange, RemoteKind, Rule, RuleSet, SILENT_FALLBACK_ID,
-    is_subdomain, process_hit,
-};
+use super::{Action, Direction, MatchReq, NetRange, RemoteKind, Rule, RuleSet, SILENT_FALLBACK_ID};
 use crate::model::Connection;
+
+/// 大小写不敏感等值(流式 Unicode lowercase,零分配):与
+/// str::to_lowercase 同一算法的逐字符版本;非 ASCII(如土耳其 İ)
+/// 小写后长度可变,等长 ASCII 快路径失败后必须走流式兜底
+fn eq_ignore_case(a: &str, b: &str) -> bool {
+    if a.len() == b.len() && a.eq_ignore_ascii_case(b) {
+        return true;
+    }
+    a.chars()
+        .flat_map(char::to_lowercase)
+        .eq(b.chars().flat_map(char::to_lowercase))
+}
+
+/// 单字符忽略大小写等值
+fn char_eq_ci(a: char, b: char) -> bool {
+    a == b || a.to_lowercase().eq(b.to_lowercase())
+}
+
+/// 尾部匹配(h 以分隔符 + v 结尾,忽略大小写,流式零分配):反向逐
+/// 字符比较,对齐耗尽后 h 多出的前一字符须为分隔符(等长或 h 更短
+/// 均不算)
+fn ends_with_sep_ci(h: &str, v: &str, sep: char) -> bool {
+    let mut hc = h.chars().rev();
+    let mut vc = v.chars().rev();
+    loop {
+        match (vc.next(), hc.next()) {
+            (None, Some(c)) => return c == sep,
+            (None, None) => return false,
+            (Some(_), None) => return false,
+            (Some(a), Some(b)) => {
+                if !char_eq_ci(a, b) {
+                    return false;
+                }
+            }
+        }
+    }
+}
+
+/// 进程条件命中(忽略大小写,零分配):规则侧基准已预小写(eval_cache),
+/// 连接侧直接用原始值流式比较;路径完整相等或以分隔符 + 映像名结尾均算
+pub(super) fn process_hit(v: &str, name: &str, path: Option<&str>) -> bool {
+    if let Some(p) = path
+        && (eq_ignore_case(p, v) || ends_with_sep_ci(p, v, '\\'))
+    {
+        return true;
+    }
+    eq_ignore_case(name, v)
+}
+
+/// 子域名匹配(忽略大小写,流式零分配):精确相等或以 .v 结尾
+fn is_subdomain(h: &str, v: &str) -> bool {
+    eq_ignore_case(h, v) || ends_with_sep_ci(h, v, '.')
+}
 
 impl RuleSet {
     /// 同步静默拒绝兜底(全通配 Block,deny = 开):app 层按配置每帧调用,
@@ -39,7 +89,7 @@ impl RuleSet {
 
     /// 求值:按优先级首个命中的启用规则;无命中时返回静默拒绝兜底(若开启);
     /// 仍无则 None(默认放行)
-    pub fn evaluate(&self, req: &MatchReq) -> Option<&Rule> {
+    pub fn evaluate(&self, req: &MatchReq<'_>) -> Option<&Rule> {
         self.rules
             .iter()
             .find(|r| r.enabled && self.rule_matches(r, req))
@@ -101,8 +151,8 @@ impl RuleSet {
     }
 
     /// 规则命中判定(全部条件均满足才命中;非法网段值永不命中):
-    /// 比较基准取预计算缓存,零分配
-    pub(super) fn rule_matches(&self, r: &Rule, req: &MatchReq) -> bool {
+    /// 规则侧比较基准取预计算缓存,连接侧借用原始值流式比较,零分配
+    pub(super) fn rule_matches(&self, r: &Rule, req: &MatchReq<'_>) -> bool {
         if r.direction != Direction::Any && r.direction != req.direction {
             return false;
         }
@@ -120,12 +170,7 @@ impl RuleSet {
         let Some(m) = self.eval_cache.get(&r.id) else {
             return false;
         };
-        if !m.process_lower.is_empty()
-            && !process_hit(
-                &m.process_lower,
-                &req.process_lower,
-                req.proc_path_lower.as_deref(),
-            )
+        if !m.process_lower.is_empty() && !process_hit(&m.process_lower, req.process, req.proc_path)
         {
             return false;
         }
@@ -143,7 +188,7 @@ impl RuleSet {
                 }
                 _ => return false,
             },
-            RemoteKind::Domain => match (&req.domain_lower, &m.remote_lower) {
+            RemoteKind::Domain => match (req.domain, &m.remote_lower) {
                 (Some(h), v) if is_subdomain(h, v) => {}
                 _ => return false,
             },
@@ -161,8 +206,6 @@ impl RuleSet {
     /// 进程级(远端任意、不限端口)的启用阻断规则:进程条件命中该映像名
     /// 或已知完整路径即算;地图面板"阻断进程"的状态与撤销定位用
     pub fn process_block_rule(&self, process: &str, proc_path: Option<&str>) -> Option<&Rule> {
-        let name_lower = process.to_lowercase();
-        let path_lower = proc_path.map(str::to_lowercase);
         self.rules.iter().find(|r| {
             r.enabled
                 && r.action == Action::Block
@@ -170,9 +213,10 @@ impl RuleSet {
                 && r.port == 0
                 && r.local_port == 0
                 && !r.process.is_empty()
-                && self.eval_cache.get(&r.id).is_some_and(|m| {
-                    process_hit(&m.process_lower, &name_lower, path_lower.as_deref())
-                })
+                && self
+                    .eval_cache
+                    .get(&r.id)
+                    .is_some_and(|m| process_hit(&m.process_lower, process, proc_path))
         })
     }
 }
