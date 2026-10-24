@@ -233,6 +233,7 @@ impl NetOwlApp {
             tray_pin_retry_at: Instant::now(),
             autostart_applied: None,
             autostart_retry_at: Instant::now(),
+            autostart_job: None,
             floating_ball: ball_state,
             ball_data: floating_ball::BallData::default(),
             ball_data_at: Instant::now(),

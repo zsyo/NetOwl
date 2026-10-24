@@ -311,6 +311,9 @@ pub struct NetOwlApp {
     autostart_applied: Option<bool>,
     /// 自启动下次重试时刻(写入失败后定时重试)
     autostart_retry_at: Instant,
+    /// 在途自启动写入(派发时目标态, 工作线程结果):schtasks 子进程
+    /// 数百毫秒到 2 秒,不进 UI 主线程
+    autostart_job: Option<(bool, Receiver<bool>)>,
     /// 悬浮球交互状态(贴边/展开/拖动,位置记忆经 show 结果回写 config)
     floating_ball: floating_ball::BallState,
     /// 悬浮球数据快照(总速率 + 进程速率榜,1s 节流聚合)

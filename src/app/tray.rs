@@ -112,21 +112,43 @@ impl NetOwlApp {
 
     /// 开机自启动:配置开关变化时注册计划任务(管理员令牌)或写 Run 键
     /// (标准用户);失败定时重试,直到达成目标态(config 为唯一来源,
-    /// 注册表/任务残留态会被纠正)
+    /// 注册表/任务残留态会被纠正)。写入在工作线程执行(schtasks 子进程
+    /// 数百毫秒到 2 秒,不进 UI 主线程),结果收割后校准状态
     pub(super) fn sync_autostart(&mut self) {
+        // 收割:在途结果落地(达成置 applied、失败定时重试)、异常兜底
+        if let Some((want, rx)) = self.autostart_job.as_ref() {
+            let want = *want;
+            match rx.try_recv() {
+                Ok(true) => {
+                    self.autostart_job = None;
+                    self.autostart_applied = Some(want);
+                }
+                Ok(false) => {
+                    self.autostart_job = None;
+                    tracing::debug!(
+                        "[Autostart] 自启动应用失败,{:?} 后重试",
+                        AUTOSTART_RETRY_INTERVAL
+                    );
+                    self.autostart_retry_at = Instant::now() + AUTOSTART_RETRY_INTERVAL;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => return,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    // 工作线程异常退出:按失败同路径定时重试
+                    self.autostart_job = None;
+                    self.autostart_retry_at = Instant::now() + AUTOSTART_RETRY_INTERVAL;
+                }
+            }
+        }
         let want = self.config.general.autostart;
         if self.autostart_applied == Some(want) || Instant::now() < self.autostart_retry_at {
             return;
         }
-        if autostart::set_enabled(want) {
-            self.autostart_applied = Some(want);
-        } else {
-            tracing::debug!(
-                "[Autostart] 自启动应用失败,{:?} 后重试",
-                AUTOSTART_RETRY_INTERVAL
-            );
-            self.autostart_retry_at = Instant::now() + AUTOSTART_RETRY_INTERVAL;
-        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            // 发送失败 = 接收端已关闭(进程退出),静默退出
+            let _ = tx.send(autostart::set_enabled(want));
+        });
+        self.autostart_job = Some((want, rx));
     }
 
     /// 托盘悬停提示跟随总速率刷新(TrafficMonitor 式,隐藏到托盘时
