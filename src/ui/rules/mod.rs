@@ -136,6 +136,11 @@ pub fn show(
                     if ui.selectable_label(selected, label).clicked() && !selected {
                         rules.switch_profile(db, p.id);
                         config.general.profile_id = p.id;
+                        // 编辑弹窗非模态,开着切档时草稿仍指向旧档规则 id,
+                        // 保存会跨档改写旧档规则并把 priority 置 0——
+                        // 切档即关闭弹窗丢弃草稿
+                        state.draft = None;
+                        state.feedback = None;
                         changed = true;
                     }
                 }

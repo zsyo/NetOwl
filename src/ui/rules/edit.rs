@@ -346,18 +346,21 @@ fn valid_domain(input: &str) -> bool {
     })
 }
 
-/// 校验通过后落库;id < 0 新建,否则覆盖更新;落库失败在草稿上显示错误
+/// 校验通过后落库;id < 0 新建,否则覆盖更新;落库失败在草稿上显示错误。
+/// 更新前校验规则仍在当前档:编辑弹窗非模态,草稿所属 id 缺失时
+/// (切档竞态兜底)拒绝保存,UPDATE 按 id 不带档位条件会跨档改写
 fn save_draft(draft: &mut Draft, db: &Db, rules: &mut RuleSet) -> bool {
     let result = if draft.id < 0 {
         rules.insert(db, draft.to_rule(0))
     } else {
-        let priority = rules
-            .rules
-            .iter()
-            .find(|r| r.id == draft.id)
-            .map(|r| r.priority)
-            .unwrap_or(0);
-        rules.update(db, &draft.to_rule(priority))
+        match rules.rules.iter().find(|r| r.id == draft.id) {
+            Some(r) => rules.update(db, &draft.to_rule(r.priority)),
+            None => {
+                tracing::warn!("[Rules] 规则 {} 不在当前配置档,取消保存", draft.id);
+                draft.error = Some("rules-err-save");
+                return false;
+            }
+        }
     };
     match result {
         Ok(()) => true,
