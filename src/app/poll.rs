@@ -49,6 +49,8 @@ impl NetOwlApp {
         }
         self.conns_refresh_at = Instant::now();
         self.conns = self.collector.snapshot();
+        // 快照整体替换,代次递增失效连接页派生缓存(过滤/排序/分组)
+        self.conns_gen = self.conns_gen.wrapping_add(1);
         self.listens = self.collector.listening();
         self.poll_etw();
         // UDP 表行无远端且 ETW 合并后仍无回退值(未提权/从未通信/启动前

@@ -215,6 +215,10 @@ pub struct NetOwlApp {
     menu_frozen: Option<ui::menu_float::MenuFrozen>,
     /// 连接列表表头排序状态(会话内,不持久化)
     conn_sort: ui::ConnSortState,
+    /// 连接快照代次(poll_conns 每轮递增):连接页派生缓存失效门控
+    conns_gen: u64,
+    /// 连接页过滤/排序/分组缓存(重建门控见 ui::connections::cache)
+    conn_list_cache: ui::ConnListCache,
     /// 连接页搜索词(进程/远端/域名包含过滤,会话内,不持久化)
     conn_search: String,
     /// 连接页搜索框聚焦请求(Ctrl+F 写入,搜索框渲染时消费)

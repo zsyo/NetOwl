@@ -1,7 +1,11 @@
 //! 连接列表页:过滤/搜索、表头排序编排与规则求值标注。
-//! 行渲染在 rows,行右键菜单在 menu,排序在 sort。
+//! 行渲染在 rows,行右键菜单在 menu,排序在 sort,过滤/排序/分组
+//! 结果缓存与重建在 cache。
 
+mod cache;
 mod group;
+
+pub use cache::ConnListCache;
 mod listen;
 mod rows;
 mod sort;
@@ -11,8 +15,8 @@ use super::ConnView;
 
 use eframe::egui;
 
-use super::{ConnSort, ConnSortState, UiCtx, conn_visible, theme, widgets};
-use crate::model::{Connection, Protocol};
+use super::{ConnSort, ConnSortState, UiCtx, theme, widgets};
+use crate::model::Protocol;
 
 /// 连接表定宽列(协议/归属/速率/累计/动作):表头与行渲染共用,
 /// mod 与 rows 引用同一组常量防两份定义错位
@@ -27,6 +31,8 @@ pub(super) const C_ACTION_W: f32 = 70.0;
 pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     let UiCtx {
         conns,
+        conns_gen,
+        conn_list_cache,
         i18n,
         conn_view,
         conn_grouped,
@@ -78,30 +84,24 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         return changed;
     }
 
-    // 搜索词匹配:进程名/映像路径/远端 IP/rDNS 域名包含(大小写不敏感);
-    // 与显示过滤叠加,空词即全量
+    // 过滤/排序/分组结果缓存:1s 采集轮或用户改设置/折叠时重建,
+    // 交互帧直接复用(见 cache)
     let needle = conn_search.trim().to_lowercase();
-    let match_search = |c: &Connection| -> bool {
-        needle.is_empty()
-            || c.process.to_lowercase().contains(&needle)
-            || c.proc_path
-                .as_deref()
-                .is_some_and(|p| p.to_lowercase().contains(&needle))
-            || c.remote_ip.to_string().contains(&needle)
-            || c.remote_port.to_string().contains(&needle)
-            || c.proto.as_str().to_lowercase().contains(&needle)
-            || rdns
-                .lookup(c.remote_ip)
-                .is_some_and(|d| d.to_lowercase().contains(&needle))
-    };
-    let mut shown: Vec<&Connection> = conns
-        .iter()
-        .filter(|c| {
-            conn_visible(config, c) && conn_proto.is_none_or(|p| c.proto == p) && match_search(c)
-        })
-        .collect();
-    sort::sort_conns(&mut shown, conn_sort, conn_rates, i18n);
-    if shown.is_empty() {
+    conn_list_cache.ensure_fresh(
+        conns,
+        *conns_gen,
+        *conn_sort,
+        &needle,
+        *conn_proto,
+        config,
+        *conn_grouped,
+        conn_collapsed,
+        conn_rates,
+        i18n,
+        rdns,
+    );
+    let flat_len = conn_list_cache.len();
+    if conn_list_cache.is_empty() {
         ui.add_space(theme::sp::LG);
         // 全部连接被隐藏/搜索无命中与确实无连接区分提示
         let key = if conns.is_empty() {
@@ -151,50 +151,11 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
     // 虚拟化:扁平行列表(分组头/连接行交错,统一 36 行高)后
     // show_rows 只布局可见行——连接数上百时全量 Grid 的帧耗时
     // 随连接数线性增长(每行含规则求值与十余次文本布局)
-    let mut flat: Vec<FlatRow> = Vec::with_capacity(shown.len() + 8);
-    if *conn_grouped {
-        // 按进程分组:按进程名合并全部连接(不能只合并连续同名行——
-        // shown 按用户排序键排列,默认快照序下同进程连接可能被拆断,
-        // 连续合并会产生同名分组头,组头 interact 的 ID(进程名)相撞),
-        // 组序保持首现顺序;组头行点击折叠/展开(状态键 = 进程名,会话态)
-        let mut index: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
-        let mut groups: Vec<(String, Vec<&Connection>)> = Vec::new();
-        for c in &shown {
-            let idx = *index.entry(c.process.as_str()).or_insert_with(|| {
-                groups.push((c.process.clone(), Vec::new()));
-                groups.len() - 1
-            });
-            groups[idx].1.push(c);
-        }
-        for (name, group) in groups {
-            let (up, down) = group
-                .iter()
-                .fold((0u64, 0u64), |a, c| (a.0 + c.bytes_out, a.1 + c.bytes_in));
-            flat.push(FlatRow::Header(group::HeaderData {
-                name: name.clone(),
-                proc_path: group.iter().find_map(|c| c.proc_path.clone()),
-                count: group.len(),
-                bytes_in: down,
-                bytes_out: up,
-            }));
-            if conn_collapsed.contains(&name) {
-                continue;
-            }
-            flat.extend(group.into_iter().map(FlatRow::Conn));
-        }
-    } else {
-        // 进程/远端弹性列长文本 Truncate 逐步展示;列贴列布局,
-        // 内容间隔由单元格水平内边距形成
-        flat.extend(shown.into_iter().map(FlatRow::Conn));
-    }
-    // 行距对齐:show_rows 按全局 item_spacing.y 计算行步进与内容总高,
-    // 而数据 Grid 的实际行距是 ROW_SPACING_Y——不一致会让底部行画到
-    // 声明 rect 之外,滚动范围被反测撑大(与历史页同坑)
     ui.spacing_mut().item_spacing.y = widgets::table::ROW_SPACING_Y;
     egui::ScrollArea::vertical().auto_shrink(false).show_rows(
         ui,
         CONN_ROW_H,
-        flat.len(),
+        flat_len,
         |ui, row_range| {
             // 首行色带上沿的半个行距扩张会被滚动区视口裁掉(见
             // widgets::table::row_area_top_pad),预留出来保持与其余行同高
@@ -207,11 +168,11 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                 .spacing([0.0, widgets::table::ROW_SPACING_Y])
                 .show(ui, |ui| {
                     for idx in row_range {
-                        match &flat[idx] {
-                            FlatRow::Conn(conn) => {
+                        match conn_list_cache.row(idx) {
+                            cache::FlatEntry::Conn(ci) => {
                                 rows::conn_row(
                                     ui,
-                                    conn,
+                                    &conns[*ci],
                                     i18n,
                                     icon_tex,
                                     *default_icon_tex,
@@ -227,7 +188,7 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
                                     idx,
                                 );
                             }
-                            FlatRow::Header(data) => {
+                            cache::FlatEntry::Header(data) => {
                                 if group::group_header(
                                     ui,
                                     data,
@@ -249,12 +210,6 @@ pub(super) fn connections_ui(ui: &mut egui::Ui, ctx: &mut UiCtx) -> bool {
         },
     );
     changed
-}
-
-/// 虚拟化扁平行:分组头行或连接行(统一行高,show_rows 只布局可见行)
-enum FlatRow<'a> {
-    Conn(&'a Connection),
-    Header(group::HeaderData),
 }
 
 /// 连接表行内容高(与 show_rows 的行高参数一致;分组头同行高)

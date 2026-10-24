@@ -24,6 +24,7 @@ pub mod toast;
 pub mod widgets;
 
 mod connections;
+pub use connections::ConnListCache;
 mod lan;
 mod map_chrome;
 mod settings;
@@ -108,6 +109,10 @@ pub(crate) fn text_width(ui: &egui::Ui, text: &str, size: f32) -> f32 {
 /// 各页面共用的绘制上下文(集中可变状态引用,避免签名持续膨胀)
 pub struct UiCtx<'a> {
     pub conns: &'a [Connection],
+    /// 连接快照代次(poll_conns 每轮递增):连接页派生缓存失效门控
+    pub conns_gen: u64,
+    /// 连接页过滤/排序/分组缓存(见 connections::cache)
+    pub conn_list_cache: &'a mut connections::ConnListCache,
     pub i18n: &'a mut I18n,
     pub map_view: &'a mut basemap::View,
     pub config: &'a mut Config,

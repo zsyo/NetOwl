@@ -180,6 +180,8 @@ impl NetOwlApp {
             menu_actions: Vec::new(),
             menu_frozen: None,
             conn_sort: None,
+            conns_gen: 0,
+            conn_list_cache: crate::ui::ConnListCache::new(),
             conn_search: String::new(),
             focus_conn_search: false,
             hotkey_capture: Default::default(),

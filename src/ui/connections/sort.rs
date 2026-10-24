@@ -1,6 +1,7 @@
 //! 连接列表表头排序:文本键大小写不敏感,未知归属(无定位)恒排在
-//! 有位置连接之后。排序键先逐行预计算(每帧一次)再排序,免每次比较
-//! 重复小写化与归属查表(文本比较次数 O(n log n))。
+//! 有位置连接之后。排序键先逐行预计算(每次重建一次)再排序,免每次
+//! 比较重复小写化与归属查表(文本比较次数 O(n log n));操作对象是
+//! 过滤后的快照索引序(缓存重建入口,见 cache::ensure_fresh)。
 
 use std::collections::HashMap;
 
@@ -18,9 +19,10 @@ enum SortKey {
     Num(u64),
 }
 
-/// 按表头排序状态排列连接(None = 表快照原序)
-pub(super) fn sort_conns(
-    shown: &mut [&Connection],
+/// 按表头排序状态排列过滤后的快照索引(None = 保持过滤产出序)
+pub(super) fn sort_indices(
+    order: &mut [usize],
+    conns: &[Connection],
     sort: &ConnSortState,
     conn_rates: &HashMap<u64, (u64, u64)>,
     i18n: &I18n,
@@ -48,30 +50,31 @@ pub(super) fn sort_conns(
         ConnSort::TotalDown => SortKey::Num(c.bytes_in),
         ConnSort::TotalUp => SortKey::Num(c.bytes_out),
     };
-    let cmp = |a: &SortKey, b: &SortKey| -> Ordering {
-        match (a, b) {
-            (SortKey::Text(x), SortKey::Text(y)) => flip(x.cmp(y)),
-            (SortKey::Loc(x), SortKey::Loc(y)) => match (x, y) {
-                (Some(x), Some(y)) => flip(x.cmp(y)),
-                (Some(_), None) => Ordering::Less,
-                (None, Some(_)) => Ordering::Greater,
-                (None, None) => Ordering::Equal,
-            },
-            (SortKey::Num(x), SortKey::Num(y)) => flip(x.cmp(y)),
-            // 同轮排序键类型一致,混合不可达
-            _ => Ordering::Equal,
-        }
-    };
-    let mut keyed: Vec<(SortKey, &Connection)> = shown.iter().map(|c| (key_of(c), *c)).collect();
+    let mut keyed: Vec<(SortKey, usize)> = order.iter().map(|&i| (key_of(&conns[i]), i)).collect();
     keyed.sort_unstable_by(|a, b| {
-        cmp(&a.0, &b.0)
+        flip(cmp(&a.0, &b.0))
             // 主键相等(典型:速率全 0 的空闲连接)必须有确定次级键,否则
             // 每秒快照重建后 unstable 排序大片行重排,列表跳动;进程名
-            // 相同落到 id(id 唯一,比较器成全序)
-            .then_with(|| a.1.process.cmp(&b.1.process))
-            .then_with(|| a.1.id.cmp(&b.1.id))
+            // 相同落到索引(快照内唯一,比较器成全序)
+            .then_with(|| conns[a.1].process.cmp(&conns[b.1].process))
+            .then_with(|| a.1.cmp(&b.1))
     });
-    for (dst, (_, c)) in shown.iter_mut().zip(keyed) {
-        *dst = c;
+    for (dst, (_, i)) in order.iter_mut().zip(keyed) {
+        *dst = i;
+    }
+}
+
+fn cmp(a: &SortKey, b: &SortKey) -> std::cmp::Ordering {
+    match (a, b) {
+        (SortKey::Text(x), SortKey::Text(y)) => x.cmp(y),
+        (SortKey::Loc(x), SortKey::Loc(y)) => match (x, y) {
+            (Some(x), Some(y)) => x.cmp(y),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        },
+        (SortKey::Num(x), SortKey::Num(y)) => x.cmp(y),
+        // 同轮排序键类型一致,混合不可达
+        _ => std::cmp::Ordering::Equal,
     }
 }
