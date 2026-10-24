@@ -392,6 +392,7 @@ conns-count-suffix = ({$count})
 lan-notify-toast = New device joined: {$ip}
 settings-lan-notify = New device alert
 settings-lan-notify-hint = Show a toast when a new device joins the LAN
+listen-notify-kind = New listening port
 toast-copied = Copied to clipboard
 toast-font-missing = Font {$name} is not in the system font list; kept the current font
 toast-font-failed = Failed to switch the interface font: {$error}

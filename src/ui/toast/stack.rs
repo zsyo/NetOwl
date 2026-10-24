@@ -225,21 +225,35 @@ fn draw_card(painter: &egui::Painter, p: &theme::Palette, t: &Toast, rect: Rect,
     let text_x = icon_x + theme::font::H3 + theme::sp::SM;
     let avail = (rect.right() - theme::sp::MD - text_x).max(0.0);
     match &t.endpoint {
-        // 两行卡:上行进程名(主行亮色)/下行端点(等宽字体)
+        // 两行卡:主行类型前缀(小号弱色)+ 进程名,副行端点(等宽)
         Some(e) => {
             let row1_cy = rect.top() + PAD + ROW_H * 0.5;
             let row2_cy = rect.top() + PAD + ROW_H * 1.5;
+            let name_font = FontId::proportional(theme::font::BODY);
+            let label_font = FontId::proportional(theme::font::SM);
+            let mut x = text_x;
+            if let Some(label) = &t.label {
+                let label_w = width_of(painter, label, &label_font);
+                painter.text(
+                    egui::pos2(x, row1_cy),
+                    Align2::LEFT_CENTER,
+                    label,
+                    label_font,
+                    p.text_dim,
+                );
+                x += label_w + theme::sp::SM;
+            }
             let name = truncate(
                 painter,
                 &t.text,
-                &FontId::proportional(theme::font::BODY),
-                avail,
+                &name_font,
+                (avail - (x - text_x)).max(0.0),
             );
             painter.text(
-                egui::pos2(text_x, row1_cy),
+                egui::pos2(x, row1_cy),
                 Align2::LEFT_CENTER,
                 name,
-                FontId::proportional(theme::font::BODY),
+                name_font,
                 p.text,
             );
             draw_endpoint(painter, p, e, text_x, row2_cy, avail);
@@ -325,6 +339,14 @@ fn draw_count(painter: &egui::Painter, p: &theme::Palette, count: usize, card: R
     );
     painter.rect_filled(r, CornerRadius::same(theme::RADIUS_PILL), p.accent);
     painter.text(r.center(), Align2::CENTER_CENTER, label, font, p.on_accent);
+}
+
+/// 单段文本测宽(与绘制同字体,保证测量与呈现口径一致)
+fn width_of(painter: &egui::Painter, text: &str, font: &FontId) -> f32 {
+    painter
+        .layout_no_wrap(text.to_owned(), font.clone(), egui::Color32::WHITE)
+        .rect
+        .width()
 }
 
 /// 按像素尾部省略(与 map::card::fit_text 同型,此处固定宽度场景的局部实现)

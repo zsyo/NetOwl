@@ -107,6 +107,7 @@ impl NetOwlApp {
                 crate::ui::toast::push_listen(
                     &mut self.toasts,
                     crate::ui::toast::ToastKind::Info,
+                    self.i18n.t("listen-notify-kind"),
                     process,
                     crate::ui::toast::ListenEndpoint {
                         proto: l.proto.as_str().to_owned(),

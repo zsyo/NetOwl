@@ -330,8 +330,8 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   牌堆上限 8 条丢最老;带跳转入队走 push_action:监听端口→连接页
   监听视图按端口筛选/新设备→局域网页/配额告警→历史用量视图,frame
   层 apply_toast_action 落地;监听提醒走 push_listen 两行卡(主行
-  进程名,副行 ListenEndpoint 协议 ip:端口,渲染层 IP 末端省略端口
-  恒完整)]、show 编排[bottom 各自倒计时;牌堆
+  类型前缀词条+进程名,副行 ListenEndpoint 协议 ip:端口,渲染层
+  IP 末端省略端口恒完整)]、show 编排[bottom 各自倒计时;牌堆
   悬停全暂停,否则只扣堆顶=最新一条,过期后次新顶上,被压住的保留;
   条目存活至去重窗口结束供判重;返回被点卡的跳转动作,被点卡即时
   消化]、draw_bottom 底部气泡;stack.rs:牌堆几何与

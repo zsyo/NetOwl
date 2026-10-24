@@ -79,6 +79,8 @@ pub struct Toast {
     action: Option<ToastAction>,
     /// 两行卡副行端点(None = 单行卡,内容垂直居中)
     endpoint: Option<ListenEndpoint>,
+    /// 两行卡主行类型前缀(如"新监听端口",小号弱色渲染)
+    label: Option<String>,
 }
 
 /// 队尾序号 + 1:Toast 生命周期短(去重窗口 30s),队列很小
@@ -89,18 +91,27 @@ fn next_seq(toasts: &[Toast]) -> u64 {
 /// 入队(右下角牌堆,纯展示不可点);同位置同内容在去重窗口内只保留
 /// 一条(判重键 = 主行文本 + 端点)。两个位置互不挤占
 pub fn push(toasts: &mut Vec<Toast>, kind: ToastKind, text: String) {
-    push_at(toasts, kind, text, ToastPos::Corner, None, None)
+    push_at(toasts, kind, text, ToastPos::Corner, None, None, None)
 }
 
 /// 入队(右下角牌堆,带点击跳转动作)
 pub fn push_action(toasts: &mut Vec<Toast>, kind: ToastKind, text: String, action: ToastAction) {
-    push_at(toasts, kind, text, ToastPos::Corner, Some(action), None)
+    push_at(
+        toasts,
+        kind,
+        text,
+        ToastPos::Corner,
+        Some(action),
+        None,
+        None,
+    )
 }
 
-/// 入队(右下角牌堆,监听提醒两行卡:主行进程名,副行端点)
+/// 入队(右下角牌堆,监听提醒两行卡:主行类型前缀+进程名,副行端点)
 pub fn push_listen(
     toasts: &mut Vec<Toast>,
     kind: ToastKind,
+    label: String,
     process: String,
     endpoint: ListenEndpoint,
     action: ToastAction,
@@ -112,13 +123,14 @@ pub fn push_listen(
         ToastPos::Corner,
         Some(action),
         Some(endpoint),
+        Some(label),
     )
 }
 
 /// 入队(页面底部居中气泡):用户操作成功/失败的反馈通道,与右下角
 /// 通知语义分离(互不挤占位置),去重口径同 push
 pub fn push_bottom(toasts: &mut Vec<Toast>, kind: ToastKind, text: String) {
-    push_at(toasts, kind, text, ToastPos::Bottom, None, None)
+    push_at(toasts, kind, text, ToastPos::Bottom, None, None, None)
 }
 
 fn push_at(
@@ -128,6 +140,7 @@ fn push_at(
     pos: ToastPos,
     action: Option<ToastAction>,
     endpoint: Option<ListenEndpoint>,
+    label: Option<String>,
 ) {
     // 判重键含端点:监听卡主行只有进程名,同进程不同端口须各自入队
     if toasts.iter().any(|t| {
@@ -151,6 +164,7 @@ fn push_at(
         seq: next_seq(toasts),
         action,
         endpoint,
+        label,
     });
     // 牌堆上限:仅统计 Corner 条目(bottom 不占额),超限移除最老
     let corner_n = toasts.iter().filter(|t| t.pos == ToastPos::Corner).count();
