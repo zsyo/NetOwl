@@ -23,10 +23,11 @@ The app ships with built-in update checks (Settings → About), on both stable a
 
 - **Traffic map** — live process connections on a world map: arc links, animated inbound/outbound particles, pulsing nodes aggregated by connection count, auto-centered on your machine at startup, wheel zoom / drag / double-click reset, hover for endpoint details, click to sync with the side panel; nodes are tinted by network quality (latency / packet loss) and endpoint details include the carrier
 - **Connection list** — active connections: process (icon / signature state), protocol, remote address with rDNS hostname, GeoIP location, live rates and total bytes; sortable columns, text search (Ctrl+F to focus), protocol filter, collapsible grouping by process, context menu (close connection / locate binary / copy / view history)
-- **Port listening** — TCP LISTEN and UDP bound endpoints in one view, switchable on the same page as the connection list, searchable by process/path; a toast fires when a new listening port appears
+- **Port listening** — TCP LISTEN and UDP bound endpoints in one view, switchable on the same page as the connection list, searchable by process/path; a toast fires when a new listening port appears (per-program ignore list)
 - **Per-connection byte accounting** — ETW kernel network events (TCP/UDP send/receive bytes, short-lived connection capture, IPv4/IPv6 dual-stack), no driver required
 - **Network quality** — ICMP probes against custom targets (IPv4/IPv6), EMA-smoothed latency and packet loss, health-tinted map nodes, an alert when a target stops responding
 - **Floating ball** — an edge-docked always-on indicator of total up/down rates (bar-level tiers), expandable into a per-process rate ranking with today's totals, draggable with position memory, right-click opens the live log window
+- **Notification stack** — bottom-right toasts collapse into a card stack: only the newest card is fully visible (+N count badge); hover to fan out, scroll to browse, the top card expires in turn and hovering pauses timers; cards are clickable (new listening port → listening view filtered by port, new device → LAN devices page, quota alert → history usage view), and right-click closes a card directly
 
 ### Blocking & prompting
 
@@ -38,7 +39,7 @@ The app ships with built-in update checks (Settings → About), on both stable a
 ### History & statistics
 
 - **Connection history** — each closed connection is persisted to SQLite as a whole row (including transfer bytes, IPv4/IPv6 dual-stack); the process summary view merges live connections in real time
-- **Four query views** — detail / aggregate (process × protocol × remote) / process summary / usage (daily or hourly bucketed bar chart), time range and multi-condition filters, CSV export (UTF-8 BOM)
+- **Four query views** — detail / aggregate (process × protocol × remote) / process summary / usage (daily or hourly bucketed bar chart), time range and multi-condition filters, CSV export (UTF-8 BOM); queries run async off the UI thread, with a pre-aggregated fast path for summary/usage on large databases
 - **Usage quota** — monthly traffic quota (accumulated on the local-timezone month boundary) with toasts at 80%/100%
 - **Auto cleanup** — retention-based deletion that reclaims disk space, plus an over-quota reminder
 
