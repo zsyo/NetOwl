@@ -13,8 +13,8 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use super::query::{
-    ConnKey, query_process_names, query_process_path, query_tcp_split, query_tcp6_split, query_udp,
-    query_udp_bound, query_udp6, query_udp6_bound,
+    ConnKey, query_process_names, query_process_path, query_tcp_split, query_tcp6_split,
+    query_udp_split, query_udp6_split,
 };
 use super::{Collector, CollectorKind, IconOutcome, IconState};
 use crate::model::{Connection, ListenEntry, Place, Signing};
@@ -99,23 +99,20 @@ impl TableCollector {
                 (Vec::new(), Vec::new())
             }
         };
-        let udp = match query_udp() {
-            Ok(rows) => rows,
+        // UDP 连接与监听一次查询分流(v4 失败跳过本轮,同 TCP 口径;
+        // v6 失败按无 v6 行继续)
+        let (udp, udp_bound) = match query_udp_split() {
+            Ok(v) => v,
             Err(e) => {
                 tracing::warn!("[Collector] UDP 表查询失败: {e}");
                 return;
             }
         };
-        // 监听条目单独查 GetUdpTable2:该档位带 SpecificPortBind 标志,
-        // 可排除已 connect 的出向 socket(GetExtendedUdpTable 无此字段,
-        // 会把每个 DNS/QUIC 出向 socket 也算成监听端口)
-        let udp_bound = query_udp_bound().unwrap_or_default();
-        let udp6_bound = query_udp6_bound().unwrap_or_default();
-        let udp6 = match query_udp6() {
-            Ok(rows) => rows,
+        let (udp6, udp6_bound) = match query_udp6_split() {
+            Ok(v) => v,
             Err(e) => {
                 tracing::warn!("[Collector] IPv6 UDP 表查询失败: {e}");
-                Vec::new()
+                (Vec::new(), Vec::new())
             }
         };
         let tcp_count = tcp.len() + tcp6.len();
