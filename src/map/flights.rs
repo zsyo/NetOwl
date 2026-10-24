@@ -1,5 +1,9 @@
 //! 流量飞线:贝塞尔连线(远端归属+主导方向聚合,一城一线)与流动
 //! 粒子尾迹,按可见世界副本平移铺开,跨太平洋走最短方向短弧。
+//!
+//! 派生数据缓存:连线聚合按数据代次重建;弧线 mesh 按 (视图, 画布,
+//! 本机点位, 悬停, 选中, 主题) 签名整层复用——动画帧只有粒子相位
+//! 随 t 变化,mesh 不重建也不逐副本 clone,数百连接下每帧仅剩粒子绘制。
 
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
@@ -9,7 +13,7 @@ use eframe::egui;
 use egui::{Color32, Mesh, Pos2, Rect, Shape, Vec2};
 
 use super::Projection;
-use crate::model::Connection;
+use crate::model::{Connection, Place};
 use crate::net::geoip;
 use crate::ui::theme;
 
@@ -36,90 +40,235 @@ fn wrap_delta(d: f32) -> f32 {
     d - 360.0 * (d / 360.0).round()
 }
 
-/// 绘制聚合连线与粒子(LOD:连接数不再直接放大绘制量,数百连接下
-/// 仍是一城一线;线宽随聚合数增长表达流量规模)
+/// 弧线 mesh 复用签名:覆盖影响几何与颜色的全部输入(投影/画布/
+/// 本机点位/悬停/选中/主题)。t 不进签名——动画帧签名不变直接复用;
+/// 悬停坐标连续变化帧签名失配重建,即鼠标移动时的交互帧本就允许重建
+#[derive(Clone, Copy, PartialEq)]
+struct MeshSig {
+    dark: bool,
+    lon: f32,
+    lat: f32,
+    ppd: f32,
+    left: f32,
+    top: f32,
+    w: f32,
+    h: f32,
+    local_x: f32,
+    local_y: f32,
+    hover: Option<(f32, f32)>,
+    selected: Option<Place>,
+}
+
+/// 飞线层派生数据缓存(由 map::FrameCache 持有):连线聚合按数据
+/// 代次重建,重建时弧线 mesh 一并失效(下一帧按新聚合重建)
+pub(super) struct FlightCache {
+    conns_gen: u64,
+    lines: BTreeMap<(Place, bool), (usize, u64)>,
+    /// 整层弧线 mesh 与构建时签名,None = 未构建/已失效
+    mesh: Option<(MeshSig, Arc<Mesh>)>,
+}
+
+impl FlightCache {
+    pub(super) fn new() -> Self {
+        Self {
+            conns_gen: u64::MAX,
+            lines: BTreeMap::new(),
+            mesh: None,
+        }
+    }
+
+    /// 连线按 远端归属+主导方向 聚合(LOD):连接数不再直接放大
+    /// 绘制量,数百连接下仍是一城一线;线宽随聚合数增长表达流量规模
+    pub(super) fn rebuild_lines(&mut self, conns: &[Connection], conns_gen: u64) {
+        let mut lines = BTreeMap::new();
+        for c in conns {
+            let Some(place) = c.city else { continue };
+            let entry = lines.entry((place, c.inbound_dominant())).or_insert((0, 0));
+            entry.0 += 1;
+            entry.1 += c.total_bytes();
+        }
+        self.lines = lines;
+        self.conns_gen = conns_gen;
+        self.mesh = None;
+    }
+
+    /// 重建整层弧线 mesh:所有线所有可见副本的顶点合并进同一个 Mesh,
+    /// 绘制一次 add;副本平移在写入顶点时完成,无逐副本 clone
+    #[allow(clippy::too_many_arguments)]
+    fn rebuild_meshes(
+        &mut self,
+        rect: Rect,
+        proj: &Projection,
+        local: Pos2,
+        local_pos: (f32, f32),
+        cycle_px: f32,
+        hover_pos: Option<Pos2>,
+        selected: Option<Place>,
+        sig: MeshSig,
+    ) {
+        let mut layer = Mesh::default();
+        for ((place, inbound), (count, _)) in &self.lines {
+            let g = line_geom(
+                *place, *inbound, *count, rect, proj, local, local_pos, cycle_px, hover_pos,
+                selected,
+            );
+            let arc = gradient_arc_mesh(g.start, g.ctrl, g.end, g.color, g.width, g.alpha, 16);
+            for k in g.k0..=g.k1 {
+                let off = Vec2::new(k as f32 * cycle_px, 0.0);
+                let base = layer.vertices.len() as u32;
+                for v in &arc.vertices {
+                    layer.colored_vertex(v.pos + off, v.color);
+                }
+                layer.indices.extend(arc.indices.iter().map(|i| base + i));
+            }
+        }
+        self.mesh = Some((sig, Arc::new(layer)));
+    }
+}
+
+/// 单条聚合线的屏幕几何与样式(mesh 重建与粒子绘制共用)
+struct LineGeom {
+    start: Pos2,
+    ctrl: Pos2,
+    end: Pos2,
+    color: Color32,
+    width: f32,
+    alpha: f32,
+    k0: i32,
+    k1: i32,
+}
+
+/// 悬停判定取方向翻转后的 end:入站线为本机端,出站线为远端端点
+/// (与既有交互口径一致)
+#[allow(clippy::too_many_arguments)]
+fn line_geom(
+    place: Place,
+    inbound: bool,
+    count: usize,
+    rect: Rect,
+    proj: &Projection,
+    local: Pos2,
+    local_pos: (f32, f32),
+    cycle_px: f32,
+    hover_pos: Option<Pos2>,
+    selected: Option<Place>,
+) -> LineGeom {
+    // 节点端取最短方向等效经度(跨太平洋走短弧),主几何按可见世界
+    // 副本平移铺开,屏幕边缘两侧由相邻副本自然接续
+    let (place_lon, place_lat) = geoip::place_pos(place);
+    let end_lon = local_pos.0 + wrap_delta(place_lon - local_pos.0);
+    let end_geo = proj.project(end_lon, place_lat);
+    let (start, end) = if inbound {
+        (end_geo, local)
+    } else {
+        (local, end_geo)
+    };
+    let ctrl = arc_ctrl(start, end);
+    let color = if inbound {
+        theme::c().inbound
+    } else {
+        theme::c().outbound
+    };
+    let hovered = hover_pos.is_some_and(|h| super::wrap_dist(h, end, cycle_px) < 20.0);
+    let dim = selected.is_some_and(|sel| place != sel);
+    let width =
+        1.4 + 1.1 * (count as f32 - 1.0).sqrt().min(2.0) + if hovered && !dim { 0.6 } else { 0.0 };
+    // 选中端点联动:未选中端点的连线(含粒子)整体淡化
+    let alpha = if dim {
+        0.12
+    } else if hovered {
+        0.9
+    } else {
+        0.45
+    };
+    // 曲线横向范围取 {start, ctrl, end} 凸包(二次贝塞尔整体在凸包内),
+    // 据此求可见副本区间。控制点沿法线抬升 lift(最高 90px),近竖直
+    // 连线的 ctrl.x 会偏离端点连线最多 lift/2 ≈ 45px,只用端点包围盒
+    // 会让贴屏幕边缘(含 wrap 接缝相邻副本)的弧线被漏判成不可见
+    let (min_x, max_x) = (
+        start.x.min(end.x).min(ctrl.x),
+        start.x.max(end.x).max(ctrl.x),
+    );
+    let k0 = ((rect.left() - max_x) / cycle_px).floor() as i32;
+    let k1 = ((rect.right() - min_x) / cycle_px).floor() as i32;
+    LineGeom {
+        start,
+        ctrl,
+        end,
+        color,
+        width,
+        alpha,
+        k0,
+        k1,
+    }
+}
+
+/// 绘制聚合连线与粒子:弧线层整块 mesh 复用,粒子层每帧按 t 重算
 #[allow(clippy::too_many_arguments)]
 pub(super) fn draw_flights(
     painter: &egui::Painter,
     rect: Rect,
     proj: &Projection,
-    conns: &[Connection],
+    cache: &mut FlightCache,
     local: Pos2,
     local_pos: (f32, f32),
     cycle_px: f32,
     hover_pos: Option<Pos2>,
-    selected: Option<crate::model::Place>,
+    selected: Option<Place>,
     t: f32,
 ) {
-    // 连线按 远端归属+主导方向 聚合绘制(LOD):连接数不再直接放大绘制量,
-    // 数百连接下仍是一城一线;线宽随聚合数增长表达流量规模
-    let mut lines: BTreeMap<(crate::model::Place, bool), (usize, u64)> = BTreeMap::new();
-    for c in conns {
-        let Some(place) = c.city else { continue };
-        let entry = lines.entry((place, c.inbound_dominant())).or_insert((0, 0));
-        entry.0 += 1;
-        entry.1 += c.total_bytes();
-    }
-    for ((place, inbound), (count, _)) in &lines {
-        // 节点端取最短方向等效经度(跨太平洋走短弧),主几何按可见世界副本
-        // 平移铺开,屏幕边缘两侧由相邻副本自然接续
-        let (place_lon, place_lat) = geoip::place_pos(*place);
-        let end_lon = local_pos.0 + wrap_delta(place_lon - local_pos.0);
-        let end = proj.project(end_lon, place_lat);
-        let (start, end) = if *inbound { (end, local) } else { (local, end) };
-        let ctrl = arc_ctrl(start, end);
-        let color = if *inbound {
-            theme::c().inbound
-        } else {
-            theme::c().outbound
-        };
-        let hovered = hover_pos.is_some_and(|h| super::wrap_dist(h, end, cycle_px) < 20.0);
-        let dim = selected.is_some_and(|sel| *place != sel);
-        let width = 1.4
-            + 1.1 * (*count as f32 - 1.0).sqrt().min(2.0)
-            + if hovered && !dim { 0.6 } else { 0.0 };
-        // 选中端点联动:未选中端点的连线(含粒子)整体淡化
-        let line_alpha = if dim {
-            0.12
-        } else if hovered {
-            0.9
-        } else {
-            0.45
-        };
-        // 曲线横向范围取 {start, ctrl, end} 凸包(二次贝塞尔整体在
-        // 凸包内),据此求可见副本区间。控制点沿法线抬升 lift(最高
-        // 90px),近竖直连线的 ctrl.x 会偏离端点连线最多 lift/2 ≈ 45px,
-        // 只用端点包围盒会让贴屏幕边缘(含 wrap 接缝相邻副本)的弧线
-        // 被漏判成不可见
-        let (min_x, max_x) = (
-            start.x.min(end.x).min(ctrl.x),
-            start.x.max(end.x).max(ctrl.x),
+    let sig = MeshSig {
+        dark: theme::is_dark(),
+        lon: proj.center_lon,
+        lat: proj.center_lat,
+        ppd: proj.ppd,
+        left: rect.left(),
+        top: rect.top(),
+        w: rect.width(),
+        h: rect.height(),
+        local_x: local_pos.0,
+        local_y: local_pos.1,
+        hover: hover_pos.map(|p| (p.x, p.y)),
+        selected,
+    };
+    if cache.mesh.as_ref().is_none_or(|(s, _)| *s != sig) {
+        cache.rebuild_meshes(
+            rect, proj, local, local_pos, cycle_px, hover_pos, selected, sig,
         );
-        let k0 = ((rect.left() - max_x) / cycle_px).floor() as i32;
-        let k1 = ((rect.right() - min_x) / cycle_px).floor() as i32;
-        // 粒子与尾迹(主副本算一次,副本平移);相位按聚合键派生保持稳定
+    }
+    if let Some((_, mesh)) = &cache.mesh {
+        painter.add(Shape::Mesh(Arc::clone(mesh)));
+    }
+    // 粒子与尾迹(主副本算一次,副本平移);相位按聚合键派生保持稳定
+    for ((place, inbound), (count, _)) in &cache.lines {
+        let g = line_geom(
+            *place, *inbound, *count, rect, proj, local, local_pos, cycle_px, hover_pos, selected,
+        );
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         place.hash(&mut hasher);
         inbound.hash(&mut hasher);
         let phase = (t * 0.22 + super::hash_phase(hasher.finish())) % 1.0;
         let trail: Vec<Pos2> = (0..5u32)
-            .map(|k| bezier(start, ctrl, end, (phase - 0.025 * k as f32).rem_euclid(1.0)))
+            .map(|k| {
+                bezier(
+                    g.start,
+                    g.ctrl,
+                    g.end,
+                    (phase - 0.025 * k as f32).rem_euclid(1.0),
+                )
+            })
             .collect();
-        let arc = gradient_arc_mesh(start, ctrl, end, color, width, line_alpha, 16);
-        for k in k0..=k1 {
+        for k in g.k0..=g.k1 {
             let off = Vec2::new(k as f32 * cycle_px, 0.0);
-            let mut m = arc.clone();
-            m.translate(off);
-            painter.add(Shape::Mesh(Arc::new(m)));
             for (i, pt) in trail.iter().enumerate() {
-                let a = line_alpha * (1.0 - i as f32 * 0.2);
+                let a = g.alpha * (1.0 - i as f32 * 0.2);
                 // 粒子辉光层 + 实心(头部最大最亮,拖尾渐隐)
                 painter.circle_filled(
                     *pt + off,
                     4.6 - 0.6 * i as f32,
-                    color.gamma_multiply(a * 0.25),
+                    g.color.gamma_multiply(a * 0.25),
                 );
-                painter.circle_filled(*pt + off, 2.8 - 0.5 * i as f32, color.gamma_multiply(a));
+                painter.circle_filled(*pt + off, 2.8 - 0.5 * i as f32, g.color.gamma_multiply(a));
             }
         }
     }

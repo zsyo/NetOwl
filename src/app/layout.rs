@@ -103,6 +103,7 @@ impl NetOwlApp {
             conns,
             conns_gen: self.conns_gen,
             conn_list_cache: &mut self.conn_list_cache,
+            map_cache: &mut self.map_cache,
             i18n: &mut self.i18n,
             map_view: &mut self.map_view,
             config: &mut self.config,

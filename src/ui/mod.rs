@@ -113,6 +113,8 @@ pub struct UiCtx<'a> {
     pub conns_gen: u64,
     /// 连接页过滤/排序/分组缓存(见 connections::cache)
     pub conn_list_cache: &'a mut connections::ConnListCache,
+    /// 地图页派生数据缓存(聚合/健康度/飞线 mesh,见 map::FrameCache)
+    pub map_cache: &'a mut map::FrameCache,
     pub i18n: &'a mut I18n,
     pub map_view: &'a mut basemap::View,
     pub config: &'a mut Config,
@@ -217,6 +219,8 @@ pub fn central_ui(ui: &mut egui::Ui, page: &Page, ctx: &mut UiCtx) -> bool {
             let click = map::draw(
                 ui,
                 ctx.conns,
+                ctx.conns_gen,
+                ctx.map_cache,
                 ctx.i18n,
                 ctx.map_view,
                 ctx.rdns,

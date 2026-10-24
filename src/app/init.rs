@@ -182,6 +182,7 @@ impl NetOwlApp {
             conn_sort: None,
             conns_gen: 0,
             conn_list_cache: crate::ui::ConnListCache::new(),
+            map_cache: crate::map::FrameCache::new(),
             conn_search: String::new(),
             focus_conn_search: false,
             hotkey_capture: Default::default(),

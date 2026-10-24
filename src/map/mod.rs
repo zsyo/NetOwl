@@ -53,6 +53,65 @@ fn hash_phase(seed: u64) -> f32 {
 /// 归属节点聚合:连接数与累计流量
 type Agg = BTreeMap<Place, (usize, u64)>;
 
+/// 地图每帧派生数据缓存(由 App 持有,draw 时传入刷新):聚合与
+/// 端点健康度按数据代次重建;飞线层见 flights::FlightCache(mesh 按
+/// 视图/交互签名整层复用)。动画帧(仅 t 变化)不再重建任何派生数据
+pub struct FrameCache {
+    conns_gen: u64,
+    agg: Agg,
+    health: HashMap<Place, u8>,
+    flights: flights::FlightCache,
+}
+
+impl Default for FrameCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl FrameCache {
+    pub fn new() -> Self {
+        Self {
+            conns_gen: u64::MAX,
+            agg: BTreeMap::new(),
+            health: HashMap::new(),
+            flights: flights::FlightCache::new(),
+        }
+    }
+
+    /// 数据代次变化时重建聚合、健康度与连线聚合。健康度依赖质量采样
+    /// (独立 1s 节流),按连接代次门控最多滞后一轮采集,可接受
+    fn refresh(
+        &mut self,
+        conns: &[Connection],
+        conns_gen: u64,
+        quality: Option<&quality::Quality>,
+    ) {
+        if self.conns_gen == conns_gen {
+            return;
+        }
+        self.agg = aggregate(conns);
+        // 端点健康度:端点各连接远端样本的最差档(一个目标异常即反映;
+        // 从未成功的样本不参与,全无样本 = 无数据维持原色)
+        let mut health: HashMap<Place, u8> = HashMap::new();
+        if let Some(q) = quality {
+            for c in conns {
+                let Some(place) = c.city else { continue };
+                let Some(rank) = q.lookup(c.remote_ip).and_then(|s| s.rank()) else {
+                    continue;
+                };
+                health
+                    .entry(place)
+                    .and_modify(|e| *e = (*e).max(rank))
+                    .or_insert(rank);
+            }
+        }
+        self.health = health;
+        self.flights.rebuild_lines(conns, conns_gen);
+        self.conns_gen = conns_gen;
+    }
+}
+
 /// 地图画布的点击结果(UI 层据此更新面板选中状态)
 pub enum MapClick {
     /// 命中归属节点:选中该端点
@@ -67,6 +126,8 @@ pub enum MapClick {
 pub fn draw(
     ui: &mut egui::Ui,
     conns: &[Connection],
+    conns_gen: u64,
+    cache: &mut FrameCache,
     i18n: &I18n,
     view: &mut View,
     rdns: &rdns::Rdns,
@@ -91,27 +152,20 @@ pub fn draw(
     basemap::draw(&painter, rect, &proj, i18n.current_lang.starts_with("zh"));
 
     let local = proj.project(local_pos.0, local_pos.1);
-    let agg = aggregate(conns);
     let cycle_px = proj.cycle_px();
-
-    // 端点健康度:端点各连接远端样本的最差档(一个目标异常即反映;
-    // 从未成功的样本不参与,全无样本 = 无数据维持原色)
-    let mut health: HashMap<Place, u8> = HashMap::new();
-    if let Some(q) = quality {
-        for c in conns {
-            let Some(place) = c.city else { continue };
-            let Some(rank) = q.lookup(c.remote_ip).and_then(|s| s.rank()) else {
-                continue;
-            };
-            health
-                .entry(place)
-                .and_modify(|e| *e = (*e).max(rank))
-                .or_insert(rank);
-        }
-    }
+    cache.refresh(conns, conns_gen, quality);
 
     flights::draw_flights(
-        &painter, rect, &proj, conns, local, local_pos, cycle_px, hover_pos, selected, t,
+        &painter,
+        rect,
+        &proj,
+        &mut cache.flights,
+        local,
+        local_pos,
+        cycle_px,
+        hover_pos,
+        selected,
+        t,
     );
 
     // 归属节点:半径随连接数增长,外圈脉冲;命中悬停的节点记下来,
@@ -121,7 +175,7 @@ pub fn draw(
     // 重叠节点竞争中当前最近者的距离:初值无穷大保证首个命中即入选
     let mut hovered_best = f32::INFINITY;
     let mut clicked_place = None;
-    for (place, (count, bytes)) in &agg {
+    for (place, (count, bytes)) in &cache.agg {
         let (lon, lat) = geoip::place_pos(*place);
         let pos = proj.project(lon, lat);
         let r = 4.0 + 2.2 * (*count as f32).sqrt();
@@ -173,7 +227,7 @@ pub fn draw(
                 if hovered || is_sel {
                     theme::c().accent
                 } else {
-                    match health.get(place).copied() {
+                    match cache.health.get(place).copied() {
                         Some(1) => fade(theme::c().status_ok),
                         Some(2) => fade(theme::c().status_warn),
                         Some(3) => fade(theme::c().danger),
@@ -193,7 +247,7 @@ pub fn draw(
             painter.text(
                 pos + Vec2::new(0.0, r + 13.0),
                 Align2::CENTER_CENTER,
-                label.as_str(),
+                &label,
                 FontId::proportional(11.0),
                 if dim {
                     theme::c().text_dim.gamma_multiply(0.5)
