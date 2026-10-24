@@ -28,6 +28,9 @@ pub struct PageState {
     pub draft: Option<draft::Draft>,
     /// 最近一次导入/导出的反馈消息(工具栏右侧,超时自动消失)
     pub feedback: Option<Feedback>,
+    /// 在途导入/导出任务(文件对话框与 IO 在工作线程,收割见
+    /// import_export::poll_file_job)
+    pub(super) file_job: Option<import_export::FileJob>,
     /// 配置档管理弹窗状态
     pub profiles: profile_manager::ProfileMgrState,
     /// 档位下拉列表缓存:按需重载(首次进入/管理弹窗增删改档置脏后),
@@ -40,6 +43,7 @@ impl PageState {
         PageState {
             draft: None,
             feedback: None,
+            file_job: None,
             profiles: profile_manager::ProfileMgrState::default(),
             profiles_cache: None,
         }
@@ -99,13 +103,13 @@ pub fn show(
             .button(RichText::new(i18n.t("rules-export")).size(theme::font::BODY))
             .clicked()
         {
-            import_export::do_export(rules, state, i18n);
+            import_export::do_export(rules, state);
         }
         if ui
             .button(RichText::new(i18n.t("rules-import")).size(theme::font::BODY))
             .clicked()
         {
-            import_export::do_import(db, rules, state, i18n);
+            import_export::do_import(state);
         }
         ui.add_space(theme::sp::MD);
         // 档位切换:重载目标档规则(临时规则保留),写 config 落盘。
@@ -164,6 +168,7 @@ pub fn show(
     };
     table::rules_table(ui, state, i18n, db, rules, row_hover, row_lock, units);
     edit::edit_window(ui, state, i18n, db, rules);
+    import_export::poll_file_job(db, rules, state, i18n);
     profile_manager::show_modal(
         ui,
         db,
