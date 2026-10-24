@@ -37,13 +37,15 @@ pub(super) fn try_query_summary_stats(
         .enumerate()
         .map(|(i, r)| (r.process.clone(), i))
         .collect();
-    // 头部补段:窗口起点所在部分桶(明细实时算,窗口不足一天)
+    // 头部补段:窗口起点所在部分桶(明细实时算,窗口不足一天)。
+    // 上界钳到今天零点:窗口起点落在今天非零点时 seg_day 已越过 today
+    // (近 1 小时恒触发),head 与今天段的重叠部分必须让给 tail
     if f.start < seg_start {
-        let head = summary_seg(db, f, f.start, Some(seg_start))?;
+        let head = summary_seg(db, f, f.start, Some(seg_start.min(today_start)))?;
         merge_summary(&mut rows, &mut index, head);
     }
-    // 今天段:从本地零点起(明细实时算)
-    let tail = summary_seg(db, f, today_start, None)?;
+    // 今天段:从本地零点起(明细实时算);窗口起点更晚时以窗口起点为下界
+    let tail = summary_seg(db, f, today_start.max(f.start), None)?;
     merge_summary(&mut rows, &mut index, tail);
 
     rows.sort_by(|a, b| {
@@ -114,15 +116,24 @@ pub(super) fn try_query_usage_stats(
         e.0 += inn;
         e.1 += out;
     }
-    // 头部补段 + 今天段(明细实时算,分桶口径与统计表一致)
+    // 头部补段 + 今天段(明细实时算,分桶口径与统计表一致);
+    // 段界钳制与 try_query_summary_stats 同理:窗口起点落在今天非零点时
+    // 两段不得重叠,今天段以窗口起点为下界
     if f.start < seg_start {
-        for r in usage_seg(db, f, f.start, Some(seg_start), bucket_secs, tz)? {
+        for r in usage_seg(
+            db,
+            f,
+            f.start,
+            Some(seg_start.min(today_start)),
+            bucket_secs,
+            tz,
+        )? {
             let e = buckets.entry(r.bucket_start as i64).or_default();
             e.0 += r.bytes_in;
             e.1 += r.bytes_out;
         }
     }
-    for r in usage_seg(db, f, today_start, None, bucket_secs, tz)? {
+    for r in usage_seg(db, f, today_start.max(f.start), None, bucket_secs, tz)? {
         let e = buckets.entry(r.bucket_start as i64).or_default();
         e.0 += r.bytes_in;
         e.1 += r.bytes_out;
@@ -342,6 +353,242 @@ fn merge_summary(
                 index.insert(r.process.clone(), rows.len());
                 rows.push(r);
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::query::{query_summary, query_usage};
+    use super::*;
+    use rusqlite::Connection;
+
+    /// 快慢路径对拍环境:内存库 + 最小表集(conn_events + 统计三表),
+    /// 表结构取自 storage/db.rs v2/v5/v9/v10 迁移
+    fn setup_db() -> Connection {
+        let db = Connection::open_in_memory().expect("内存库打开失败");
+        db.execute_batch(
+            "CREATE TABLE conn_events (
+                event_id INTEGER NOT NULL,
+                first_seen INTEGER NOT NULL,
+                last_seen INTEGER NOT NULL,
+                pid INTEGER NOT NULL,
+                process TEXT NOT NULL,
+                proc_path TEXT,
+                signed TEXT NOT NULL,
+                proto TEXT NOT NULL,
+                remote_ip INTEGER NOT NULL,
+                remote_port INTEGER NOT NULL,
+                bytes_in INTEGER NOT NULL DEFAULT 0,
+                bytes_out INTEGER NOT NULL DEFAULT 0,
+                remote_ip6 BLOB
+            );
+            CREATE INDEX idx_conn_events_last ON conn_events(last_seen);
+            CREATE TABLE proc_stats (
+                day INTEGER NOT NULL, process TEXT NOT NULL, proto TEXT NOT NULL,
+                net_class INTEGER NOT NULL, n INTEGER NOT NULL, total_secs INTEGER NOT NULL,
+                bytes_in INTEGER NOT NULL, bytes_out INTEGER NOT NULL,
+                rep_path TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY (day, process, proto, net_class)
+            );
+            CREATE TABLE usage_stats (
+                hour INTEGER NOT NULL, net_class INTEGER NOT NULL, proto TEXT NOT NULL,
+                bytes_in INTEGER NOT NULL, bytes_out INTEGER NOT NULL,
+                PRIMARY KEY (hour, net_class, proto)
+            );
+            CREATE TABLE stats_done (day INTEGER PRIMARY KEY);",
+        )
+        .expect("建表失败");
+        db
+    }
+
+    /// 插入一条公网 TCP 明细并按写线程同口径物化其所属天(桶号 =
+    /// (last_seen + tz)/86400|3600,net_class 公网 2;今天的事件留给
+    /// 调用方按"今天永不物化"跳过)
+    fn insert_event(db: &Db, event_id: i64, last_seen: u64, process: &str, tz: i64) {
+        let first = (last_seen - 60) as i64;
+        let last = last_seen as i64;
+        db.execute(
+            "INSERT INTO conn_events (event_id, first_seen, last_seen, pid, process,
+                proc_path, signed, proto, remote_ip, remote_port, bytes_in, bytes_out, remote_ip6)
+             VALUES (?1, ?2, ?3, 42, ?4, 'C:\\\\p.exe', 'signed', 'TCP', 16909060, 443, 100, 200, NULL)",
+            rusqlite::params![event_id, first, last, process],
+        )
+        .unwrap();
+        let day = (last + tz).div_euclid(86400);
+        let hour = (last + tz).div_euclid(3600);
+        db.execute(
+            "INSERT INTO proc_stats (day, process, proto, net_class, n, total_secs,
+                bytes_in, bytes_out, rep_path)
+             VALUES (?1, ?2, 'TCP', 2, 1, 60, 100, 200, 'C:\\\\p.exe')
+             ON CONFLICT (day, process, proto, net_class) DO UPDATE SET
+                n = n + 1, total_secs = total_secs + 60,
+                bytes_in = bytes_in + 100, bytes_out = bytes_out + 200",
+            rusqlite::params![day, process],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO usage_stats (hour, net_class, proto, bytes_in, bytes_out)
+             VALUES (?1, 2, 'TCP', 100, 200)
+             ON CONFLICT (hour, net_class, proto) DO UPDATE SET
+                bytes_in = bytes_in + 100, bytes_out = bytes_out + 200",
+            [hour],
+        )
+        .unwrap();
+        db.execute("INSERT OR IGNORE INTO stats_done (day) VALUES (?1)", [day])
+            .unwrap();
+    }
+
+    fn f(start: u64) -> Filter {
+        Filter {
+            start,
+            process: String::new(),
+            remote: None,
+            proto: None,
+            hide_local: false,
+            hide_lan: false,
+        }
+    }
+
+    fn summary_tuples(rows: &[SummaryRow]) -> Vec<(String, u64, u64, u64, u64)> {
+        let mut v: Vec<_> = rows
+            .iter()
+            .map(|r| {
+                (
+                    r.process.clone(),
+                    r.bytes_out,
+                    r.bytes_in,
+                    r.count,
+                    r.total_secs,
+                )
+            })
+            .collect();
+        v.sort();
+        v
+    }
+
+    fn usage_tuples(rows: &[UsageRow]) -> Vec<(u64, u64, u64)> {
+        rows.iter()
+            .map(|r| (r.bucket_start, r.bytes_in, r.bytes_out))
+            .collect()
+    }
+
+    /// 今天已流逝时间的 1/2 处:恒在今天且非零点(0 点刚过亦成立),
+    /// 触发 window_days 的 seg_day 越过 today 分支
+    fn mid_today(now: u64, tz: i64) -> u64 {
+        let today_start = ((now as i64 + tz).div_euclid(86400) * 86400 - tz).max(0) as u64;
+        today_start + (now - today_start) / 2
+    }
+
+    /// 回归:窗口起点落在今天非零点(近 1 小时恒触发)时,今天段以窗口
+    /// 起点为下界,快慢路径对拍一致(修复前今天段从零点起算,窗口起点
+    /// 之前的今天数据被双计且混入结果)
+    #[test]
+    fn fast_path_matches_slow_when_window_starts_mid_today() {
+        let db = setup_db();
+        let tz = local_tz_offset_secs();
+        let now = unix_now();
+        let start = mid_today(now, tz);
+        // 窗口外今天数据(早于窗口起点)与窗口内数据,进程区分可辨
+        insert_event(&db, 1, start - 600, "early.exe", tz);
+        insert_event(&db, 2, now - 60, "late.exe", tz);
+        let fa = f(start);
+        let fast =
+            try_query_summary_stats(&db, &fa, SummarySort::BytesOut, false).expect("应命中快路径");
+        let slow = query_summary(&db, &fa, SummarySort::BytesOut, false).expect("慢路径");
+        assert_eq!(summary_tuples(&fast), summary_tuples(&slow));
+        assert_eq!(
+            summary_tuples(&fast),
+            vec![("late.exe".into(), 200, 100, 1, 60)]
+        );
+
+        for bucket in [86400u64, 3600] {
+            let fast = try_query_usage_stats(&db, &fa, bucket, tz).expect("应命中快路径");
+            let slow = query_usage(&db, &fa, bucket, tz).expect("慢路径");
+            assert_eq!(usage_tuples(&fast), usage_tuples(&slow));
+        }
+    }
+
+    /// 今天零点起(今天档)与多天对齐窗口(统计表段参与):快慢路径对拍一致
+    #[test]
+    fn fast_path_matches_slow_for_today_and_multi_day() {
+        let db = setup_db();
+        let tz = local_tz_offset_secs();
+        let now = unix_now();
+        let today = (now as i64 + tz).div_euclid(86400);
+        let today_start = (today * 86400 - tz).max(0) as u64;
+        insert_event(&db, 1, today_start + 3600, "t.exe", tz);
+        insert_event(&db, 2, now - 2 * 86400, "h.exe", tz);
+        insert_event(&db, 3, now - 3 * 86400, "out.exe", tz);
+
+        // 今天档:窗口 = 今天零点
+        let fa = f(today_start);
+        let fast =
+            try_query_summary_stats(&db, &fa, SummarySort::BytesIn, false).expect("应命中快路径");
+        let slow = query_summary(&db, &fa, SummarySort::BytesIn, false).expect("慢路径");
+        assert_eq!(summary_tuples(&fast), summary_tuples(&slow));
+        assert_eq!(
+            summary_tuples(&fast),
+            vec![("t.exe".into(), 200, 100, 1, 60)]
+        );
+
+        // 多天对齐窗口(窗口起点 = 2 天前零点):统计表段 + 今天段。
+        // 昨天无数据,补空天物化标记(写线程对无数据天也标记)
+        db.execute(
+            "INSERT OR IGNORE INTO stats_done (day) VALUES (?1)",
+            [today - 1],
+        )
+        .unwrap();
+        let fa = f(((today - 2) * 86400 - tz).max(0) as u64);
+        let fast =
+            try_query_summary_stats(&db, &fa, SummarySort::Count, false).expect("应命中快路径");
+        let slow = query_summary(&db, &fa, SummarySort::Count, false).expect("慢路径");
+        assert_eq!(summary_tuples(&fast), summary_tuples(&slow));
+        assert_eq!(
+            summary_tuples(&fast),
+            vec![
+                ("h.exe".into(), 200, 100, 1, 60),
+                ("t.exe".into(), 200, 100, 1, 60)
+            ]
+        );
+
+        for bucket in [86400u64, 3600] {
+            let fast = try_query_usage_stats(&db, &fa, bucket, tz).expect("应命中快路径");
+            let slow = query_usage(&db, &fa, bucket, tz).expect("慢路径");
+            assert_eq!(usage_tuples(&fast), usage_tuples(&slow));
+        }
+    }
+
+    /// 未对齐的历史窗口(头部补段非空,覆盖 [窗口起点, 次日零点) 部分桶)
+    #[test]
+    fn fast_path_matches_slow_for_unaligned_history_window() {
+        let db = setup_db();
+        let tz = local_tz_offset_secs();
+        let now = unix_now();
+        let today = (now as i64 + tz).div_euclid(86400);
+        let yesterday_start = ((today - 1) * 86400 - tz).max(0) as u64;
+        insert_event(&db, 1, yesterday_start + 12 * 3600, "h.exe", tz);
+        insert_event(&db, 2, yesterday_start + 20 * 3600, "l.exe", tz);
+        insert_event(&db, 3, now - 60, "t.exe", tz);
+
+        // 窗口 = 昨天 18:00:head 补段含 20 点批,tail 含今天批
+        let fa = f(yesterday_start + 18 * 3600);
+        let fast =
+            try_query_summary_stats(&db, &fa, SummarySort::BytesOut, false).expect("应命中快路径");
+        let slow = query_summary(&db, &fa, SummarySort::BytesOut, false).expect("慢路径");
+        assert_eq!(summary_tuples(&fast), summary_tuples(&slow));
+        assert_eq!(
+            summary_tuples(&fast),
+            vec![
+                ("l.exe".into(), 200, 100, 1, 60),
+                ("t.exe".into(), 200, 100, 1, 60)
+            ]
+        );
+
+        for bucket in [86400u64, 3600] {
+            let fast = try_query_usage_stats(&db, &fa, bucket, tz).expect("应命中快路径");
+            let slow = query_usage(&db, &fa, bucket, tz).expect("慢路径");
+            assert_eq!(usage_tuples(&fast), usage_tuples(&slow));
         }
     }
 }
