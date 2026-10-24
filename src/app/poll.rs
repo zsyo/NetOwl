@@ -101,20 +101,18 @@ impl NetOwlApp {
                 } else {
                     l.process.clone()
                 };
-                let text = self.i18n.t_with_args(
-                    "listen-notify-toast",
-                    &[
-                        ("process", process),
-                        (
-                            "endpoint",
-                            format!("{} {}:{}", l.proto.as_str(), l.local_addr, l.local_port),
-                        ),
-                    ],
-                );
-                crate::ui::toast::push_action(
+                // 两行卡:主行进程名,副行"协议 ip:端口"(渲染层
+                // IP 末端省略、端口恒完整);程序名/协议/IP/端口
+                // 均为语言无关数据,不经词条
+                crate::ui::toast::push_listen(
                     &mut self.toasts,
                     crate::ui::toast::ToastKind::Info,
-                    text,
+                    process,
+                    crate::ui::toast::ListenEndpoint {
+                        proto: l.proto.as_str().to_owned(),
+                        ip: l.local_addr.to_string(),
+                        port: l.local_port,
+                    },
                     crate::ui::toast::ToastAction::ListenPort(l.local_port),
                 );
             }

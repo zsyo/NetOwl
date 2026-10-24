@@ -393,7 +393,6 @@ conns-count-suffix = ({$count})
 lan-notify-toast = 新设备接入 {$ip}
 settings-lan-notify = 新设备接入提醒
 settings-lan-notify-hint = 局域网出现新设备时右下角通知
-listen-notify-toast = 新监听端口:{$process} ({$endpoint})
 toast-copied = 已复制到剪切板
 toast-font-missing = 字体 {$name} 不在系统字体列表中,已保持原字体
 toast-font-failed = 切换界面字体失败:{$error}

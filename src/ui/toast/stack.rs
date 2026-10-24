@@ -12,13 +12,19 @@ use egui::{Align2, CornerRadius, FontId, Rect, Sense, Stroke};
 use super::{Toast, ToastAction};
 use crate::ui::{icons, theme};
 
-/// 卡片固定宽高:单行内容,牌堆几何需预知尺寸
+/// 卡片固定宽高:高为两行内容(两行卡上行进程名/下行端点,
+/// 单行卡内容垂直居中),牌堆几何需预知尺寸
 const CARD_W: f32 = 320.0;
-const CARD_H: f32 = 46.0;
+const CARD_H: f32 = 64.0;
+/// 卡片内边距与两行内容行高(CARD_H = PAD*2 + ROW_H*2)
+const PAD: f32 = 12.0;
+const ROW_H: f32 = 20.0;
 /// 收拢态相邻卡片错开的露边高度
 const EDGE: f32 = 6.0;
 /// 展开态卡片间距(不含卡高)
 const GAP: f32 = 8.0;
+/// 展开视口最多同时显示的卡片数(防展开区域过高,超出滚轮查看)
+const MAX_VIEW_CARDS: f32 = 5.0;
 /// 展开动画时长
 const EXPAND_MS: f32 = 150.0;
 /// 右下角锚点内缩
@@ -102,9 +108,11 @@ pub(super) fn draw(
             // 几何全部以锚点为基准(局部坐标系)
             let right = probe.right();
             let bottom = probe.bottom();
-            // 视口顶部安全边(避让标题栏);高取展开内容高与可用高的较小值
+            // 视口顶部安全边(避让标题栏);高 = 展开内容高、可用高与
+            // 5 张卡限高三者的较小值(超出部分滚轮查看)
             let avail_h = (bottom - SAFE_TOP + ANCHOR_MARGIN).max(CARD_H);
-            let view_h = content_h.min(avail_h);
+            let view_cap = MAX_VIEW_CARDS * CARD_H + (MAX_VIEW_CARDS - 1.0) * GAP;
+            let view_h = content_h.min(avail_h).min(view_cap);
             let overflow = (content_h - view_h).max(0.0);
             let view = Rect::from_min_max(
                 egui::pos2(right - CARD_W, bottom - view_h),
@@ -188,7 +196,8 @@ pub(super) fn draw(
     click
 }
 
-/// 单张卡片:圆角背景 + 边框 + 语义图标 + 单行文本(超宽截断);
+/// 单张卡片:圆角背景 + 边框 + 语义图标 + 文本。两行卡(带 endpoint)
+/// 上行进程名/下行端点,各在上下半区垂直居中;单行卡整卡垂直居中;
 /// hovered = 可点卡悬停时描边提亮 accent
 fn draw_card(painter: &egui::Painter, p: &theme::Palette, t: &Toast, rect: Rect, hovered: bool) {
     painter.rect_filled(rect, CornerRadius::same(theme::RADIUS_MD), p.bg_elevated);
@@ -215,12 +224,87 @@ fn draw_card(painter: &egui::Painter, p: &theme::Palette, t: &Toast, rect: Rect,
     );
     let text_x = icon_x + theme::font::H3 + theme::sp::SM;
     let avail = (rect.right() - theme::sp::MD - text_x).max(0.0);
-    let text = truncate(painter, &t.text, theme::font::BODY, avail);
+    match &t.endpoint {
+        // 两行卡:上行进程名(主行亮色)/下行端点(等宽字体)
+        Some(e) => {
+            let row1_cy = rect.top() + PAD + ROW_H * 0.5;
+            let row2_cy = rect.top() + PAD + ROW_H * 1.5;
+            let name = truncate(
+                painter,
+                &t.text,
+                &FontId::proportional(theme::font::BODY),
+                avail,
+            );
+            painter.text(
+                egui::pos2(text_x, row1_cy),
+                Align2::LEFT_CENTER,
+                name,
+                FontId::proportional(theme::font::BODY),
+                p.text,
+            );
+            draw_endpoint(painter, p, e, text_x, row2_cy, avail);
+        }
+        None => {
+            let text = truncate(
+                painter,
+                &t.text,
+                &FontId::proportional(theme::font::BODY),
+                avail,
+            );
+            painter.text(
+                egui::pos2(text_x, cy),
+                Align2::LEFT_CENTER,
+                text,
+                FontId::proportional(theme::font::BODY),
+                p.text,
+            );
+        }
+    }
+}
+
+/// 端点副行:"协议 ip:端口"(等宽 SM):IP 部分末端省略、端口号恒完整,
+/// 端口段比地址段亮一级
+fn draw_endpoint(
+    painter: &egui::Painter,
+    p: &theme::Palette,
+    e: &super::ListenEndpoint,
+    x: f32,
+    cy: f32,
+    max_w: f32,
+) {
+    let font = FontId::monospace(theme::font::SM);
+    let prefix = format!("{} ", e.proto);
+    let port_seg = format!(":{}", e.port);
+    let width = |s: &str| {
+        painter
+            .layout_no_wrap(s.to_owned(), font.clone(), egui::Color32::WHITE)
+            .rect
+            .width()
+    };
+    let prefix_w = width(&prefix);
+    let port_w = width(&port_seg);
+    let ip_avail = (max_w - prefix_w - port_w).max(0.0);
+    let ip = truncate(painter, &e.ip, &font, ip_avail);
+    let ip_w = width(&ip);
     painter.text(
-        egui::pos2(text_x, cy),
+        egui::pos2(x, cy),
         Align2::LEFT_CENTER,
-        text,
-        FontId::proportional(theme::font::BODY),
+        prefix,
+        font.clone(),
+        p.text_dim,
+    );
+    painter.text(
+        egui::pos2(x + prefix_w, cy),
+        Align2::LEFT_CENTER,
+        ip,
+        font.clone(),
+        p.text_dim,
+    );
+    painter.text(
+        egui::pos2(x + prefix_w + ip_w, cy),
+        Align2::LEFT_CENTER,
+        port_seg,
+        font,
         p.text,
     );
 }
@@ -244,8 +328,7 @@ fn draw_count(painter: &egui::Painter, p: &theme::Palette, count: usize, card: R
 }
 
 /// 按像素尾部省略(与 map::card::fit_text 同型,此处固定宽度场景的局部实现)
-fn truncate(painter: &egui::Painter, text: &str, size: f32, max_w: f32) -> String {
-    let font = FontId::proportional(size);
+fn truncate(painter: &egui::Painter, text: &str, font: &FontId, max_w: f32) -> String {
     let width = |s: &str| {
         painter
             .layout_no_wrap(s.to_owned(), font.clone(), egui::Color32::WHITE)
