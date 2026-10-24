@@ -12,9 +12,44 @@ use crate::storage::history_query;
 use crate::ui::floating_ball;
 
 impl NetOwlApp {
+    /// 跨日/跨月活跃字节基准维护:ETW 会话累计不随本地日界/月界重置,
+    /// 过 0 点后长连接的昨日字节会全量进入"今日总量"与配额口径。本地
+    /// 日期变化时对全部活跃连接记一次基准(此后今日增量 = 累计 - 基准);
+    /// 月界必为日界,同一次重建。启动首帧同样重建(此时累计为零点前
+    /// 存量,若非零即为正确基准)
+    pub(super) fn poll_bytes_marks(&mut self) {
+        let day = crate::logging::local_day();
+        if day == self.day_mark_day {
+            return;
+        }
+        self.day_mark_day = day;
+        self.day_byte_marks = self
+            .conns
+            .iter()
+            .map(|c| (c.id, (c.bytes_in, c.bytes_out)))
+            .collect();
+        let month = day / 100;
+        if month != self.month_mark_month {
+            self.month_mark_month = month;
+            self.month_byte_marks = self.day_byte_marks.clone();
+        }
+    }
+
+    /// 今日活跃连接字节(入站, 出站):按日界基准扣减存量,只计本日增量
+    fn active_bytes_today(&self) -> (u64, u64) {
+        let mut inn = 0u64;
+        let mut out = 0u64;
+        for c in &self.conns {
+            let m = self.day_byte_marks.get(&c.id).copied().unwrap_or((0, 0));
+            inn += c.bytes_in.saturating_sub(m.0);
+            out += c.bytes_out.saturating_sub(m.1);
+        }
+        (inn, out)
+    }
+
     /// 悬浮球数据快照:总速率与进程速率榜 1s 节流重建(与连接采集同频);
     /// 仅开关开启时计算。今日总量 = 落库当日收发(分钟级异步查库)+
-    /// 活跃连接实时累计(未落库部分,每秒叠加)
+    /// 活跃连接本日增量(未落库部分,每秒叠加)
     pub(super) fn poll_ball_data(&mut self) {
         if !self.config.floating_ball.enabled
             || self.ball_data_at.elapsed() < Duration::from_secs(1)
@@ -28,9 +63,10 @@ impl NetOwlApp {
             &self.config,
             &self.icon_tex,
         );
+        let active = self.active_bytes_today();
         let today = (
-            self.today_db_bytes.0 + self.conns.iter().map(|c| c.bytes_in).sum::<u64>(),
-            self.today_db_bytes.1 + self.conns.iter().map(|c| c.bytes_out).sum::<u64>(),
+            self.today_db_bytes.0 + active.0,
+            self.today_db_bytes.1 + active.1,
         );
         self.ball_data = floating_ball::BallData {
             logo: Some(self.logo_tex.clone()),
@@ -92,7 +128,16 @@ impl NetOwlApp {
         }
         self.quota_checked_at = Instant::now();
         let month = self.month_db_bytes;
-        let active: u64 = self.conns.iter().map(|c| c.total_bytes()).sum();
+        // 活跃连接只计本日增量之外还要按月界基准扣存量:月度累计同样
+        // 不能把月初之前的字节算进来(与今日同口径,基准见 poll_bytes_marks)
+        let active: u64 = self
+            .conns
+            .iter()
+            .map(|c| {
+                let m = self.month_byte_marks.get(&c.id).copied().unwrap_or((0, 0));
+                c.total_bytes().saturating_sub(m.0.saturating_add(m.1))
+            })
+            .sum();
         let total = month + active;
         // 阈值比较全程 saturating:quota_gb 来自配置(极大值时 u64 乘法
         // 溢出,release 回绕成小数导致告警误触发/失效,debug 直接 panic)

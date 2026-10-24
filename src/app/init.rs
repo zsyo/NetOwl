@@ -242,6 +242,10 @@ impl NetOwlApp {
             // 回拨一个节流周期:启动即首查(查询在工作线程,不卡启动帧)
             db_bytes_at: Instant::now() - super::DB_BYTES_INTERVAL,
             db_bytes_rx: None,
+            day_byte_marks: HashMap::new(),
+            day_mark_day: 0,
+            month_byte_marks: HashMap::new(),
+            month_mark_month: 0,
             tray_tip_at: Instant::now(),
             silent_synced: None,
             ask_synced: None,

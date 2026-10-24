@@ -327,6 +327,16 @@ pub struct NetOwlApp {
     /// 今日/当月用量查询节流时刻与在途通道(存在 = 工作线程查询中)
     db_bytes_at: Instant,
     db_bytes_rx: Option<Receiver<history_query::DbBytes>>,
+    /// 日界活跃字节基准(连接 id -> 基准时刻累计收发):ETW 会话累计
+    /// 不随本地日界重置,过零点重建基准,"今日活跃字节" = 累计 - 基准,
+    /// 防昨日字节进入今日总量(基准随日界整体替换,残留条目自然清除)
+    day_byte_marks: HashMap<u64, (u64, u64)>,
+    /// 日界判定缓存(local_day,YYYYMMDD)
+    day_mark_day: u32,
+    /// 月界活跃字节基准(同日界基准,月口径配额告警用)
+    month_byte_marks: HashMap<u64, (u64, u64)>,
+    /// 月界判定缓存(YYYYMM)
+    month_mark_month: u32,
     /// 托盘悬停提示上次刷新时刻(速率跟随)
     tray_tip_at: Instant,
     /// 静默模式上次同步值(config 变化或采集器重建后重同步:兜底规则
