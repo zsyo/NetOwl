@@ -40,6 +40,9 @@ pub struct StackState {
     pub(super) scroll_off: f32,
     /// 指针是否悬停在判定区(本帧值由 draw 更新,mod.rs 下一帧用于暂停计时)
     pub(super) hover: bool,
+    /// 本帧可见卡片热区(seq + 卡片 rect,屏幕坐标系;右键关闭判定用,
+    /// App 层消费时滞后一帧,动画窗口内可接受的误差)
+    pub(super) card_hits: Vec<(u64, Rect)>,
     last_tick: Instant,
 }
 
@@ -49,6 +52,7 @@ impl Default for StackState {
             expand: 0.0,
             scroll_off: 0.0,
             hover: false,
+            card_hits: Vec::new(),
             last_tick: Instant::now(),
         }
     }
@@ -67,6 +71,15 @@ impl StackState {
         self.expand = 0.0;
         self.scroll_off = 0.0;
         self.hover = false;
+    }
+
+    /// 右键命中判定:返回命中卡片的 seq(顶层卡优先,与视觉层叠一致)
+    pub(crate) fn card_hit(&self, pos: egui::Pos2) -> Option<u64> {
+        self.card_hits
+            .iter()
+            .rev()
+            .find(|(_, r)| r.contains(pos))
+            .map(|(seq, _)| *seq)
     }
 }
 
@@ -94,6 +107,7 @@ pub(super) fn draw(
     let collapsed_h = CARD_H + (n as f32 - 1.0) * EDGE;
     let mut top_card: Option<Rect> = None;
     let mut click: Option<CardClick> = None;
+    st.card_hits.clear();
     egui::Area::new(egui::Id::unique("toast-stack"))
         .order(egui::Order::Foreground)
         .anchor(
@@ -179,6 +193,8 @@ pub(super) fn draw(
                     }
                 }
                 draw_card(&painter, p, t, card, hovered);
+                // 右键关闭判定热区(老→新顺序记录,card_hit 查询倒序取顶层)
+                st.card_hits.push((t.seq, card));
                 top_card = Some(card);
             }
             // 收拢态堆数角标:最新卡右上角 +N(N-1 = 被压住的条数)

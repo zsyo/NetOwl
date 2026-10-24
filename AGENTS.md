@@ -341,7 +341,9 @@ src 为 lib crate(main.rs 仅入口,lib.rs 为 crate 根,bin 经 netowl:: 引用
   只有收拢高,不挡周围操作),150ms smoothstep 展开;展开内容自上
   而下新到旧,视口限高 5 张,超出滚轮滚动,离开复位;
   层级遮挡防地图滚轮穿透;可点卡逐卡
-  Sense::click 注册,hover 描边提亮 accent+手型光标]);
+  Sense::click 注册,hover 描边提亮 accent+手型光标;右键关闭=card_hits
+  热区表(card_hit 查询)接入 raw_input_hook 右键拦截队列,命中即
+  dismiss 该卡]);
   map_panel/:地图左面板(mod.rs:MapPanelState/RankSort/ProcGroup/
   collect_groups 分组聚合与 list_panel[搜索/端点过滤条/WFP 状态提示];
   group_row.rs:进程组头行[名称+会话累计上/下行副行+连接数徽章+进程级

@@ -83,6 +83,16 @@ pub struct Toast {
     label: Option<String>,
 }
 
+/// 关闭指定卡片(右键):展示寿命归零即时消失,
+/// 判重状态仍按去重窗口保留
+pub fn dismiss(toasts: &mut Vec<Toast>, seq: u64) {
+    for t in toasts {
+        if t.seq == seq {
+            t.ttl_left = Duration::ZERO;
+        }
+    }
+}
+
 /// 队尾序号 + 1:Toast 生命周期短(去重窗口 30s),队列很小
 fn next_seq(toasts: &[Toast]) -> u64 {
     toasts.iter().map(|t| t.seq).max().unwrap_or(0) + 1

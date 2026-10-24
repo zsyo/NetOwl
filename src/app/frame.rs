@@ -179,6 +179,15 @@ impl NetOwlApp {
             if !pressed {
                 continue;
             }
+            // 右键命中 toast 卡片:直接关闭该卡(不弹菜单;命中时
+            // 已开的菜单一并收起)。热区滞后一帧(牌堆本帧未画)
+            if let Some(seq) = self.toast_stack.card_hit(pos) {
+                self.menu = None;
+                self.menu_frozen = None;
+                crate::ui::toast::dismiss(&mut self.toasts, seq);
+                tracing::debug!("[Toast] 右键关闭卡片 seq={seq}");
+                continue;
+            }
             self.menu = ui::menu_float::OpenMenu::open_at(
                 &self.row_hits,
                 pos,
