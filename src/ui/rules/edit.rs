@@ -49,11 +49,16 @@ pub(super) fn edit_window(
     .show(ui, |ui| {
         // 名称
         form_row(ui, i18n.t("rules-col-name"), |ui| {
-            ui.add(
-                egui::TextEdit::singleline(&mut draft.name)
-                    .desired_width(FIELD_WIDTH)
-                    .font(egui::FontId::proportional(theme::font::BODY)),
-            );
+            if ui
+                .add(
+                    egui::TextEdit::singleline(&mut draft.name)
+                        .desired_width(FIELD_WIDTH)
+                        .font(egui::FontId::proportional(theme::font::BODY)),
+                )
+                .changed()
+            {
+                draft.error = None;
+            }
         });
         // 动作
         form_row(ui, i18n.t("rules-col-action"), |ui| {
@@ -68,6 +73,7 @@ pub(super) fn edit_window(
                             .clicked()
                         {
                             draft.action = a;
+                            draft.error = None;
                         }
                     }
                 },
@@ -86,6 +92,7 @@ pub(super) fn edit_window(
                             .clicked()
                         {
                             draft.direction = d;
+                            draft.error = None;
                         }
                     }
                 },
@@ -105,6 +112,7 @@ pub(super) fn edit_window(
                             .clicked()
                         {
                             draft.proto = p;
+                            draft.error = None;
                         }
                     }
                 },
@@ -112,11 +120,16 @@ pub(super) fn edit_window(
         });
         // 进程
         form_row(ui, i18n.t("col-process"), |ui| {
-            ui.add(
-                egui::TextEdit::singleline(&mut draft.process)
-                    .desired_width(FIELD_WIDTH)
-                    .font(egui::FontId::proportional(theme::font::BODY)),
-            );
+            if ui
+                .add(
+                    egui::TextEdit::singleline(&mut draft.process)
+                        .desired_width(FIELD_WIDTH)
+                        .font(egui::FontId::proportional(theme::font::BODY)),
+                )
+                .changed()
+            {
+                draft.error = None;
+            }
         });
         form_hint(ui, &i18n.t("rules-process-hint"));
         // 远端
@@ -135,6 +148,7 @@ pub(super) fn edit_window(
                             .clicked()
                         {
                             draft.remote_kind = k;
+                            draft.error = None;
                         }
                     }
                 },
@@ -147,12 +161,17 @@ pub(super) fn edit_window(
                 i18n.t("rules-remote-domain-hint")
             };
             form_row_no_label(ui, |ui| {
-                ui.add(
-                    egui::TextEdit::singleline(&mut draft.remote_value)
-                        .hint_text(hint)
-                        .desired_width(FIELD_WIDTH)
-                        .font(egui::FontId::proportional(theme::font::BODY)),
-                );
+                if ui
+                    .add(
+                        egui::TextEdit::singleline(&mut draft.remote_value)
+                            .hint_text(hint)
+                            .desired_width(FIELD_WIDTH)
+                            .font(egui::FontId::proportional(theme::font::BODY)),
+                    )
+                    .changed()
+                {
+                    draft.error = None;
+                }
             });
             if draft.remote_kind == RemoteKind::Domain {
                 form_hint(ui, &i18n.t("rules-remote-domain-desc"));
@@ -168,12 +187,17 @@ pub(super) fn edit_window(
                 .stroke(vis.widgets.inactive.bg_stroke)
                 .corner_radius(vis.widgets.inactive.corner_radius)
                 .show(ui, |ui| {
-                    ui.add_sized(
-                        [64.0, 24.0],
-                        egui::DragValue::new(&mut draft.port)
-                            .range(0..=65535)
-                            .custom_formatter(|v, _| labels::port_display(v as u16)),
-                    )
+                    if ui
+                        .add_sized(
+                            [64.0, 24.0],
+                            egui::DragValue::new(&mut draft.port)
+                                .range(0..=65535)
+                                .custom_formatter(|v, _| labels::port_display(v as u16)),
+                        )
+                        .changed()
+                    {
+                        draft.error = None;
+                    }
                 });
             ui.add_space(theme::sp::SM);
             ui.label(theme::dim_text(

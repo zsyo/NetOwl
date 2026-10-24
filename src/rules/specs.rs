@@ -34,12 +34,19 @@ impl RuleSet {
         // 1..=14(0 = 静默兜底,15 = 询问 pending/自身放行),启用规则超过
         // 上限时截断——求值标注不受影响,仅内核执行止于前 14 条
         if applicable.len() > MAX_WEIGHT - 1 {
-            tracing::warn!(
-                "[Rules] 启用规则 {} 条超过 WFP 执行上限 {},超出部分仅求值标注、不参与内核拦截",
-                applicable.len(),
-                MAX_WEIGHT - 1
-            );
+            // 告警按状态变化去重:wfp_specs 每秒随采集轮执行,持续超限
+            // 不重复刷屏,恢复后再超限才再次告警
+            if !self.warned_weight_truncate {
+                tracing::warn!(
+                    "[Rules] 启用规则 {} 条超过 WFP 执行上限 {},超出部分仅求值标注、不参与内核拦截",
+                    applicable.len(),
+                    MAX_WEIGHT - 1
+                );
+                self.warned_weight_truncate = true;
+            }
             applicable.truncate(MAX_WEIGHT - 1);
+        } else {
+            self.warned_weight_truncate = false;
         }
 
         // 本轮连接完整路径的小写化预计算(O(conns) 一次),供全部进程规则

@@ -86,7 +86,16 @@ pub(super) fn add_filter(engine: HANDLE, spec: &Spec) -> Result<GUID, String> {
     }
 
     static FILTER_NAME: [u16; 7] = [78, 101, 116, 79, 119, 108, 0];
-    let key = GUID::new().map_err(|e| format!("GUID: {e}"))?;
+    let key = match GUID::new() {
+        Ok(k) => k,
+        Err(e) => {
+            // 提前返回前释放可能已分配的 app id blob,与末尾失败路径同口径
+            if !blob.is_null() {
+                unsafe { FwpmFreeMemory0(&mut blob as *mut _ as *mut *mut core::ffi::c_void) };
+            }
+            return Err(format!("GUID: {e}"));
+        }
+    };
     let action = if spec.block {
         FWP_ACTION_BLOCK
     } else {

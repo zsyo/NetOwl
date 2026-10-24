@@ -18,9 +18,13 @@ impl RuleSet {
         self.rules.insert(0, rule);
     }
 
-    /// 删除会话临时规则(仅内存,不涉及库);随其绑定的连接消失调用
+    /// 删除会话临时规则(仅内存,不涉及库);随其绑定的连接消失调用。
+    /// 缓存清理与 delete 同口径(临时 id 递减不复用,残留即会话期泄漏)
     pub fn delete_temp(&mut self, id: i64) {
         self.rules.retain(|r| r.id != id);
+        self.eval_cache.remove(&id);
+        self.sticky_paths.remove(&id);
+        self.domain_ips.remove(&id);
     }
 
     /// 新建规则并落库,追加为最低优先级(归属当前配置档)。

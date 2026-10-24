@@ -135,12 +135,18 @@ impl RuleSet {
             hit_counted: HashMap::new(),
             hit_dirty: false,
             next_temp_id: -1,
+            warned_weight_truncate: false,
         }
     }
 
     /// 切换配置档:重载目标档持久规则;会话临时规则(负 id)绑定活跃
     /// 连接、与档无关,清掉会撤销询问决策,保留
     pub fn switch_profile(&mut self, db: &Db, id: i64) {
+        // 切档前把旧档的命中计数增量落库:hit_counted/规则数组即将整体
+        // 换档,不落库会丢最后一次批量(最长 30s)的增量
+        if let Err(e) = self.flush_hits(db) {
+            tracing::warn!("[Rules] 切档前命中计数落库失败: {e}");
+        }
         self.active_profile = id;
         self.sticky_paths.clear();
         self.domain_ips.clear();

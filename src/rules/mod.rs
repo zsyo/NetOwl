@@ -331,4 +331,6 @@ pub struct RuleSet {
     hit_dirty: bool,
     /// 会话内临时规则(询问"仅本次")的下一个负数 id
     next_temp_id: i64,
+    /// 启用规则超 WFP 执行上限的告警状态(按状态变化去重,避免每秒刷屏)
+    warned_weight_truncate: bool,
 }
