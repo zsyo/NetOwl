@@ -306,6 +306,8 @@ fn hotkey_row(
     );
     if resp.clicked() {
         capture.active = !capture.active;
+        // 新捕获会话从干净状态开始(上一次会话的 Win 按住残留清零)
+        capture.win_held = false;
     }
     // 关闭按钮:仅已设置组合时显示(空串 = 不注册)
     if !config.general.hotkey.is_empty() && !capture.active {
@@ -356,7 +358,9 @@ fn capture_combo(ui: &mut egui::Ui, capture: &mut HotkeyCapture) -> ComboCapture
         match key {
             Key::SuperLeft | Key::SuperRight => win = pressed,
             Key::Escape if pressed => {
-                capture.win_held = win;
+                // 会话结束状态不保留:Win 按住时取消,残留会让下次录制
+                // 凭空多 win+(注册大概率失败)
+                capture.win_held = false;
                 return ComboCapture::Cancel;
             }
             _ if pressed => {
@@ -396,6 +400,8 @@ fn capture_combo(ui: &mut egui::Ui, capture: &mut HotkeyCapture) -> ComboCapture
                 }
                 if !combo.is_empty() {
                     combo.push_str(&name);
+                    // 录制完成同样不保留 Win 按住状态(同取消路径)
+                    capture.win_held = false;
                     result = ComboCapture::Done(combo);
                 }
             }

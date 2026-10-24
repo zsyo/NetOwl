@@ -103,6 +103,7 @@ impl NetOwlApp {
         // 下次进入设置页时任何按键都被当成组合键录制
         if self.hotkey_capture.active && self.page != crate::ui::Page::Settings {
             self.hotkey_capture.active = false;
+            self.hotkey_capture.win_held = false;
         }
         if self.config.general.hotkey != self.hotkey_synced {
             self.hotkey_synced = self.config.general.hotkey.clone();
