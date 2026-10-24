@@ -1,23 +1,27 @@
-//! toast 通知浮层:右下角堆叠(新设备接入、用量配额告警等轻量提示)
+//! toast 通知浮层:右下角牌堆(新设备接入、新监听端口、配额告警等
+//! 轻量提示,默认只完整显示最新一张,悬停平铺展开+滚轮回看,见 stack.rs)
 //! 与页面底部居中气泡(用户操作反馈,如复制成功)两个通道。
 //! 主窗口内 Foreground Area,自动过期;主窗口隐藏时不参与绘制
 //! (用户不可见即无意义,不做系统级通知)。
 
+mod stack;
+
 use std::time::{Duration, Instant};
 
 use eframe::egui;
-use egui::{Align2, CornerRadius, Margin, RichText, Stroke};
+use egui::{Align2, Margin, RichText, Stroke};
 
 use crate::ui::{icons, theme};
+pub use stack::StackState;
 
-/// 单条展示时长
+/// 单条展示时长(牌堆只有堆顶在倒计时,被压住的暂停;底部气泡各自倒计时)
 const TOAST_TTL: Duration = Duration::from_secs(6);
 /// 同文本去重窗口(同一设备/阈值在窗口内不重复弹)
 const DEDUP_WINDOW: Duration = Duration::from_secs(30);
-/// 单条宽度与堆叠步长
-const TOAST_W: f32 = 320.0;
+/// 牌堆保留上限:集中风暴(开机一批设备/监听端口)下丢最老,防无限堆积
+const MAX_STACK: usize = 8;
+/// 底部气泡堆叠步长与离窗口下缘的距离
 const STACK_STEP: f32 = 48.0;
-/// 底部气泡离窗口下缘的距离
 const BOTTOM_MARGIN: f32 = 48.0;
 
 /// 通知语义(图标与强调色)
@@ -31,7 +35,7 @@ pub enum ToastKind {
     Success,
 }
 
-/// 展示位置:右下角堆叠 vs 页面底部居中气泡
+/// 展示位置:右下角牌堆 vs 页面底部居中气泡
 #[derive(Clone, Copy, PartialEq)]
 enum ToastPos {
     Corner,
@@ -41,7 +45,10 @@ enum ToastPos {
 pub struct Toast {
     kind: ToastKind,
     text: String,
+    /// 入队时刻(去重窗口判定基准)
     at: Instant,
+    /// 剩余展示时长(初始 TOAST_TTL,暂停/消化语义见 show)
+    ttl_left: Duration,
     pos: ToastPos,
     /// 入队序号(单调递增):Area id 用它而非可见项下标——下标会因上一条
     /// 过期而整体前移,id 漂移让 egui 把同一条 toast 当新区块(悬停等
@@ -54,10 +61,8 @@ fn next_seq(toasts: &[Toast]) -> u64 {
     toasts.iter().map(|t| t.seq).max().unwrap_or(0) + 1
 }
 
-/// 入队(右下角);同文本同位置在去重窗口内只保留一条。
-/// 去重状态的存活期是 DEDUP_WINDOW(30s),长于展示时长 TOAST_TTL(6s):
-/// show() 的清理若按 TTL 执行,上一条消失后同文本立刻又能入队,去重
-/// 窗口形同虚设。两个位置互不挤占,同文案可各存一条
+/// 入队(右下角牌堆);同文本同位置在去重窗口内只保留一条。
+/// 两个位置互不挤占,同文案可各存一条
 pub fn push(toasts: &mut Vec<Toast>, kind: ToastKind, text: String) {
     push_at(toasts, kind, text, ToastPos::Corner)
 }
@@ -80,83 +85,84 @@ fn push_at(toasts: &mut Vec<Toast>, kind: ToastKind, text: String, pos: ToastPos
         kind,
         text,
         at: Instant::now(),
+        ttl_left: TOAST_TTL,
         pos,
         seq: next_seq(toasts),
     });
+    // 牌堆上限:仅统计 Corner 条目(bottom 不占额),超限移除最老
+    let corner_n = toasts.iter().filter(|t| t.pos == ToastPos::Corner).count();
+    if corner_n > MAX_STACK
+        && let Some(i) = toasts.iter().position(|t| t.pos == ToastPos::Corner)
+    {
+        toasts.remove(i);
+    }
 }
 
-/// 绘制 toast 并清理过期项(每帧调用,空队列零开销)。
-/// 清理按去重窗口保留(供 push 判重),绘制只画展示时长内的条目;
-/// 两个位置各自独立计数堆叠(索引只数本位置的可见项)
-pub fn show(ctx: &egui::Context, toasts: &mut Vec<Toast>) {
-    toasts.retain(|t| t.at.elapsed() < DEDUP_WINDOW);
-    let visible: Vec<&Toast> = toasts
-        .iter()
-        .filter(|t| t.at.elapsed() < TOAST_TTL)
-        .collect();
-    if visible.is_empty() {
-        return;
+/// 驱动 toast 生命周期并绘制(每帧调用,空队列零开销)。
+/// TTL 消化:底部气泡各自倒计时;牌堆悬停时全部暂停,否则只扣堆顶
+/// (最新一条),过期后次新顶上继续计时,被压住的一直保留。
+/// 条目在展示寿命耗尽后仍保留至去重窗口结束(供 push 判重)
+pub fn show(ctx: &egui::Context, toasts: &mut Vec<Toast>, stack: &mut StackState) {
+    let dt = stack.tick();
+    for t in toasts.iter_mut() {
+        if matches!(t.pos, ToastPos::Bottom) {
+            t.ttl_left = t.ttl_left.saturating_sub(dt);
+        }
     }
+    // 牌堆:上一帧悬停判定暂停计时,只消化堆顶(最后一个可见条目)
+    if !stack.hover {
+        let mut top: Option<&mut Toast> = None;
+        for t in toasts.iter_mut() {
+            if matches!(t.pos, ToastPos::Corner) && t.ttl_left > Duration::ZERO {
+                top = Some(t);
+            }
+        }
+        if let Some(t) = top {
+            t.ttl_left = t.ttl_left.saturating_sub(dt);
+        }
+    }
+    toasts.retain(|t| t.ttl_left > Duration::ZERO || t.at.elapsed() < DEDUP_WINDOW);
+
     let p = theme::c();
-    let corner: Vec<&&Toast> = visible
+    let corner: Vec<&Toast> = toasts
         .iter()
-        .filter(|t| t.pos == ToastPos::Corner)
+        .filter(|t| matches!(t.pos, ToastPos::Corner) && t.ttl_left > Duration::ZERO)
         .collect();
-    let bottom: Vec<&&Toast> = visible
-        .iter()
-        .filter(|t| t.pos == ToastPos::Bottom)
-        .collect();
-    for (i, t) in corner.iter().enumerate() {
-        draw_one(
-            ctx,
-            p,
-            t,
-            "toast",
-            i,
-            Align2::RIGHT_BOTTOM,
-            egui::vec2(-16.0, -16.0),
-        );
+    if corner.is_empty() {
+        stack.reset();
+    } else {
+        stack::draw(ctx, p, &corner, stack, dt);
     }
-    for (i, t) in bottom.iter().enumerate() {
-        draw_one(
-            ctx,
-            p,
-            t,
-            "toast-b",
-            i,
-            Align2::CENTER_BOTTOM,
-            egui::vec2(0.0, -BOTTOM_MARGIN),
-        );
+    for (i, t) in toasts
+        .iter()
+        .filter(|t| matches!(t.pos, ToastPos::Bottom) && t.ttl_left > Duration::ZERO)
+        .enumerate()
+    {
+        draw_bottom(ctx, p, t, i);
     }
 }
 
-/// 单条 toast:锚点 + 向上堆叠偏移;两位置仅锚点与 Id 前缀不同
-fn draw_one(
-    ctx: &egui::Context,
-    p: &theme::Palette,
-    t: &Toast,
-    id_prefix: &str,
-    i: usize,
-    anchor: Align2,
-    base: egui::Vec2,
-) {
+/// 底部居中气泡(逐条独立 Area,向上堆叠)
+fn draw_bottom(ctx: &egui::Context, p: &theme::Palette, t: &Toast, i: usize) {
     let (glyph, accent) = match t.kind {
         ToastKind::Info => (icons::ETHERNET, p.accent),
         ToastKind::Warn => (icons::EXCLAMATION_CIRCLE, p.status_warn),
         ToastKind::Success => (icons::CHECK_CIRCLE, p.status_ok),
     };
     let text = t.text.clone();
-    egui::Area::new(egui::Id::unique((id_prefix, t.seq)))
+    egui::Area::new(egui::Id::unique(("toast-b", t.seq)))
         .order(egui::Order::Foreground)
-        .anchor(anchor, base - egui::vec2(0.0, i as f32 * STACK_STEP))
+        .anchor(
+            Align2::CENTER_BOTTOM,
+            egui::vec2(0.0, -BOTTOM_MARGIN - i as f32 * STACK_STEP),
+        )
         .show(ctx, |ui| {
             egui::Frame::new()
                 .fill(p.bg_elevated)
                 .stroke(Stroke::new(1.0, p.stroke))
-                .corner_radius(CornerRadius::same(theme::RADIUS_MD))
+                .corner_radius(egui::CornerRadius::same(theme::RADIUS_MD))
                 .inner_margin(Margin::same(theme::sp::MD as i8))
                 .show(ui, |ui| {
-                    ui.set_min_width(TOAST_W);
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(glyph).size(theme::font::H3).color(accent));
                         ui.add(

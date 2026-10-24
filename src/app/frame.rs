@@ -600,7 +600,7 @@ impl eframe::App for NetOwlApp {
         // 右下角 toast 通知(新设备接入/用量配额告警)
         // 菜单动作先行执行:复制等反馈走底部气泡,与 toast 同帧展示
         self.run_menu_actions(ui.ctx());
-        crate::ui::toast::show(ui.ctx(), &mut self.toasts);
+        crate::ui::toast::show(ui.ctx(), &mut self.toasts, &mut self.toast_stack);
 
         if config_changed {
             self.mark_config_dirty();

@@ -165,8 +165,10 @@ pub struct NetOwlApp {
     quality_alerted: HashSet<IpAddr>,
     /// 自身可执行文件路径(启动时缓存一次;静默拒绝模式的自身放行规则用)
     self_path: Option<String>,
-    /// 右下角 toast 通知队列(新设备接入/用量配额告警)
+    /// 右下角 toast 通知队列(新设备接入/用量配额告警;牌堆展示见 ui::toast)
     toasts: Vec<crate::ui::toast::Toast>,
+    /// toast 牌堆交互状态(展开进度/滚动/悬停,跨帧保留)
+    toast_stack: crate::ui::toast::StackState,
     /// 监听条目快照(采集同频;端口监听视图用)
     listens: Vec<crate::model::ListenEntry>,
     /// 用量配额告警检查时刻(分钟级节流)与已通知档位(80%/100%)

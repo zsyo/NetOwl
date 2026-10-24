@@ -161,6 +161,7 @@ impl NetOwlApp {
                 .ok()
                 .map(|p| p.to_string_lossy().into_owned()),
             toasts: Vec::new(),
+            toast_stack: Default::default(),
             listens: Vec::new(),
             quota_checked_at: Instant::now(),
             quota_flags: (false, false),
