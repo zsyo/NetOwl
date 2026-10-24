@@ -160,9 +160,14 @@ impl Quality {
         if self.last_dispatch.elapsed() < DISPATCH_INTERVAL {
             return;
         }
+        // 按实际经过的间隔数补偿批量:update 调用节奏(重绘节拍)可能
+        // 低于派发间隔(静息页 500ms 一帧),单次派发等比放大,消化速率
+        // 不受重绘节奏钳制;在途上限仍由 MAX_INFLIGHT 兜底
+        let budget = DISPATCH_BATCH
+            * (self.last_dispatch.elapsed().as_millis() / DISPATCH_INTERVAL.as_millis()) as usize;
         let mut dispatched = 0;
         while self.pending.len() < MAX_INFLIGHT
-            && dispatched < DISPATCH_BATCH
+            && dispatched < budget
             && let Some(ip) = self.queue.pop_front()
         {
             self.queued.remove(&ip);

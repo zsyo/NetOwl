@@ -4,6 +4,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use windows::Win32::Foundation::ERROR_CANCELLED;
 use windows::Win32::System::Diagnostics::Etw::{
     CloseTrace, ControlTraceW, EVENT_RECORD, EVENT_TRACE_CONTROL_STOP, EVENT_TRACE_LOGFILEW,
     EVENT_TRACE_PROPERTIES, EVENT_TRACE_REAL_TIME_MODE, EnableTraceEx2, OpenTraceW,
@@ -75,13 +76,18 @@ pub(super) unsafe fn run_consumer(agg: Arc<Mutex<Agg>>) {
         }
         // ProcessTrace 返回非 0 = 消费者线程提前退出(ERROR_INVALID_HANDLE
         // 等),此时 Etw 仍存活而 snapshot 恒空,UI 表现为"字节永远 0"而非
-        // "ETW 不可用",必须显式留痕
+        // "ETW 不可用",必须显式留痕;ERROR_CANCELLED 是 stop_session 发出
+        // 停止控制后的正常返回,只在 debug 级别留痕
         let rc = ProcessTrace(&[handle], None, None);
         if rc.0 != 0 {
-            tracing::error!(
-                "[ETW] ProcessTrace 提前返回: code {},流量字节与短命连接不可用",
-                rc.0
-            );
+            if rc == ERROR_CANCELLED {
+                tracing::debug!("[ETW] ProcessTrace 随会话停止返回 ERROR_CANCELLED");
+            } else {
+                tracing::error!(
+                    "[ETW] ProcessTrace 提前返回: code {},流量字节与短命连接不可用",
+                    rc.0
+                );
+            }
         }
         let _ = CloseTrace(handle);
         let _ = ControlTraceW(

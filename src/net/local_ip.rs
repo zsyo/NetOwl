@@ -149,7 +149,12 @@ fn probe_url(url: &'static str) -> Option<IpAddr> {
     );
     stream.write_all(request.as_bytes()).ok()?;
     let mut buf = Vec::new();
-    stream.read_to_end(&mut buf).ok()?;
+    // 响应体只是单行 IP,64 KiB 上限防异常大响应;读失败(超时/提前
+    // 关闭)时已读部分仍尝试解析,Connection: close 下常为发完即断
+    let _ = stream.take(64 * 1024).read_to_end(&mut buf);
+    if buf.is_empty() {
+        return None;
+    }
 
     // 跳过 HTTP 头取响应体(头中可能出现无关数字)
     let text = String::from_utf8_lossy(&buf);

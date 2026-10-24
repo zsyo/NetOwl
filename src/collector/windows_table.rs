@@ -84,6 +84,11 @@ impl TableCollector {
     /// 查询 TCP/UDP 表(v4+v6)并重建快照;v4 表查询失败保留上一轮
     /// 快照,v6 表失败本轮按无 v6 行继续(v4 监控不受影响,错误留痕)
     fn poll(&mut self) {
+        // 签名/图标限流派发与结果收割必须在任何表查询失败提前 return
+        // 之前:否则失败轮收割停摆,在途配额被占满后签名/图标不再刷新
+        self.collect_signatures();
+        self.collect_icons();
+
         // TCP 表一次查询分流连接/监听(见 query_tcp_split)
         let (tcp, listen) = match query_tcp_split() {
             Ok(v) => v,
@@ -117,9 +122,6 @@ impl TableCollector {
         };
         let tcp_count = tcp.len() + tcp6.len();
         let udp_count = udp.len() + udp6.len();
-
-        self.collect_signatures();
-        self.collect_icons();
 
         let now = Instant::now();
         let old = std::mem::take(&mut self.live);

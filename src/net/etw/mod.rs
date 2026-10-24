@@ -139,10 +139,11 @@ impl Etw {
                 }
             }
         }
-        // 事件回调与快照锁竞争丢弃的计数(仅异常时非零)
+        // 事件回调与快照锁竞争的计数(仅异常时非零):竞争方退化为
+        // 阻塞等待而非丢弃(见 session 回调),事件不丢账
         let missed = session::LOCK_MISSED.swap(0, Ordering::Relaxed);
         if missed > 0 {
-            tracing::debug!("[ETW] 缓冲锁竞争,本轮丢弃 {missed} 条事件");
+            tracing::debug!("[ETW] 缓冲锁竞争,本轮 {missed} 条事件阻塞等待");
         }
         g.flows
             .iter()
@@ -177,9 +178,12 @@ impl Etw {
     pub fn shutdown(&mut self) {
         if let Err(e) = session::stop_session() {
             tracing::warn!("[ETW] 停止会话失败: {e}");
-        } else {
-            tracing::info!("[ETW] 流量事件采集会话已停止");
+            // 停止失败时消费线程很可能仍阻塞在 ProcessTrace 内,join
+            // 会挂死退出路径;放弃等待,进程退出由内核回收线程
+            self.consumer = None;
+            return;
         }
+        tracing::info!("[ETW] 流量事件采集会话已停止");
         if let Some(h) = self.consumer.take()
             && let Err(e) = h.join()
         {

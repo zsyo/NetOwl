@@ -104,9 +104,13 @@ impl Resolver {
         if self.last_dispatch.elapsed() < DISPATCH_INTERVAL {
             return;
         }
+        // 按实际经过的间隔数补偿批量(与 rdns::update 同理),消化速率
+        // 不受重绘节奏钳制;在途上限仍由 MAX_INFLIGHT 兜底
+        let budget = DISPATCH_BATCH
+            * (self.last_dispatch.elapsed().as_millis() / DISPATCH_INTERVAL.as_millis()) as usize;
         let mut dispatched = 0;
         while self.pending.len() < MAX_INFLIGHT
-            && dispatched < DISPATCH_BATCH
+            && dispatched < budget
             && let Some(domain) = self.queue.pop_front()
         {
             self.queued.remove(&domain);
