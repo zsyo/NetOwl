@@ -8,7 +8,7 @@ use eframe::egui;
 
 use super::cells;
 use crate::i18n::I18n;
-use crate::model::Connection;
+use crate::model::{Connection, Protocol};
 use crate::storage::config::Config;
 use crate::storage::history_query::{self, Rows, SummaryRow, SummarySort};
 use crate::ui::{RowCtx, RowHit, conn_visible, theme, widgets};
@@ -40,8 +40,13 @@ pub(super) fn refresh_merged(
         Rows::Summary(rows) => rows.clone(),
         _ => Vec::new(),
     };
-    for (process, live) in live_proc_sums(conns, config) {
-        match merged.iter_mut().find(|r| r.process == process) {
+    // 活跃合并带进程/协议筛选(与查询侧 Summary 视图同口径):否则筛选
+    // 后其它进程只要当前有活跃连接仍并入显示为新行(导出同错)。
+    // 大小写不敏感对齐 SQLite LIKE 的 ASCII 语义
+    let pf = state.process.trim().to_lowercase();
+    let proto = state.proto;
+    for (name, live) in live_proc_sums(conns, config, &pf, proto) {
+        match merged.iter_mut().find(|r| r.process == name) {
             Some(r) => {
                 r.bytes_out += live.bytes_out;
                 r.bytes_in += live.bytes_in;
@@ -49,7 +54,7 @@ pub(super) fn refresh_merged(
                 r.total_secs += live.total_secs;
             }
             None => merged.push(SummaryRow {
-                process,
+                process: name,
                 proc_path: live.proc_path,
                 bytes_out: live.bytes_out,
                 bytes_in: live.bytes_in,
@@ -240,8 +245,9 @@ pub(super) fn table(
     }
 }
 
-/// 活跃连接按进程聚合的实时增量(叠加进汇总视图);过滤口径与连接页
-/// 共用 conn_visible(本地/局域网远端隐藏与历史 SQL 侧一致)
+/// 活跃连接按进程聚合的实时增量(叠加进汇总视图);过滤口径:本地/
+/// 局域网远端隐藏与历史 SQL 侧一致(conn_visible),进程/协议筛选与
+/// 查询侧同口径(调用方传入,见 refresh_merged)
 struct LiveSum {
     bytes_out: u64,
     bytes_in: u64,
@@ -250,9 +256,18 @@ struct LiveSum {
     proc_path: Option<String>,
 }
 
-fn live_proc_sums(conns: &[Connection], config: &Config) -> HashMap<String, LiveSum> {
+fn live_proc_sums(
+    conns: &[Connection],
+    config: &Config,
+    process: &str,
+    proto: Option<Protocol>,
+) -> HashMap<String, LiveSum> {
     let mut map: HashMap<String, LiveSum> = HashMap::new();
-    for c in conns.iter().filter(|c| conn_visible(config, c)) {
+    for c in conns.iter().filter(|c| {
+        conn_visible(config, c)
+            && (process.is_empty() || c.process.to_lowercase().contains(process))
+            && proto.is_none_or(|p| c.proto == p)
+    }) {
         let e = map.entry(c.process.clone()).or_insert_with(|| LiveSum {
             bytes_out: 0,
             bytes_in: 0,
